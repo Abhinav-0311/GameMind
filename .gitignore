@@ -1,9 +1,17 @@
+# Local environment and secret files
 .env
 .env.*
 !.env.example
+
+# Python caches and local databases
 __pycache__/
 .pytest_cache/
 *.pyc
+chroma_db_local/
+postgres_data/
+
+# Next.js and Node build assets
 node_modules/
 .next/
-chroma_db_local/
+out/
+build/
