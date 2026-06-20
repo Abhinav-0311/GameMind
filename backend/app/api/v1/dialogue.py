@@ -1,0 +1,196 @@
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.schemas import (
+    DialogueAssembleRequest, 
+    DialogueAssembleResponse, 
+    DialogueChatRequest, 
+    DialogueChatResponse
+)
+from app.services.dialogue_service import DialogueService
+from app.services.llm.factory import get_llm_provider
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/dialogue", tags=["dialogue"])
+
+@router.post("/assemble", response_model=DialogueAssembleResponse)
+def assemble_dialogue(request: DialogueAssembleRequest, db: Session = Depends(get_db)):
+    """
+    Assemble context parameters and the final prompt for dialogue simulation deterministically.
+    """
+    try:
+        response = DialogueService.assemble_prompt(db, request)
+        return response
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dialogue assembly process failed: {str(e)}"
+        )
+
+@router.post("/chat", response_model=DialogueChatResponse)
+async def chat_dialogue(
+    request: DialogueChatRequest, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Execute a live chat response generation using the configured LLM provider.
+    """
+    try:
+        conv = None
+        history = None
+        if request.conversation_id:
+            from app.models.session import Conversation, Message
+            conv = db.query(Conversation).filter(Conversation.id == request.conversation_id).first()
+            if not conv or conv.npc_slug != request.npc_slug:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation session not found or NPC slug mismatch."
+                )
+            
+            # Fetch last 10 messages before adding the new one
+            history = db.query(Message).filter(
+                Message.conversation_id == request.conversation_id
+            ).order_by(Message.created_at.desc()).limit(10).all()
+            history.reverse()
+            
+            # Save player message
+            player_msg_db = Message(
+                conversation_id=request.conversation_id,
+                sender="player",
+                content=request.player_message
+            )
+            db.add(player_msg_db)
+            db.flush()
+
+        # 1. Assemble the prompt deterministically
+        assembled = DialogueService.assemble_prompt(db, request, history=history)
+        
+        # 2. Instantiate provider from factory
+        provider = get_llm_provider()
+        
+        # 3. Determine model to use
+        model_name = request.model_override or settings.GEMINI_MODEL
+        
+        # 4. Construct the full system context (system prompt, NPC attributes, retrieved context)
+        full_system_context = (
+            f"{assembled.system_prompt}\n\n"
+            f"[NPC Attributes]\n"
+            f"{assembled.npc_context}\n\n"
+            f"[LORE CONTEXT]\n"
+            f"{assembled.retrieved_context}"
+        )
+        
+        # 5. Call LLM provider
+        response_text, telemetry = await provider.generate_response(
+            system_prompt=full_system_context,
+            user_prompt=assembled.player_message,
+            max_output_tokens=400,
+            model_name=model_name
+        )
+        
+        # Record LLM call telemetry in database
+        provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+        from app.services.telemetry_service import TelemetryService
+        TelemetryService.record_log(
+            db=db,
+            npc_slug=assembled.npc_slug,
+            model_used=model_name,
+            llm_provider=provider_type,
+            latency_ms=telemetry.get("latency_ms", 0),
+            action_type="dialogue",
+            input_tokens=telemetry.get("input_tokens", 0),
+            output_tokens=telemetry.get("output_tokens", 0),
+            estimated_cost_usd=telemetry.get("estimated_cost_usd", 0.0),
+            safety_blocked=telemetry.get("safety_blocked", False),
+            safety_ratings=telemetry.get("safety_ratings", []),
+            error=telemetry.get("error"),
+            conversation_id=request.conversation_id
+        )
+
+        # Save NPC response if conversation exists
+        if conv:
+            from app.models.session import Message
+            from sqlalchemy import func
+            npc_msg_db = Message(
+                conversation_id=conv.id,
+                sender="npc",
+                content=response_text
+            )
+            db.add(npc_msg_db)
+            conv.updated_at = func.now()
+            db.commit()
+
+            # Check if summarization trigger is met
+            all_messages = db.query(Message).filter(Message.conversation_id == conv.id).order_by(Message.created_at).all()
+            
+            unsummarized = []
+            if conv.last_summarized_message_id:
+                found_last = False
+                for msg in all_messages:
+                    if found_last:
+                        unsummarized.append(msg)
+                    elif msg.id == conv.last_summarized_message_id:
+                        found_last = True
+            else:
+                unsummarized = all_messages
+                
+            unsummarized_count = len(unsummarized)
+            unsummarized_chars = sum(len(msg.content) for msg in unsummarized)
+            
+            if unsummarized_count >= 10 or unsummarized_chars >= 6000:
+                from app.services.gemini_service import GeminiService
+                from app.services.rag_service import RAGService
+                from app.services.memory_service import MemoryService
+                
+                gemini = GeminiService()
+                rag = RAGService(gemini)
+                mem_service = MemoryService(gemini, rag)
+                
+                background_tasks.add_task(
+                    mem_service.run_summarization_and_promotion,
+                    db,
+                    conv.id
+                )
+        
+        # 6. Combine warnings
+        all_warnings = list(assembled.warnings)
+        if telemetry.get("error"):
+            all_warnings.append(f"LLM Provider Error: {telemetry['error']}")
+            
+        provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+
+        return DialogueChatResponse(
+            npc_slug=assembled.npc_slug,
+            response_text=response_text,
+            prompt_version=request.prompt_version or "v1",
+            model_used=model_name,
+            llm_provider=provider_type,
+            telemetry=telemetry,
+            warnings=all_warnings,
+            conversation_id=request.conversation_id
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Dialogue chat failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dialogue chat simulation failed: {str(e)}"
+        )
