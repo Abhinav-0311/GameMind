@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: gamemind_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gamemind
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  chromadb:
+    image: chromadb/chroma:0.5.0
+    container_name: gamemind_chroma
+    restart: always
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSISTENT_DIR=/chroma/chroma
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gamemind_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - chromadb
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/gamemind
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+
+volumes:
+  postgres_data:
+  chroma_data:

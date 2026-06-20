@@ -1,0 +1,249 @@
+import io
+import uuid
+import logging
+from sqlalchemy.orm import Session
+from pypdf import PdfReader
+import chromadb
+from app.config import settings
+from app.models.document import Document, DocumentChunk
+from app.services.gemini_service import GeminiService
+
+logger = logging.getLogger(__name__)
+
+class RAGService:
+    def __init__(self, gemini_service: GeminiService):
+        self.gemini_service = gemini_service
+        self.chroma_client = None
+        self.collection = None
+        self._init_chroma()
+
+    def _init_chroma(self):
+        """Initialize ChromaDB client and retrieve/create the lore collection with Cosine distance."""
+        try:
+            # Connect to Chrome running in Docker or local instance
+            self.chroma_client = chromadb.HttpClient(
+                host=settings.CHROMA_HOST, 
+                port=settings.CHROMA_PORT
+            )
+            # Create collection with Cosine distance space
+            self.collection = self.chroma_client.get_or_create_collection(
+                name="lore_chunks",
+                metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("Successfully connected to ChromaDB server.")
+        except Exception as e:
+            logger.error(f"Failed to connect to ChromaDB server: {e}. Attempting local persistent client...")
+            try:
+                # Fallback for local dev/testing outside Docker
+                self.chroma_client = chromadb.PersistentClient(path="./chroma_db_local")
+                self.collection = self.chroma_client.get_or_create_collection(
+                    name="lore_chunks",
+                    metadata={"hnsw:space": "cosine"}
+                )
+                logger.info("ChromaDB local persistent fallback initialized.")
+            except Exception as le:
+                logger.critical(f"ChromaDB completely unavailable: {le}")
+
+    def extract_text(self, file_bytes: bytes, file_name: str, content_type: str) -> str:
+        """Extract plain text from TXT, MD, or PDF files."""
+        content_type = content_type.lower()
+        if "pdf" in content_type or file_name.endswith(".pdf"):
+            try:
+                pdf_file = io.BytesIO(file_bytes)
+                reader = PdfReader(pdf_file)
+                text = ""
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                return text
+            except Exception as e:
+                logger.error(f"Failed to extract text from PDF: {e}")
+                raise ValueError(f"Could not parse PDF file: {e}")
+        else:
+            # Assume plain text/markdown
+            try:
+                return file_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    return file_bytes.decode("latin-1")
+                except Exception as e:
+                    logger.error(f"Failed to decode text file: {e}")
+                    raise ValueError("Could not decode text file. Ensure it is UTF-8 or Latin-1 encoded.")
+
+    def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
+        """Split text into overlapping chunks, attempting to break on word/newline boundaries."""
+        if not text:
+            return []
+        
+        chunks = []
+        start = 0
+        text_len = len(text)
+        
+        while start < text_len:
+            end = min(start + chunk_size, text_len)
+            
+            # Split at whitespace if we're not at the very end
+            if end < text_len:
+                split_idx = -1
+                # Look back up to 100 characters to find a good separator
+                for i in range(end, max(end - 100, start), -1):
+                    if text[i] in ['\n', ' ']:
+                        split_idx = i
+                        break
+                if split_idx != -1:
+                    end = split_idx
+            
+            chunk_content = text[start:end].strip()
+            if chunk_content:
+                chunks.append(chunk_content)
+            
+            # Adjust start for the next iteration (incorporating overlap)
+            next_start = end - chunk_overlap
+            if next_start <= start:
+                # Force forward progress if overlap prevents it
+                start = end
+            else:
+                start = next_start
+                
+        return chunks
+
+    def process_document(
+        self, 
+        db: Session, 
+        file_name: str, 
+        file_bytes: bytes, 
+        content_type: str
+    ) -> Document:
+        """Processes document: extracts, chunks, writes to DB, embeds, writes to ChromaDB."""
+        # 1. Extract plain text
+        raw_text = self.extract_text(file_bytes, file_name, content_type)
+        if not raw_text.strip():
+            raise ValueError("Extracted text content is empty.")
+
+        # 2. Chunk text
+        text_chunks = self.chunk_text(raw_text)
+        if not text_chunks:
+            raise ValueError("No chunks could be generated from the document.")
+
+        # 3. Create Document entry in DB
+        db_doc = Document(
+            title=file_name,
+            content_type=content_type,
+            file_path=None # For this release we don't save files locally, we process bytes in-memory
+        )
+        db.add(db_doc)
+        db.flush() # Populate the ID
+
+        # 4. Create DocumentChunk entries in DB & prepare lists for Vector DB
+        db_chunks = []
+        chroma_ids = []
+        chroma_texts = []
+        chroma_metadatas = []
+
+        for idx, chunk_text in enumerate(text_chunks):
+            chunk_id = uuid.uuid4()
+            db_chunk = DocumentChunk(
+                id=chunk_id,
+                document_id=db_doc.id,
+                chunk_index=idx,
+                content=chunk_text,
+                metadata_json={"title": file_name, "chunk_index": idx}
+            )
+            db_chunks.append(db_chunk)
+            db.add(db_chunk)
+
+            # Metadata for ChromaDB
+            chroma_ids.append(str(chunk_id))
+            chroma_texts.append(chunk_text)
+            chroma_metadatas.append({
+                "document_id": str(db_doc.id),
+                "title": file_name,
+                "chunk_index": idx
+            })
+
+        # 5. Generate embeddings using Gemini API
+        if not self.gemini_service.is_available():
+            # Commit the DB document anyway, but warn
+            db.commit()
+            logger.warning("Gemini Service unavailable. Skipping vector DB embedding.")
+            return db_doc
+
+        try:
+            embeddings = self.gemini_service.generate_batch_embeddings(chroma_texts)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to generate embeddings. Transaction rolled back: {e}")
+            raise e
+
+        # 6. Save in Vector DB (ChromaDB)
+        if self.collection:
+            try:
+                self.collection.add(
+                    ids=chroma_ids,
+                    embeddings=embeddings,
+                    documents=chroma_texts,
+                    metadatas=chroma_metadatas
+                )
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to write to ChromaDB. Transaction rolled back: {e}")
+                raise e
+
+        db.commit()
+        db.refresh(db_doc)
+        return db_doc
+
+    def query_lore(self, query_text: str, limit: int = 5) -> list[dict]:
+        """Queries ChromaDB, maps to source records, returns citation and confidence score."""
+        if not self.gemini_service.is_available():
+            raise ValueError("Gemini Service is not configured. Cannot generate query embedding.")
+        if not self.collection:
+            raise ValueError("ChromaDB vector collection is unavailable.")
+
+        # 1. Embed query
+        query_embedding = self.gemini_service.generate_embedding(query_text)
+
+        # 2. Query ChromaDB
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=limit
+        )
+
+        # 3. Format response
+        formatted_results = []
+        if not results or not results["ids"] or len(results["ids"][0]) == 0:
+            return formatted_results
+
+        # Extract items
+        ids = results["ids"][0]
+        distances = results["distances"][0]
+        documents = results["documents"][0]
+        metadatas = results["metadatas"][0]
+
+        for i in range(len(ids)):
+            distance = distances[i]
+            # Since distance space is Cosine:
+            # distance ranges from 0.0 (identical) to 2.0.
+            # similarity = 1.0 - distance
+            similarity = max(0.0, min(1.0, 1.0 - distance))
+
+            # Determine confidence rating
+            if similarity >= 0.75:
+                confidence = "High"
+            elif similarity >= 0.55:
+                confidence = "Medium"
+            else:
+                confidence = "Low"
+
+            formatted_results.append({
+                "chunk_id": ids[i],
+                "content": documents[i],
+                "document_id": metadatas[i].get("document_id"),
+                "title": metadatas[i].get("title"),
+                "chunk_index": metadatas[i].get("chunk_index"),
+                "similarity": round(similarity, 4),
+                "confidence": confidence
+            })
+
+        return formatted_results
