@@ -13,7 +13,7 @@ export interface ChunkResponse {
   id: string;
   chunk_index: number;
   content: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DocumentDetailResponse extends DocumentResponse {
@@ -123,7 +123,7 @@ export const api = {
       const errData = await res.json().catch(() => ({}));
       if (Array.isArray(errData.detail)) {
         // Validation error array
-        const messages = errData.detail.map((d: any) => `${d.loc.join(".")}: ${d.msg}`);
+        const messages = errData.detail.map((d: { loc: (string | number)[]; msg: string }) => `${d.loc.join(".")}: ${d.msg}`);
         throw new Error(messages.join(" | "));
       }
       throw new Error(errData.detail || "Failed to create NPC profile");
@@ -142,7 +142,7 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       if (Array.isArray(errData.detail)) {
-        const messages = errData.detail.map((d: any) => `${d.loc.join(".")}: ${d.msg}`);
+        const messages = errData.detail.map((d: { loc: (string | number)[]; msg: string }) => `${d.loc.join(".")}: ${d.msg}`);
         throw new Error(messages.join(" | "));
       }
       throw new Error(errData.detail || "Failed to update NPC profile");
@@ -171,7 +171,7 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       if (Array.isArray(errData.detail)) {
-        const messages = errData.detail.map((d: any) => `${d.loc.join(".")}: ${d.msg}`);
+        const messages = errData.detail.map((d: { loc: (string | number)[]; msg: string }) => `${d.loc.join(".")}: ${d.msg}`);
         throw new Error(messages.join(" | "));
       }
       throw new Error(errData.detail || "Failed to assemble dialogue prompt");
@@ -190,7 +190,7 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       if (Array.isArray(errData.detail)) {
-        const messages = errData.detail.map((d: any) => `${d.loc.join(".")}: ${d.msg}`);
+        const messages = errData.detail.map((d: { loc: (string | number)[]; msg: string }) => `${d.loc.join(".")}: ${d.msg}`);
         throw new Error(messages.join(" | "));
       }
       throw new Error(errData.detail || "Failed to execute dialogue chat");
@@ -269,8 +269,8 @@ export interface NPCProfile {
   voice_profile?: string;
   faction_alignment?: string;
   animation_hints?: Record<string, string>;
-  memory_settings?: Record<string, any>;
-  metadata?: Record<string, any>;
+  memory_settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -284,8 +284,8 @@ export interface NPCProfileCreate {
   voice_profile?: string;
   faction_alignment?: string;
   animation_hints?: Record<string, string>;
-  memory_settings?: Record<string, any>;
-  metadata?: Record<string, any>;
+  memory_settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NPCProfileUpdate {
@@ -296,8 +296,8 @@ export interface NPCProfileUpdate {
   voice_profile?: string;
   faction_alignment?: string;
   animation_hints?: Record<string, Record<string, string>>;
-  memory_settings?: Record<string, any>;
-  metadata?: Record<string, any>;
+  memory_settings?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DialogueAssembleRequest {
@@ -397,7 +397,7 @@ export interface TelemetryLog {
   output_tokens: number;
   estimated_cost_usd: number;
   safety_blocked: boolean;
-  safety_ratings?: any;
+  safety_ratings?: Record<string, unknown>;
   error?: string;
   created_at: string;
 }
@@ -415,7 +415,7 @@ export interface QuestResponse {
   difficulty: string;
   gold_reward: number;
   xp_reward: number;
-  objectives: any[];
+  objectives: unknown[];
 }
 
 export interface HintGenerateRequest {

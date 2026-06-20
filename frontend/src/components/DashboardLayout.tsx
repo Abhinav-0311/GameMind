@@ -259,7 +259,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex-1 overflow-y-auto p-2">
               {filteredCommands.length === 0 ? (
                 <div className="py-8 text-center text-slate-500 text-xs font-mono">
-                  No commands matching "{searchQuery}"
+                  No commands matching &quot;{searchQuery}&quot;
                 </div>
               ) : (
                 <div className="space-y-1">

@@ -37,9 +37,10 @@ export default function QueryStudioPage() {
     try {
       const response = await api.queryLore(searchQuery, limit);
       setResults(response.results);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || "Failed to search the vector index. Verify that GEMINI_API_KEY is configured.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Failed to search the vector index. Verify that GEMINI_API_KEY is configured.");
       setResults([]);
     } finally {
       setLoading(false);
@@ -149,7 +150,7 @@ export default function QueryStudioPage() {
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 px-1 uppercase tracking-wider select-none">
-                <span>FOUND {results.length} CITATIONS FOR "{query}"</span>
+                <span>FOUND {results.length} CITATIONS FOR &quot;{query}&quot;</span>
               </div>
 
               {results.map((result, idx) => (

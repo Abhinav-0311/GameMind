@@ -15,7 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   chromadb:
-    image: chromadb/chroma:0.5.0
+    image: chromadb/chroma:0.5.23
     container_name: gamemind_chroma
     restart: always
     ports:
@@ -25,6 +25,7 @@ services:
     environment:
       - IS_PERSISTENT=TRUE
       - PERSISTENT_DIR=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=False
 
   backend:
     build:
@@ -45,6 +46,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gamemind
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+      - ANONYMIZED_TELEMETRY=False
 
 volumes:
   postgres_data:

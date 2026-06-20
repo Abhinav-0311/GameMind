@@ -33,29 +33,6 @@ export default function HintStudioPage() {
 
   const activeQuestId = useCustomQuestId ? customQuestId.trim() : selectedQuestId;
 
-  // Load quests list on page mount
-  useEffect(() => {
-    loadQuests();
-  }, []);
-
-  // Cooldown countdown mechanism
-  useEffect(() => {
-    if (cooldownSeconds > 0) {
-      timerRef.current = setInterval(() => {
-        setCooldownSeconds((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [cooldownSeconds]);
-
   const loadQuests = async () => {
     setIsQuestsLoading(true);
     setNetworkError(null);
@@ -65,7 +42,7 @@ export default function HintStudioPage() {
       if (list.length > 0) {
         setSelectedQuestId(list[0].id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setNetworkError("Backend unavailable: Failed to fetch quests list. Please ensure the backend container is running.");
     } finally {
@@ -102,11 +79,12 @@ export default function HintStudioPage() {
       setGeneratedHint(res);
       // Immediately retrieve updated status (cooldown remaining & current progression level)
       await handleCheckStatus(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const errMsg = err instanceof Error ? err.message : String(err);
       // Surface validation warnings (e.g. HTTP 422 details)
-      if (err.message && (err.message.includes("violation") || err.message.includes("wait") || err.message.includes("Cooldown") || err.message.includes("Progression") || err.message.includes("cooldown"))) {
-        setValidationError(err.message);
+      if (errMsg && (errMsg.includes("violation") || errMsg.includes("wait") || errMsg.includes("Cooldown") || errMsg.includes("Progression") || errMsg.includes("cooldown"))) {
+        setValidationError(errMsg);
       } else {
         setNetworkError("Network Failure: Failed to generate hint. Ensure backend container is online.");
       }
@@ -128,7 +106,7 @@ export default function HintStudioPage() {
       const res = await api.getHintStatus(activeQuestId, playerId.trim());
       setStatusInfo(res);
       triggerCooldown(res.cooldown_remaining_seconds);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       if (!silent) {
         setNetworkError("Network Failure: Failed to query progression status. Ensure backend container is online.");
@@ -137,6 +115,30 @@ export default function HintStudioPage() {
       if (!silent) setIsCheckingStatus(false);
     }
   };
+
+  // Load quests list on page mount
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadQuests();
+  }, []);
+
+  // Cooldown countdown mechanism
+  useEffect(() => {
+    if (cooldownSeconds > 0) {
+      timerRef.current = setInterval(() => {
+        setCooldownSeconds((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [cooldownSeconds]);
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12 animate-fade-in font-sans">

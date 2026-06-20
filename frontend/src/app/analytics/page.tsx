@@ -19,7 +19,6 @@ export default function AnalyticsDashboard() {
   // Filter and pagination states
   const [selectedNpc, setSelectedNpc] = useState("");
   const [selectedAction, setSelectedAction] = useState("");
-  const [hasError, setHasError] = useState<boolean | null>(null);
   const [limit] = useState(15);
   const [offset, setOffset] = useState(0);
   
