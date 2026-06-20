@@ -19,10 +19,6 @@ export default function KnowledgeBasePage() {
   // Drag Over state
   const [dragOver, setDragOver] = useState(false);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
   const fetchDocuments = async () => {
     setLoadingList(true);
     try {
@@ -33,7 +29,7 @@ export default function KnowledgeBasePage() {
       if (docs.length > 0 && !selectedDoc) {
         handleViewDetails(docs[0].id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError("Failed to fetch documents catalog.");
     } finally {
@@ -57,9 +53,10 @@ export default function KnowledgeBasePage() {
       setSuccessMsg(`"${file.name}" processed and embedded successfully!`);
       await fetchDocuments();
       await handleViewDetails(newDoc.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || "Failed to process file. Check backend log and API Key.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Failed to process file. Check backend log and API Key.");
     } finally {
       setUploading(false);
     }
@@ -94,7 +91,7 @@ export default function KnowledgeBasePage() {
     try {
       const detail = await api.getDocument(id);
       setSelectedDoc(detail);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError("Failed to retrieve document details.");
     } finally {
@@ -116,11 +113,17 @@ export default function KnowledgeBasePage() {
         setSelectedDoc(null);
       }
       fetchDocuments();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError("Failed to delete document.");
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Helper to estimate token counts based on standard characters mapping
   const estimateTokens = (count: number) => {
@@ -257,7 +260,6 @@ export default function KnowledgeBasePage() {
                 ) : (
                   documents.map((doc) => {
                     const isSelected = doc.id === selectedDoc?.id;
-                    const nameLower = doc.title.toLowerCase();
                     return (
                       <tr
                         key={doc.id}
@@ -325,7 +327,7 @@ export default function KnowledgeBasePage() {
                   </span>
                 </div>
 
-                {selectedDoc.chunks.map((chunk, idx) => (
+                {selectedDoc.chunks.map((chunk) => (
                   <div
                     key={chunk.id}
                     className="p-3 rounded border border-[#262626] bg-[#0a0a0a]/50 space-y-2 hover:border-slate-800 transition duration-150"

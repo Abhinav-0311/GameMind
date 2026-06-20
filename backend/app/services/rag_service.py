@@ -205,10 +205,21 @@ class RAGService:
         query_embedding = self.gemini_service.generate_embedding(query_text)
 
         # 2. Query ChromaDB
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=limit
-        )
+        try:
+            collection_count = self.collection.count()
+            n_results = limit
+            if isinstance(collection_count, (int, float)):
+                if collection_count == 0:
+                    return []
+                n_results = min(limit, int(collection_count))
+            
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results
+            )
+        except Exception as e:
+            logger.error(f"Failed to query ChromaDB: {e}")
+            return []
 
         # 3. Format response
         formatted_results = []

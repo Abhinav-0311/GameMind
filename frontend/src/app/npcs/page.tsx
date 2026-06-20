@@ -69,21 +69,13 @@ export default function NPCStudioPage() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [modelOverride, setModelOverride] = useState("");
 
-  useEffect(() => {
-    fetchNPCs();
-  }, []);
-
-  useEffect(() => {
-    filterNPCsList();
-  }, [npcs, searchQuery, selectedFaction]);
-
   const fetchNPCs = async () => {
     setLoadingList(true);
     setGlobalError(null);
     try {
       const list = await api.getNPCs();
       setNpcs(list);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError("Failed to fetch NPC profiles from the server.");
     } finally {
@@ -242,7 +234,7 @@ export default function NPCStudioPage() {
       if (value && value.trim() !== "") {
         try {
           JSON.parse(value);
-        } catch (e: any) {
+        } catch {
           errors[fieldName] = "Must be a valid JSON object. E.g. {\"key\": \"value\"}";
         }
       }
@@ -312,9 +304,10 @@ export default function NPCStudioPage() {
         setIsDrawerOpen(false);
         fetchNPCs();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setGlobalError(err.message || "An error occurred while saving the NPC profile.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setGlobalError(errMsg || "An error occurred while saving the NPC profile.");
     } finally {
       setIsSubmitting(false);
     }
@@ -334,7 +327,7 @@ export default function NPCStudioPage() {
       setSuccessMsg(`NPC "${deletingNpc.name}" has been archived/soft-deleted.`);
       setDeletingNpc(null);
       fetchNPCs();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError("Failed to delete the NPC profile.");
       setDeletingNpc(null);
@@ -351,9 +344,10 @@ export default function NPCStudioPage() {
       setRetrievedChunks(results.results);
       // Auto select all retrieved chunks by default
       setSelectedChunkIds(results.results.map((c) => c.chunk_id));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setAssembleError("RAG query failed: " + err.message);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setAssembleError("RAG query failed: " + errMsg);
     } finally {
       setIsRetrievingLore(false);
     }
@@ -380,9 +374,10 @@ export default function NPCStudioPage() {
         selected_chunk_ids: selectedChunkIds,
       });
       setAssembleResponse(response);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setAssembleError(err.message || "Failed to assemble dialogue prompt.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setAssembleError(errMsg || "Failed to assemble dialogue prompt.");
     } finally {
       setIsAssemblingPrompt(false);
     }
@@ -434,9 +429,10 @@ export default function NPCStudioPage() {
       };
 
       setChatHistory((prev) => [...prev, newNpcMessage]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setChatError(err.message || "Failed to execute dialogue chat.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setChatError(errMsg || "Failed to execute dialogue chat.");
     } finally {
       setIsChatSending(false);
     }
@@ -446,6 +442,17 @@ export default function NPCStudioPage() {
     setChatHistory([]);
     setChatError(null);
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchNPCs();
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    filterNPCsList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [npcs, searchQuery, selectedFaction]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-12">
@@ -901,7 +908,7 @@ export default function NPCStudioPage() {
                 Confirm NPC Soft-Delete
               </h3>
               <p className="text-xs text-[#a1a1aa] font-medium leading-relaxed font-sans">
-                Are you sure you want to archive <span className="text-[#fafafa] font-bold">"{deletingNpc.name}"</span>?
+                Are you sure you want to archive <span className="text-[#fafafa] font-bold">&quot;{deletingNpc.name}&quot;</span>?
               </p>
             </div>
 
@@ -1159,7 +1166,7 @@ export default function NPCStudioPage() {
                             Enter player query and selection chunks on the left.
                           </p>
                           <p className="text-[10px] text-slate-600 font-mono uppercase">
-                            Then click "Assemble Prompt"
+                            Then click &quot;Assemble Prompt&quot;
                           </p>
                         </div>
                       </div>

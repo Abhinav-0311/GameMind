@@ -156,12 +156,12 @@ def test_historical_graph_state_no_contradiction(db):
     assert new_rel.rel_type == "at_war_with"
 
 
-def test_graph_aware_memory_boosting(db):
-    """Verify that memories referencing adjacent graph slugs receive score boosts and rank higher."""
+def test_graph_aware_memory_boosting_unit(db):
+    """Unit test: Verify that memories referencing adjacent graph slugs receive score boosts and rank higher, with mocked vector results."""
     # 1. Create NPC and neighbor entities in world graph
-    npc_slug = f"npc_mystic_{uuid.uuid4().hex[:6]}"
-    friend_slug = f"friend_slug_{uuid.uuid4().hex[:6]}"
-    other_slug = f"other_slug_{uuid.uuid4().hex[:6]}"
+    npc_slug = f"npc_mystic_unit_{uuid.uuid4().hex[:6]}"
+    friend_slug = f"friend_slug_unit_{uuid.uuid4().hex[:6]}"
+    other_slug = f"other_slug_unit_{uuid.uuid4().hex[:6]}"
     
     # NPC
     npc_profile = NPCProfile(slug=npc_slug, name="Mystic", personality_summary="A mystic.")
@@ -176,41 +176,105 @@ def test_graph_aware_memory_boosting(db):
     # Graph: NPC --(allied_with)--> Friend
     graph_repo.create_relationship(db, npc_slug, friend_slug, "allied_with")
     
-    # 2. Add two candidate memories to vector database (mock mode / active database mock client)
+    # 2. Mock MemoryService and GeminiService
     gemini = GeminiService()
     gemini.is_available = lambda: True
     gemini.generate_embedding = lambda text: [0.1] * 768
     rag = RAGService(gemini)
     mem_service = MemoryService(gemini, rag)
     
-    # Initialize collection
-    mem_service._init_memory_collection()
-    
-    # Memory 1 (references unrelated slug): "Mystic fought with other_slug."
-    # Memory 2 (references adjacent slug): "Mystic fought with friend_slug."
-    m1 = mem_service.create_memory(
-        db=db,
+    # Seed memories in Postgres (leaving chroma_indexed=False since we mock Chroma)
+    m1 = NPCMemory(
         npc_id=npc_profile.id,
         memory_text=f"Mystic fought with {other_slug}.",
-        importance_score=5.0
+        memory_type="episodic",
+        importance_score=5.0,
+        chroma_indexed=False
     )
-    m2 = mem_service.create_memory(
-        db=db,
+    m2 = NPCMemory(
         npc_id=npc_profile.id,
         memory_text=f"Mystic fought with {friend_slug}.",
-        importance_score=5.0
+        memory_type="episodic",
+        importance_score=5.0,
+        chroma_indexed=False
     )
+    db.add(m1)
+    db.add(m2)
+    db.commit()
     
-    # 3. Retrieve memories and verify ranking changes.
+    # 3. Mock the Chroma collection count and query calls to return results
+    class MockCollection:
+        def count(self):
+            return 2
+        def query(self, query_embeddings, where, n_results):
+            # Return m1 first, then m2, to verify that score boosting re-ranks m2 above m1
+            return {
+                "ids": [[str(m1.id), str(m2.id)]],
+                "distances": [[0.5, 0.5]]
+            }
+            
+    mem_service.memory_collection = MockCollection()
+    
+    # Retrieve memories and verify ranking changes.
     # Since they both have similarity and importance parameters, Memory 2 should rank higher
     # because 'friend_slug' is an adjacent entity in the graph (boost of +0.3 applied).
     retrieved = mem_service.retrieve_memories(db, npc_profile.id, "Who did you fight with?", limit=5)
     
-    # Retrieved format is a markdown block of bullet points:
-    # - Mystic fought with friend_slug.
-    # - Mystic fought with other_slug.
     lines = retrieved.splitlines()
     assert len(lines) >= 2
-    # Ensure Memory 2 (containing friend_slug) is listed first!
+    # Ensure Memory 2 (containing friend_slug) is sorted first despite vector database returning m1 first
     assert friend_slug in lines[0]
     assert other_slug in lines[1]
+
+
+def test_graph_aware_memory_boosting_integration(db):
+    """Integration test: Verify query clamping and Chroma retrieval using a unique isolated collection name."""
+    npc_slug = f"npc_mystic_int_{uuid.uuid4().hex[:6]}"
+    friend_slug = f"friend_slug_int_{uuid.uuid4().hex[:6]}"
+    
+    npc_profile = NPCProfile(slug=npc_slug, name="Mystic Integration", personality_summary="A mystic.")
+    db.add(npc_profile)
+    db.commit()
+    
+    gemini = GeminiService()
+    # Ensure mocked embedding provider works if Gemini key is unconfigured
+    gemini.is_available = lambda: True
+    gemini.generate_embedding = lambda text: [0.1] * 768
+    rag = RAGService(gemini)
+    mem_service = MemoryService(gemini, rag)
+    
+    # Create isolated collection name for this test run
+    unique_col_name = f"npc_memories_test_{uuid.uuid4().hex[:8]}"
+    try:
+        mem_service.memory_collection = rag.chroma_client.get_or_create_collection(
+            name=unique_col_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+    except Exception as e:
+        pytest.skip(f"ChromaDB connection unavailable, skipping integration test: {e}")
+        
+    try:
+        # Seed exactly two memories into vector database
+        m1 = mem_service.create_memory(
+            db=db,
+            npc_id=npc_profile.id,
+            memory_text=f"Mystic fought with {friend_slug}.",
+            importance_score=5.0
+        )
+        
+        # Verify collection count is exactly 1
+        assert mem_service.memory_collection.count() == 1
+        
+        # Retrieve memories with a limit of 5 (which normally requests 10 results from HNSW)
+        # Clamping must reduce query limit to 1 and prevent contiguous array crash
+        retrieved = mem_service.retrieve_memories(db, npc_profile.id, "Who did you fight with?", limit=5)
+        
+        assert "No relevant memories." not in retrieved
+        assert friend_slug in retrieved
+        
+    finally:
+        # Teardown: Delete the isolated collection
+        try:
+            rag.chroma_client.delete_collection(unique_col_name)
+        except Exception:
+            pass

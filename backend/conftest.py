@@ -5,7 +5,10 @@ from pathlib import Path
 # 1. Force loading of .env.test BEFORE importing any app modules
 backend_dir = Path(__file__).resolve().parent
 project_root = backend_dir.parent
-env_test_path = project_root / ".env.test"
+
+env_test_path = backend_dir / ".env.test"
+if not env_test_path.exists():
+    env_test_path = project_root / ".env.test"
 
 if env_test_path.exists():
     from dotenv import load_dotenv

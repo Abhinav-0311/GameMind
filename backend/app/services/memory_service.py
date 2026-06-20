@@ -157,10 +157,17 @@ class MemoryService:
 
         # 2. Query Chroma collection
         try:
+            collection_count = self.memory_collection.count()
+            n_results = limit * 2
+            if isinstance(collection_count, (int, float)):
+                if collection_count == 0:
+                    return "No relevant memories."
+                n_results = min(limit * 2, int(collection_count))
+            
             results = self.memory_collection.query(
                 query_embeddings=[query_vector],
                 where={"npc_id": str(npc_id)},
-                n_results=limit * 2  # Over-fetch to allow composite ranking re-sort
+                n_results=n_results
             )
         except Exception as e:
             logger.error(f"Failed to query Chroma memory index: {e}")
