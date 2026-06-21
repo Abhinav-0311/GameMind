@@ -3,15 +3,21 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.world_state import WorldStateFlag
 from app.schemas import WorldStateFlagResponse, WorldStateFlagToggle
+from app.dependencies import get_game_project_id
 from typing import List
 
 router = APIRouter(prefix="/world-state", tags=["world-state"])
 
 @router.get("", response_model=List[WorldStateFlagResponse])
-def get_world_state(db: Session = Depends(get_db)):
+def get_world_state(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Fetch all world state flags ordered by priority DESC, updated_at DESC."""
     try:
-        flags = db.query(WorldStateFlag).order_by(
+        flags = db.query(WorldStateFlag).filter(
+            WorldStateFlag.game_project_id == game_project_id
+        ).order_by(
             WorldStateFlag.priority.desc(),
             WorldStateFlag.updated_at.desc()
         ).all()
@@ -23,16 +29,24 @@ def get_world_state(db: Session = Depends(get_db)):
         )
 
 @router.post("/toggle", response_model=WorldStateFlagResponse)
-def toggle_world_state(payload: WorldStateFlagToggle, db: Session = Depends(get_db)):
+def toggle_world_state(
+    payload: WorldStateFlagToggle, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Explicitly create or update a world state flag's value and is_active status."""
     try:
-        flag = db.query(WorldStateFlag).filter(WorldStateFlag.flag_key == payload.flag_key).first()
+        flag = db.query(WorldStateFlag).filter(
+            WorldStateFlag.flag_key == payload.flag_key,
+            WorldStateFlag.game_project_id == game_project_id
+        ).first()
         if not flag:
             flag = WorldStateFlag(
                 flag_key=payload.flag_key,
                 flag_value=payload.flag_value,
                 is_active=payload.is_active,
-                priority=payload.priority or 0
+                priority=payload.priority or 0,
+                game_project_id=game_project_id
             )
             db.add(flag)
         else:

@@ -5,7 +5,7 @@ from app.services.telemetry_service import TelemetryService
 
 class PersonalityEngine:
     @staticmethod
-    def evaluate_personality(db: Session, npc_slug: str) -> Dict[str, Any]:
+    def evaluate_personality(db: Session, npc_slug: str, game_project_id: str = "default_project") -> Dict[str, Any]:
         """
         Loads the NPC Profile's personality traits, behavioral tendencies,
         and conversation preferences.
@@ -20,6 +20,7 @@ class PersonalityEngine:
         
         npc = db.query(NPCProfile).filter(
             NPCProfile.slug == npc_slug,
+            NPCProfile.game_project_id == game_project_id,
             NPCProfile.deleted_at.is_(None)
         ).first()
         

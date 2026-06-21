@@ -8,8 +8,10 @@ from app.models.quest import Quest, QuestObjective, QuestProgress
 from app.schemas import (
     QuestCreate, QuestResponse, QuestProgressCreate,
     QuestProgressResponse, QuestProgressUpdate,
-    QuestGenerateRequest, QuestValidateRequest, QuestValidationResponse
+    QuestGenerateRequest, QuestValidateRequest, QuestValidationResponse,
+    QuestGeneratedResponse
 )
+from app.dependencies import get_game_project_id, get_player_id
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.services.memory_service import MemoryService
@@ -27,9 +29,17 @@ router = APIRouter(prefix="/quests", tags=["quests"])
 logger = logging.getLogger(__name__)
 
 @router.post("", response_model=QuestResponse, status_code=status.HTTP_201_CREATED)
-def create_quest(payload: QuestCreate, db: Session = Depends(get_db)):
+def create_quest(
+    payload: QuestCreate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     # Verify NPC exists
-    npc = db.query(NPCProfile).filter(NPCProfile.slug == payload.npc_slug, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(
+        NPCProfile.slug == payload.npc_slug, 
+        NPCProfile.game_project_id == game_project_id,
+        NPCProfile.deleted_at.is_(None)
+    ).first()
     if not npc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -46,7 +56,8 @@ def create_quest(payload: QuestCreate, db: Session = Depends(get_db)):
         difficulty=payload.difficulty,
         gold_reward=payload.gold_reward,
         xp_reward=payload.xp_reward,
-        item_rewards=payload.item_rewards
+        item_rewards=payload.item_rewards,
+        game_project_id=game_project_id
     )
     db.add(db_quest)
 
@@ -73,8 +84,12 @@ def create_quest(payload: QuestCreate, db: Session = Depends(get_db)):
     return db_quest
 
 @router.get("", response_model=List[QuestResponse])
-def get_quests(npc_slug: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Quest)
+def get_quests(
+    npc_slug: Optional[str] = None, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    query = db.query(Quest).filter(Quest.game_project_id == game_project_id)
     if npc_slug:
         query = query.filter(Quest.npc_slug == npc_slug)
     quests = query.all()
@@ -86,21 +101,30 @@ def get_quests(npc_slug: Optional[str] = None, db: Session = Depends(get_db)):
     return quests
 
 @router.post("/progress", response_model=QuestProgressResponse, status_code=status.HTTP_201_CREATED)
-def accept_quest(payload: QuestProgressCreate, db: Session = Depends(get_db)):
-    player_id = payload.player_id or "default_player"
+def accept_quest(
+    payload: QuestProgressCreate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    player_id: str = Depends(get_player_id)
+):
+    active_player_id = payload.player_id or player_id
 
     # Check if quest exists
-    quest = db.query(Quest).filter(Quest.id == payload.quest_id).first()
+    quest = db.query(Quest).filter(
+        Quest.id == payload.quest_id,
+        Quest.game_project_id == game_project_id
+    ).first()
     if not quest:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Quest with ID '{payload.quest_id}' not found."
+            detail=f"Quest with ID '{payload.quest_id}' not found in this project."
         )
 
     # Check if player already has progress on this quest
     existing = db.query(QuestProgress).filter(
-        QuestProgress.player_id == player_id,
-        QuestProgress.quest_id == payload.quest_id
+        QuestProgress.player_id == active_player_id,
+        QuestProgress.quest_id == payload.quest_id,
+        QuestProgress.game_project_id == game_project_id
     ).first()
     if existing:
         raise HTTPException(
@@ -114,11 +138,12 @@ def accept_quest(payload: QuestProgressCreate, db: Session = Depends(get_db)):
 
     db_progress = QuestProgress(
         id=uuid.uuid4(),
-        player_id=player_id,
+        player_id=active_player_id,
         quest_id=payload.quest_id,
         quest_giver_slug=quest.npc_slug,
         status="active",
-        objectives_state=initial_state
+        objectives_state=initial_state,
+        game_project_id=game_project_id
     )
     db.add(db_progress)
     db.commit()
@@ -126,26 +151,38 @@ def accept_quest(payload: QuestProgressCreate, db: Session = Depends(get_db)):
 
     return db_progress
 
+
 @router.get("/progress", response_model=List[QuestProgressResponse])
 def get_quest_progress(
     player_id: Optional[str] = "default_player",
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    header_player_id: str = Depends(get_player_id)
 ):
-    pid = player_id or "default_player"
-    query = db.query(QuestProgress).filter(QuestProgress.player_id == pid)
+    pid = player_id or header_player_id
+    query = db.query(QuestProgress).filter(
+        QuestProgress.player_id == pid,
+        QuestProgress.game_project_id == game_project_id
+    )
     if status:
         query = query.filter(QuestProgress.status == status)
     return query.all()
 
 @router.post("/progress/update", response_model=QuestProgressResponse)
-def update_quest_progress(payload: QuestProgressUpdate, db: Session = Depends(get_db)):
-    player_id = payload.player_id or "default_player"
+def update_quest_progress(
+    payload: QuestProgressUpdate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    player_id: str = Depends(get_player_id)
+):
+    active_player_id = payload.player_id or player_id
 
     # Get progress record
     progress = db.query(QuestProgress).filter(
-        QuestProgress.player_id == player_id,
-        QuestProgress.quest_id == payload.quest_id
+        QuestProgress.player_id == active_player_id,
+        QuestProgress.quest_id == payload.quest_id,
+        QuestProgress.game_project_id == game_project_id
     ).first()
 
     if not progress:
@@ -161,7 +198,10 @@ def update_quest_progress(payload: QuestProgressUpdate, db: Session = Depends(ge
         )
 
     # Fetch quest and objectives to validate objective_index
-    quest = db.query(Quest).filter(Quest.id == payload.quest_id).first()
+    quest = db.query(Quest).filter(
+        Quest.id == payload.quest_id,
+        Quest.game_project_id == game_project_id
+    ).first()
     objectives = db.query(QuestObjective).filter(QuestObjective.quest_id == payload.quest_id).all()
     obj_map = {obj.objective_index: obj for obj in objectives}
 
@@ -200,7 +240,11 @@ def update_quest_progress(payload: QuestProgressUpdate, db: Session = Depends(ge
 
         # Trigger NPC Memory Creation
         try:
-            npc = db.query(NPCProfile).filter(NPCProfile.slug == quest.npc_slug, NPCProfile.deleted_at.is_(None)).first()
+            npc = db.query(NPCProfile).filter(
+                NPCProfile.slug == quest.npc_slug, 
+                NPCProfile.game_project_id == game_project_id,
+                NPCProfile.deleted_at.is_(None)
+            ).first()
             if npc:
                 gemini = GeminiService()
                 rag = RAGService(gemini)
@@ -219,7 +263,8 @@ def update_quest_progress(payload: QuestProgressUpdate, db: Session = Depends(ge
                     memory_text=memory_text,
                     memory_type="episodic",
                     importance_score=8.0,
-                    metadata=metadata
+                    metadata=metadata,
+                    game_project_id=game_project_id
                 )
                 logger.info(f"Quest completion memory created for NPC {quest.npc_slug}.")
         except Exception as e:
@@ -230,23 +275,61 @@ def update_quest_progress(payload: QuestProgressUpdate, db: Session = Depends(ge
     return progress
 
 
-@router.post("/generate", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
-def generate_quest(payload: QuestGenerateRequest, db: Session = Depends(get_db)):
+@router.post("/generate", response_model=QuestGeneratedResponse, status_code=status.HTTP_200_OK)
+def generate_quest(
+    payload: QuestGenerateRequest, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    player_id: str = Depends(get_player_id)
+):
+    active_player_id = payload.player_id or player_id
     # Verify NPC exists or raise 422
-    npc = db.query(NPCProfile).filter(NPCProfile.slug == payload.npc_slug, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(
+        NPCProfile.slug == payload.npc_slug, 
+        NPCProfile.game_project_id == game_project_id,
+        NPCProfile.deleted_at.is_(None)
+    ).first()
     if not npc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"NPC with slug '{payload.npc_slug}' does not exist."
+            detail=f"NPC with slug '{payload.npc_slug}' does not exist in this project."
         )
     try:
         quest = DynamicQuestGenerator.generate_quest(
             db=db,
             npc_slug=payload.npc_slug,
-            player_id=payload.player_id,
-            player_level=payload.player_level
+            player_id=active_player_id,
+            player_level=payload.player_level,
+            game_project_id=game_project_id
         )
-        return quest
+        
+        mapped_objectives = []
+        for obj in quest["objectives"]:
+            mapped_objectives.append({
+                "id": uuid.uuid4(),
+                "objective_index": obj["objective_index"],
+                "description": obj["description"],
+                "target_type": obj["target_type"],
+                "target_id": obj["target_id"],
+                "quantity_required": obj["quantity_required"]
+            })
+        
+        rewards_raw = quest["rewards"]
+        rewards_dto = {
+            "gold": rewards_raw.get("gold", 0),
+            "xp": rewards_raw.get("xp", 0),
+            "items": rewards_raw.get("items", [])
+        }
+        
+        return QuestGeneratedResponse(
+            api_version="1.0",
+            npc_slug=quest["npc_slug"],
+            title=quest["title"],
+            description=quest["description"],
+            difficulty=quest["difficulty"],
+            rewards=rewards_dto,
+            objectives=mapped_objectives
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -255,7 +338,11 @@ def generate_quest(payload: QuestGenerateRequest, db: Session = Depends(get_db))
 
 
 @router.post("/validate", response_model=QuestValidationResponse, status_code=status.HTTP_200_OK)
-def validate_quest(payload: QuestValidateRequest, db: Session = Depends(get_db)):
+def validate_quest(
+    payload: QuestValidateRequest, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     # If objectives count > 10 or rewards > 5, we raise 422:
     if len(payload.objectives) > 10:
         raise HTTPException(
@@ -276,7 +363,11 @@ def validate_quest(payload: QuestValidateRequest, db: Session = Depends(get_db))
         )
 
     if payload.npc_slug:
-        npc = db.query(NPCProfile).filter(NPCProfile.slug == payload.npc_slug, NPCProfile.deleted_at.is_(None)).first()
+        npc = db.query(NPCProfile).filter(
+            NPCProfile.slug == payload.npc_slug, 
+            NPCProfile.game_project_id == game_project_id,
+            NPCProfile.deleted_at.is_(None)
+        ).first()
         if not npc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -296,16 +387,19 @@ def get_quest_templates():
 def get_generated_quests(
     npc_slug: Optional[str] = None,
     player_id: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    header_player_id: str = Depends(get_player_id)
 ):
-    # Try cache first if npc_slug and player_id are both provided
-    if npc_slug and player_id:
-        cached, hit = DynamicQuestGenerator.get_cached_quest(npc_slug, player_id)
+    pid = player_id or header_player_id
+    # Try cache first if npc_slug and pid are both provided
+    if npc_slug and pid:
+        cached, hit = DynamicQuestGenerator.get_cached_quest(npc_slug, pid, game_project_id=game_project_id)
         if hit:
             return [cached]
 
     # Query DB
-    query = db.query(GeneratedQuest)
+    query = db.query(GeneratedQuest).filter(GeneratedQuest.game_project_id == game_project_id)
     if npc_slug:
         query = query.filter(GeneratedQuest.npc_slug == npc_slug)
     quests = query.order_by(desc(GeneratedQuest.created_at)).all()

@@ -1,14 +1,14 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime
+from sqlalchemy import Column, String, Text, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
-from app.database import Base
+from app.database import Base, ProjectScopedMixin
 
-class NPCProfile(Base):
+class NPCProfile(Base, ProjectScopedMixin):
     __tablename__ = "npc_profiles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    slug = Column(String(100), unique=True, nullable=False)
+    slug = Column(String(100), nullable=False)
     name = Column(String(100), nullable=False)
     title = Column(String(100), nullable=True)
     personality_summary = Column(Text, nullable=False)
@@ -21,3 +21,9 @@ class NPCProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("game_project_id", "slug", name="uq_npc_project_slug"),
+        UniqueConstraint("game_project_id", "id", name="uq_npc_project_id"),
+    )
+

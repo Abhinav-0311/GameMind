@@ -10,18 +10,19 @@ class GraphRepository:
     def __init__(self, db: Optional[Session] = None):
         self.db = db
 
-    def _lock_entities_ordered(self, slugs: List[str], db: Optional[Session] = None) -> List[WorldEntity]:
-        """Locks entity records in alphabetical order of slugs to prevent deadlocks."""
+    def _lock_entities_ordered(self, slugs: List[str], db: Optional[Session] = None, game_project_id: str = "default_project") -> List[WorldEntity]:
+        """Locks entity records in alphabetical order of slugs to prevent deadlocks, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required for locking.")
         sorted_slugs = sorted(list(set(slugs)))
         return session.query(WorldEntity).filter(
-            WorldEntity.slug.in_(sorted_slugs)
+            WorldEntity.slug.in_(sorted_slugs),
+            WorldEntity.game_project_id == game_project_id
         ).order_by(WorldEntity.slug).with_for_update().all()
 
-    def get_active_entity_by_slug(self, slug_or_db: Any, slug: Optional[str] = None, db: Optional[Session] = None) -> Tuple[Optional[WorldEntity], Optional[WorldEntityVersion]]:
-        """Fetch the active entity and its current active version (valid_to is null)."""
+    def get_active_entity_by_slug(self, slug_or_db: Any, slug: Optional[str] = None, db: Optional[Session] = None, game_project_id: str = "default_project") -> Tuple[Optional[WorldEntity], Optional[WorldEntityVersion]]:
+        """Fetch the active entity and its current active version (valid_to is null) scoped by project."""
         if isinstance(slug_or_db, str):
             target_slug = slug_or_db
             session = db or self.db
@@ -32,16 +33,16 @@ class GraphRepository:
         if not session:
             raise ValueError("Database session is required.")
 
-        entity = self.get_entity_by_slug(session, target_slug)
+        entity = self.get_entity_by_slug(session, target_slug, game_project_id=game_project_id)
         if not entity:
             return None, None
         active_ver = self.get_active_entity_version(session, entity.id)
         return entity, active_ver
 
-    def get_active_relationship(self, db: Session, source_slug: str, target_slug: str, rel_type: str) -> Optional[WorldRelationship]:
-        """Fetch the active relationship edge between source and target slugs."""
-        source = self.get_entity_by_slug(db, source_slug)
-        target = self.get_entity_by_slug(db, target_slug)
+    def get_active_relationship(self, db: Session, source_slug: str, target_slug: str, rel_type: str, game_project_id: str = "default_project") -> Optional[WorldRelationship]:
+        """Fetch the active relationship edge between source and target slugs scoped by project."""
+        source = self.get_entity_by_slug(db, source_slug, game_project_id=game_project_id)
+        target = self.get_entity_by_slug(db, target_slug, game_project_id=game_project_id)
         if not source or not target:
             return None
         return db.query(WorldRelationship).filter(
@@ -51,9 +52,12 @@ class GraphRepository:
             WorldRelationship.valid_to.is_(None)
         ).first()
 
-    def get_entity_by_slug(self, db: Session, slug: str) -> Optional[WorldEntity]:
-        """Fetch a WorldEntity by slug."""
-        return db.query(WorldEntity).filter(WorldEntity.slug == slug).first()
+    def get_entity_by_slug(self, db: Session, slug: str, game_project_id: str = "default_project") -> Optional[WorldEntity]:
+        """Fetch a WorldEntity by slug scoped by project."""
+        return db.query(WorldEntity).filter(
+            WorldEntity.slug == slug,
+            WorldEntity.game_project_id == game_project_id
+        ).first()
 
     def get_active_entity_version(
         self, db: Session, entity_id: uuid.UUID, as_of: Optional[datetime] = None
@@ -123,13 +127,14 @@ class GraphRepository:
         name: Optional[str] = None,
         description: Optional[str] = None,
         importance_score: int = 0,
-        properties: Optional[dict] = None
+        properties: Optional[dict] = None,
+        game_project_id: str = "default_project"
     ) -> WorldEntity:
-        """Create a WorldEntity and its initial version, and increment its version stamp."""
+        """Create a WorldEntity and its initial version, and increment its version stamp, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        entity = WorldEntity(slug=slug, entity_type=entity_type)
+        entity = WorldEntity(slug=slug, entity_type=entity_type, game_project_id=game_project_id)
         session.add(entity)
         session.flush()  # populate entity.id
 
@@ -156,13 +161,14 @@ class GraphRepository:
         name: Optional[str] = None,
         description: Optional[str] = None,
         importance_score: Optional[int] = None,
-        properties: Optional[dict] = None
+        properties: Optional[dict] = None,
+        game_project_id: str = "default_project"
     ) -> Optional[WorldEntityVersion]:
-        """Update an entity by adding a new temporal version and incrementing its version stamp."""
+        """Update an entity by adding a new temporal version and incrementing its version stamp, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        entity = self.get_entity_by_slug(session, slug)
+        entity = self.get_entity_by_slug(session, slug, game_project_id=game_project_id)
         if not entity:
             return None
 
@@ -193,12 +199,12 @@ class GraphRepository:
         graph_cache.increment_entity_stamp(slug)
         return new_ver
 
-    def delete_entity(self, db: Optional[Session] = None, slug: Optional[str] = None) -> bool:
-        """Soft delete an entity by retiring its active version, and increment its version stamp."""
+    def delete_entity(self, db: Optional[Session] = None, slug: Optional[str] = None, game_project_id: str = "default_project") -> bool:
+        """Soft delete an entity by retiring its active version, and increment its version stamp, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        entity = self.get_entity_by_slug(session, slug)
+        entity = self.get_entity_by_slug(session, slug, game_project_id=game_project_id)
         if not entity:
             return False
 
@@ -220,14 +226,15 @@ class GraphRepository:
         target_slug: Optional[str] = None,
         rel_type: Optional[str] = None,
         weight: float = 1.0,
-        properties: Optional[dict] = None
+        properties: Optional[dict] = None,
+        game_project_id: str = "default_project"
     ) -> Optional[WorldRelationship]:
-        """Create a relationship edge between two entities and increment its version stamp."""
+        """Create a relationship edge between two entities and increment its version stamp, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        source = self.get_entity_by_slug(session, source_slug)
-        target = self.get_entity_by_slug(session, target_slug)
+        source = self.get_entity_by_slug(session, source_slug, game_project_id=game_project_id)
+        target = self.get_entity_by_slug(session, target_slug, game_project_id=game_project_id)
         if not source or not target:
             return None
 
@@ -254,14 +261,15 @@ class GraphRepository:
         target_slug: Optional[str] = None,
         rel_type: Optional[str] = None,
         weight: Optional[float] = None,
-        properties: Optional[dict] = None
+        properties: Optional[dict] = None,
+        game_project_id: str = "default_project"
     ) -> Optional[WorldRelationship]:
-        """Update a relationship by retiring the old active one and creating a new version."""
+        """Update a relationship by retiring the old active one and creating a new version, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        source = self.get_entity_by_slug(session, source_slug)
-        target = self.get_entity_by_slug(session, target_slug)
+        source = self.get_entity_by_slug(session, source_slug, game_project_id=game_project_id)
+        target = self.get_entity_by_slug(session, target_slug, game_project_id=game_project_id)
         if not source or not target:
             return None
 
@@ -296,13 +304,20 @@ class GraphRepository:
         graph_cache.increment_relationship_stamp(source_slug, target_slug, rel_type)
         return new_rel
 
-    def delete_relationship(self, db: Optional[Session] = None, source_slug: Optional[str] = None, target_slug: Optional[str] = None, rel_type: Optional[str] = None) -> bool:
-        """Soft delete a relationship edge by setting valid_to and increment its version stamp."""
+    def delete_relationship(
+        self, 
+        db: Optional[Session] = None, 
+        source_slug: Optional[str] = None, 
+        target_slug: Optional[str] = None, 
+        rel_type: Optional[str] = None,
+        game_project_id: str = "default_project"
+    ) -> bool:
+        """Soft delete a relationship edge by setting valid_to and increment its version stamp, scoped by project."""
         session = db or self.db
         if not session:
             raise ValueError("Database session is required.")
-        source = self.get_entity_by_slug(session, source_slug)
-        target = self.get_entity_by_slug(session, target_slug)
+        source = self.get_entity_by_slug(session, source_slug, game_project_id=game_project_id)
+        target = self.get_entity_by_slug(session, target_slug, game_project_id=game_project_id)
         if not source or not target:
             return False
 

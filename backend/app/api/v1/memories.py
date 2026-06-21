@@ -6,7 +6,9 @@ from app.schemas import NPCMemoryCreate, NPCMemoryResponse, MemoryConsolidateReq
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.services.memory_service import MemoryService
+from app.dependencies import get_game_project_id
 from uuid import UUID
+from typing import List, Optional
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 
@@ -19,11 +21,13 @@ def get_memory_service():
 def create_npc_memory(
     payload: NPCMemoryCreate,
     db: Session = Depends(get_db),
-    mem_service: MemoryService = Depends(get_memory_service)
+    mem_service: MemoryService = Depends(get_memory_service),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """Create a new NPC memory in PostgreSQL first, and attempt Chroma vector indexing."""
     npc = db.query(NPCProfile).filter(
         NPCProfile.slug == payload.npc_slug,
+        NPCProfile.game_project_id == game_project_id,
         NPCProfile.deleted_at.is_(None)
     ).first()
 
@@ -36,7 +40,10 @@ def create_npc_memory(
     # If conversation_id is provided, verify it exists
     if payload.conversation_id:
         from app.models.session import Conversation
-        conv = db.query(Conversation).filter(Conversation.id == payload.conversation_id).first()
+        conv = db.query(Conversation).filter(
+            Conversation.id == payload.conversation_id,
+            Conversation.game_project_id == game_project_id
+        ).first()
         if not conv:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -50,7 +57,8 @@ def create_npc_memory(
             memory_text=payload.memory_text,
             memory_type=payload.memory_type,
             importance_score=payload.importance_score,
-            conversation_id=payload.conversation_id
+            conversation_id=payload.conversation_id,
+            game_project_id=game_project_id
         )
         return memory
     except Exception as e:
@@ -78,11 +86,12 @@ def sync_memories(
 def consolidate_memories_endpoint(
     payload: MemoryConsolidateRequest,
     db: Session = Depends(get_db),
-    mem_service: MemoryService = Depends(get_memory_service)
+    mem_service: MemoryService = Depends(get_memory_service),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """Trigger semantic cluster-based duplicate consolidation for an NPC's memories."""
     try:
-        result = mem_service.consolidate_memories(db, payload.npc_slug)
+        result = mem_service.consolidate_memories(db, payload.npc_slug, game_project_id=game_project_id)
         return result
     except ValueError as e:
         raise HTTPException(

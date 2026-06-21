@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas import QueryRequest, QueryResponse
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
+from app.dependencies import get_game_project_id
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -12,9 +13,10 @@ def get_rag_service():
 @router.post("/", response_model=QueryResponse)
 def query_lore(
     request: QueryRequest,
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    game_project_id: str = Depends(get_game_project_id)
 ):
-    """Query the vector database (ChromaDB) for semantic matches against uploaded lore."""
+    """Query the vector database (ChromaDB) for semantic matches against uploaded lore scoped by project."""
     if not rag_service.gemini_service.is_available():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -24,7 +26,8 @@ def query_lore(
     try:
         results = rag_service.query_lore(
             query_text=request.query,
-            limit=request.limit or 5
+            limit=request.limit or 5,
+            game_project_id=game_project_id
         )
         return {
             "query": request.query,

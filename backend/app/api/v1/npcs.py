@@ -5,16 +5,24 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models.npc import NPCProfile
 from app.schemas import NPCProfileCreate, NPCProfileUpdate, NPCProfileResponse
+from app.dependencies import get_game_project_id
 from uuid import UUID
 from typing import List
 
 router = APIRouter(prefix="/npcs", tags=["npcs"])
 
 @router.post("", response_model=NPCProfileResponse, status_code=status.HTTP_201_CREATED)
-def create_npc(npc_in: NPCProfileCreate, db: Session = Depends(get_db)):
-    """Create a new NPC profile. Validates slug uniqueness."""
-    # Check if slug already exists (even if soft-deleted, slug uniqueness is enforced in DB)
-    existing_npc = db.query(NPCProfile).filter(NPCProfile.slug == npc_in.slug).first()
+def create_npc(
+    npc_in: NPCProfileCreate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Create a new NPC profile. Validates slug uniqueness within project."""
+    # Check if slug already exists in this project
+    existing_npc = db.query(NPCProfile).filter(
+        NPCProfile.slug == npc_in.slug,
+        NPCProfile.game_project_id == game_project_id
+    ).first()
     if existing_npc:
         if existing_npc.deleted_at is not None:
             raise HTTPException(
@@ -37,7 +45,8 @@ def create_npc(npc_in: NPCProfileCreate, db: Session = Depends(get_db)):
         faction_alignment=npc_in.faction_alignment,
         animation_hints=npc_in.animation_hints,
         memory_settings=npc_in.memory_settings,
-        metadata_json=npc_in.metadata
+        metadata_json=npc_in.metadata,
+        game_project_id=game_project_id
     )
 
     db.add(db_npc)
@@ -53,14 +62,28 @@ def create_npc(npc_in: NPCProfileCreate, db: Session = Depends(get_db)):
     return db_npc
 
 @router.get("", response_model=List[NPCProfileResponse])
-def list_npcs(db: Session = Depends(get_db)):
+def list_npcs(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """List all NPC profiles excluding soft-deleted ones."""
-    return db.query(NPCProfile).filter(NPCProfile.deleted_at.is_(None)).all()
+    return db.query(NPCProfile).filter(
+        NPCProfile.deleted_at.is_(None),
+        NPCProfile.game_project_id == game_project_id
+    ).all()
 
 @router.get("/{id}", response_model=NPCProfileResponse)
-def get_npc(id: UUID, db: Session = Depends(get_db)):
+def get_npc(
+    id: UUID, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Fetch an NPC profile by ID. Excludes soft-deleted ones (returns 404)."""
-    npc = db.query(NPCProfile).filter(NPCProfile.id == id, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(
+        NPCProfile.id == id, 
+        NPCProfile.game_project_id == game_project_id,
+        NPCProfile.deleted_at.is_(None)
+    ).first()
     if not npc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,9 +92,18 @@ def get_npc(id: UUID, db: Session = Depends(get_db)):
     return npc
 
 @router.put("/{id}", response_model=NPCProfileResponse)
-def update_npc(id: UUID, npc_in: NPCProfileUpdate, db: Session = Depends(get_db)):
+def update_npc(
+    id: UUID, 
+    npc_in: NPCProfileUpdate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Update an active NPC profile fields and maintain updated_at."""
-    npc = db.query(NPCProfile).filter(NPCProfile.id == id, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(
+        NPCProfile.id == id, 
+        NPCProfile.game_project_id == game_project_id,
+        NPCProfile.deleted_at.is_(None)
+    ).first()
     if not npc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -94,15 +126,22 @@ def update_npc(id: UUID, npc_in: NPCProfileUpdate, db: Session = Depends(get_db)
     return npc
 
 @router.delete("/{id}")
-def delete_npc(id: UUID, db: Session = Depends(get_db)):
+def delete_npc(
+    id: UUID, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Soft delete an NPC profile by setting deleted_at timestamp."""
-    npc = db.query(NPCProfile).filter(NPCProfile.id == id, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(
+        NPCProfile.id == id, 
+        NPCProfile.game_project_id == game_project_id,
+        NPCProfile.deleted_at.is_(None)
+    ).first()
     if not npc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="NPC profile not found or has already been deleted."
+            detail="NPC profile not found or has been deleted."
         )
-
     npc.deleted_at = func.now()
     db.commit()
-    return {"message": "NPC profile soft-deleted successfully.", "id": str(id)}
+    return {"status": "success", "message": "NPC profile soft-deleted successfully.", "id": str(id)}

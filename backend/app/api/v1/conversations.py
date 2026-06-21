@@ -4,16 +4,22 @@ from app.database import get_db
 from app.models.npc import NPCProfile
 from app.models.session import Conversation
 from app.schemas import ConversationCreate, ConversationResponse, ConversationDetailResponse
+from app.dependencies import get_game_project_id
 from uuid import UUID
 from typing import List, Optional
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-def create_conversation(payload: ConversationCreate, db: Session = Depends(get_db)):
+def create_conversation(
+    payload: ConversationCreate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Create a new conversation session associated with an NPC slug."""
     npc = db.query(NPCProfile).filter(
         NPCProfile.slug == payload.npc_slug,
+        NPCProfile.game_project_id == game_project_id,
         NPCProfile.deleted_at.is_(None)
     ).first()
 
@@ -27,7 +33,8 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
         npc_id=npc.id,
         npc_slug=npc.slug,
         title=f"Conversation with {npc.name}",
-        status="active"
+        status="active",
+        game_project_id=game_project_id
     )
 
     db.add(db_conv)
@@ -36,17 +43,28 @@ def create_conversation(payload: ConversationCreate, db: Session = Depends(get_d
     return db_conv
 
 @router.get("", response_model=List[ConversationResponse])
-def list_conversations(npc_slug: Optional[str] = None, db: Session = Depends(get_db)):
+def list_conversations(
+    npc_slug: Optional[str] = None, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """List all active conversation sessions, optionally filtered by NPC slug."""
-    query = db.query(Conversation)
+    query = db.query(Conversation).filter(Conversation.game_project_id == game_project_id)
     if npc_slug:
         query = query.filter(Conversation.npc_slug == npc_slug)
     return query.order_by(Conversation.updated_at.desc()).all()
 
 @router.get("/{id}", response_model=ConversationDetailResponse)
-def get_conversation(id: UUID, db: Session = Depends(get_db)):
+def get_conversation(
+    id: UUID, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Retrieve details and chronological messages for a specific conversation session."""
-    conv = db.query(Conversation).filter(Conversation.id == id).first()
+    conv = db.query(Conversation).filter(
+        Conversation.id == id,
+        Conversation.game_project_id == game_project_id
+    ).first()
     if not conv:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -55,9 +73,16 @@ def get_conversation(id: UUID, db: Session = Depends(get_db)):
     return conv
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_conversation(id: UUID, db: Session = Depends(get_db)):
+def delete_conversation(
+    id: UUID, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Permanently delete a conversation session and cascade delete all associated messages."""
-    conv = db.query(Conversation).filter(Conversation.id == id).first()
+    conv = db.query(Conversation).filter(
+        Conversation.id == id,
+        Conversation.game_project_id == game_project_id
+    ).first()
     if not conv:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -141,12 +141,15 @@ class QuestDependencyAnalyzer:
         }
 
     @classmethod
-    def is_eligible(cls, db: Session, player_id: str, quest_id: str) -> Tuple[bool, Optional[str]]:
+    def is_eligible(cls, db: Session, player_id: str, quest_id: str, game_project_id: str = "default_project") -> Tuple[bool, Optional[str]]:
         """
         Evaluates whether a player has completed all prerequisite quests.
         A quest is completed if player has QuestProgress(status="completed") for it.
         """
-        quest = db.query(Quest).filter(Quest.id == quest_id).first()
+        quest = db.query(Quest).filter(
+            Quest.id == quest_id,
+            Quest.game_project_id == game_project_id
+        ).first()
         if not quest:
             return False, "Quest not found."
 
@@ -170,8 +173,14 @@ class QuestDependencyAnalyzer:
 
         for rel in prereqs:
             # Source is parent (prerequisite), Target is child (this quest)
-            src_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-            tgt_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+            src_ent = db.query(WorldEntity).filter(
+                WorldEntity.id == rel.source_id,
+                WorldEntity.game_project_id == game_project_id
+            ).first()
+            tgt_ent = db.query(WorldEntity).filter(
+                WorldEntity.id == rel.target_id,
+                WorldEntity.game_project_id == game_project_id
+            ).first()
             if not src_ent or not tgt_ent:
                 continue
 
@@ -183,8 +192,8 @@ class QuestDependencyAnalyzer:
                 # Check QuestProgress for parent quest
                 # The parent might be referenced by its ID or title
                 parent_quest = db.query(Quest).filter(
-                    (Quest.id == parent_slug) | 
-                    (Quest.title.ilike(parent_slug.replace("_", " ")))
+                    ((Quest.id == parent_slug) | (Quest.title.ilike(parent_slug.replace("_", " ")))),
+                    Quest.game_project_id == game_project_id
                 ).first()
 
                 if not parent_quest:
@@ -192,7 +201,10 @@ class QuestDependencyAnalyzer:
                     try:
                         import uuid
                         parent_uuid = uuid.UUID(parent_slug)
-                        parent_quest = db.query(Quest).filter(Quest.id == parent_uuid).first()
+                        parent_quest = db.query(Quest).filter(
+                            Quest.id == parent_uuid,
+                            Quest.game_project_id == game_project_id
+                        ).first()
                     except ValueError:
                         pass
 
@@ -203,7 +215,8 @@ class QuestDependencyAnalyzer:
                 # Verify parent quest progress
                 progress = db.query(QuestProgress).filter(
                     QuestProgress.player_id == player_id,
-                    QuestProgress.quest_id == parent_quest.id
+                    QuestProgress.quest_id == parent_quest.id,
+                    QuestProgress.game_project_id == game_project_id
                 ).first()
 
                 if not progress or progress.status != "completed":

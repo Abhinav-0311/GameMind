@@ -25,21 +25,22 @@ class GraphValidationService:
     Service layer orchestrating Stage 1 deterministic validation, transaction boundary control,
     and override auditing workflows.
     """
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, game_project_id: str = "default_project"):
         self.db = db
         self.repo = GraphRepository(db)
+        self.game_project_id = game_project_id
 
     def _lock_endpoints_ordered(self, source_slug: str, target_slug: str) -> dict:
         """
         Helper method enforcing Service-Owned Lock Ordering. Locks the version rows
         of the source and target nodes in lexicographical (alphabetical) order of their slugs.
         """
-        self.repo._lock_entities_ordered([source_slug, target_slug])
+        self.repo._lock_entities_ordered([source_slug, target_slug], db=self.db, game_project_id=self.game_project_id)
         
         # Populate returned dictionary for backward compatibility with existing callers/tests
         locked_versions = {}
         for slug in [source_slug, target_slug]:
-            entity, active_ver = self.repo.get_active_entity_by_slug(slug)
+            entity, active_ver = self.repo.get_active_entity_by_slug(slug, game_project_id=self.game_project_id)
             if entity and active_ver:
                 locked_versions[slug] = active_ver
         return locked_versions
@@ -62,7 +63,7 @@ class GraphValidationService:
 
         try:
             # 1. Deterministic Validation: Duplicate active slug check
-            entity, active_ver = self.repo.get_active_entity_by_slug(slug)
+            entity, active_ver = self.repo.get_active_entity_by_slug(slug, game_project_id=self.game_project_id)
             if active_ver:
                 raise ValueError(f"Entity slug '{slug}' is already in use by an active node")
 
@@ -74,12 +75,14 @@ class GraphValidationService:
 
             # 3. Create using repository
             new_entity = self.repo.create_entity(
+                db=self.db,
                 slug=slug,
                 entity_type=entity_type,
                 name=name,
                 description=description,
                 importance_score=importance_score,
-                properties=properties
+                properties=properties,
+                game_project_id=self.game_project_id
             )
             self.db.commit() # Commit transaction
             
@@ -102,7 +105,8 @@ class GraphValidationService:
                     "name": name,
                     "description": description,
                     "importance_score": importance_score,
-                    "properties": properties
+                    "properties": properties,
+                    "game_project_id": self.game_project_id
                 },
                 reason_blocked=str(e)
             )
@@ -134,8 +138,8 @@ class GraphValidationService:
             # 1. Service-owned deterministic lock ordering to prevent deadlocks
             self._lock_endpoints_ordered(source_slug, target_slug)
 
-            source, source_active = self.repo.get_active_entity_by_slug(source_slug)
-            target, target_active = self.repo.get_active_entity_by_slug(target_slug)
+            source, source_active = self.repo.get_active_entity_by_slug(source_slug, game_project_id=self.game_project_id)
+            target, target_active = self.repo.get_active_entity_by_slug(target_slug, game_project_id=self.game_project_id)
 
             # 2. Active endpoint validation
             if not source_active or not target_active:
@@ -159,7 +163,7 @@ class GraphValidationService:
                 )
 
             # 4. Duplicate active relationship check
-            active_rel = self.repo.get_active_relationship(self.db, source_slug, target_slug, rel_type)
+            active_rel = self.repo.get_active_relationship(self.db, source_slug, target_slug, rel_type, game_project_id=self.game_project_id)
             if active_rel:
                 raise ValueError(
                     f"Active relationship of type '{rel_type}' already exists "
@@ -168,17 +172,19 @@ class GraphValidationService:
 
             # 4b. Contradiction check
             from app.services.contradiction_engine import contradiction_engine
-            is_contradict, reason = contradiction_engine.check_contradiction(self.db, source_slug, target_slug, rel_type)
+            is_contradict, reason = contradiction_engine.check_contradiction(self.db, source_slug, target_slug, rel_type, game_project_id=self.game_project_id)
             if is_contradict:
                 raise ValueError(reason)
 
             # 5. Create edge
             new_rel = self.repo.create_relationship(
+                db=self.db,
                 source_slug=source_slug,
                 target_slug=target_slug,
                 rel_type=rel_type,
                 weight=weight,
-                properties=properties
+                properties=properties,
+                game_project_id=self.game_project_id
             )
             self.db.commit()
             
@@ -199,7 +205,8 @@ class GraphValidationService:
                     "target_slug": target_slug,
                     "rel_type": rel_type,
                     "weight": weight,
-                    "properties": properties
+                    "properties": properties,
+                    "game_project_id": self.game_project_id
                 },
                 reason_blocked=str(e)
             )
@@ -254,21 +261,25 @@ class GraphValidationService:
         if operation == "create_entity":
             # Direct repository bypass of validators
             self.repo.create_entity(
+                db=self.db,
                 slug=payload["slug"],
                 entity_type=payload["entity_type"],
                 name=payload["name"],
                 description=payload["description"],
                 importance_score=payload["importance_score"],
-                properties=payload["properties"]
+                properties=payload["properties"],
+                game_project_id=payload.get("game_project_id", self.game_project_id)
             )
         elif operation == "create_relationship":
             # Direct repository bypass of validators
             self.repo.create_relationship(
+                db=self.db,
                 source_slug=payload["source_slug"],
                 target_slug=payload["target_slug"],
                 rel_type=payload["rel_type"],
                 weight=payload["weight"],
-                properties=payload["properties"]
+                properties=payload["properties"],
+                game_project_id=payload.get("game_project_id", self.game_project_id)
             )
         else:
             raise ValueError(f"Unsupported pending ingest operation: '{operation}'")

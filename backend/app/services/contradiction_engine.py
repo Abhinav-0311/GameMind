@@ -39,7 +39,8 @@ class ContradictionEngineService:
         db: Session,
         source_slug: str,
         target_slug: str,
-        rel_type: str
+        rel_type: str,
+        game_project_id: str = "default_project"
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if adding/updating a relationship of rel_type between source and target
@@ -50,8 +51,8 @@ class ContradictionEngineService:
         if not conflicting_types:
             return False, None
 
-        source_entity = graph_repo.get_entity_by_slug(db, source_slug)
-        target_entity = graph_repo.get_entity_by_slug(db, target_slug)
+        source_entity = graph_repo.get_entity_by_slug(db, source_slug, game_project_id=game_project_id)
+        target_entity = graph_repo.get_entity_by_slug(db, target_slug, game_project_id=game_project_id)
         if not source_entity or not target_entity:
             return False, None
 
@@ -68,8 +69,14 @@ class ContradictionEngineService:
         if active_rels:
             conflict = active_rels[0]
             # Fetch slugs of source/target of conflict relationship
-            conflict_source = db.query(WorldEntity).filter(WorldEntity.id == conflict.source_id).first()
-            conflict_target = db.query(WorldEntity).filter(WorldEntity.id == conflict.target_id).first()
+            conflict_source = db.query(WorldEntity).filter(
+                WorldEntity.id == conflict.source_id,
+                WorldEntity.game_project_id == game_project_id
+            ).first()
+            conflict_target = db.query(WorldEntity).filter(
+                WorldEntity.id == conflict.target_id,
+                WorldEntity.game_project_id == game_project_id
+            ).first()
             conflict_src_slug = conflict_source.slug if conflict_source else "unknown"
             conflict_tgt_slug = conflict_target.slug if conflict_target else "unknown"
             

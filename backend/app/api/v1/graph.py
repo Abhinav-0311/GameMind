@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 from app.database import get_db
 from app.services.graph_traversal import graph_traversal_service
+from app.dependencies import get_game_project_id
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -16,7 +17,8 @@ def get_subgraph(
     max_edges: int = Query(500, description="Maximum number of edges to return"),
     direction: str = Query("both", description="Adjacent relationship direction: 'both', 'in', or 'out'"),
     as_of: Optional[str] = Query(None, description="ISO timestamp for historical traversal"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """
     Retrieve a subgraph neighborhood surrounding the specified seeds.
@@ -100,7 +102,8 @@ def get_subgraph(
             max_nodes=max_nodes,
             max_edges=max_edges,
             direction=direction,
-            as_of=parsed_as_of
+            as_of=parsed_as_of,
+            game_project_id=game_project_id
         )
         return subgraph
     except Exception as e:
@@ -118,7 +121,8 @@ def traverse(
     max_paths: int = Query(25, description="Maximum path results"),
     algorithm: str = Query("bfs", description="Traversal algorithm: 'bfs' or 'dfs'"),
     as_of: Optional[str] = Query(None, description="ISO timestamp for historical pathfinding"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """
     Find paths between source and target entities using BFS or DFS.
@@ -180,7 +184,8 @@ def traverse(
             depth=depth,
             max_paths=max_paths,
             algorithm=algorithm,
-            as_of=parsed_as_of
+            as_of=parsed_as_of,
+            game_project_id=game_project_id
         )
         return path_results
     except Exception as e:
@@ -191,7 +196,10 @@ def traverse(
 
 
 @router.get("/analytics")
-def get_graph_analytics(db: Session = Depends(get_db)):
+def get_graph_analytics(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Retrieve topological metrics of the active graph state."""
     import time
     from app.services.graph_analytics import graph_analytics_service
@@ -199,7 +207,7 @@ def get_graph_analytics(db: Session = Depends(get_db)):
 
     start_time = time.time()
     try:
-        metrics = graph_analytics_service.get_topological_metrics(db)
+        metrics = graph_analytics_service.get_topological_metrics(db, game_project_id=game_project_id)
         duration = time.time() - start_time
         telemetry_service.record_metric("graph_analytics_duration_seconds", duration)
         return metrics

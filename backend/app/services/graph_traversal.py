@@ -30,7 +30,8 @@ class GraphTraversalService:
         max_nodes: int = 100,
         max_edges: int = 500,
         direction: str = "both",
-        as_of: Optional[datetime] = None
+        as_of: Optional[datetime] = None,
+        game_project_id: str = "default_project"
     ) -> Dict[str, Any]:
         """
         Extract the subgraph neighborhood around a set of seed slugs up to depth hops.
@@ -44,11 +45,11 @@ class GraphTraversalService:
         if max_edges > self.MAX_SUBGRAPH_EDGES:
             raise ValueError(f"Requested edge limit exceeds maximum allowed of {self.MAX_SUBGRAPH_EDGES}")
 
-        # Construct cache query prefix
+        # Construct cache query prefix scoped by project
         subgraph_hash = self._get_subgraph_hash(seeds)
         # Include as_of in query prefix if it exists to keep different temporal queries separate
         as_of_str = as_of.isoformat() if as_of else "current"
-        query_prefix = f"graph:subgraph:{subgraph_hash}:{depth}:{max_nodes}:{max_edges}:{direction}:{as_of_str}"
+        query_prefix = f"graph:subgraph:{game_project_id}:{subgraph_hash}:{depth}:{max_nodes}:{max_edges}:{direction}:{as_of_str}"
 
         # 1. Check Cache
         cached_data, is_hit = graph_cache.get_cached_traversal(query_prefix)
@@ -63,7 +64,7 @@ class GraphTraversalService:
         # Find seed entities
         seed_entities = []
         for slug in seeds:
-            ent = graph_repo.get_entity_by_slug(db, slug)
+            ent = graph_repo.get_entity_by_slug(db, slug, game_project_id=game_project_id)
             if ent:
                 seed_entities.append(ent)
 
@@ -210,7 +211,8 @@ class GraphTraversalService:
         depth: int = 4,
         max_paths: int = 25,
         algorithm: str = "bfs",
-        as_of: Optional[datetime] = None
+        as_of: Optional[datetime] = None,
+        game_project_id: str = "default_project"
     ) -> Dict[str, Any]:
         """
         Find path options between source and target slugs.
@@ -223,7 +225,7 @@ class GraphTraversalService:
             raise ValueError(f"Requested path limit exceeds maximum allowed of {self.MAX_PATH_RESULTS}")
 
         as_of_str = as_of.isoformat() if as_of else "current"
-        query_prefix = f"graph:path:{source}:{target}:{depth}:{max_paths}:{algorithm}:{as_of_str}"
+        query_prefix = f"graph:path:{game_project_id}:{source}:{target}:{depth}:{max_paths}:{algorithm}:{as_of_str}"
 
         # 1. Check Cache
         cached_data, is_hit = graph_cache.get_cached_traversal(query_prefix)
@@ -233,8 +235,8 @@ class GraphTraversalService:
         # 2. Cache Miss: Run Traversal
         start_time = time.time()
 
-        source_ent = graph_repo.get_entity_by_slug(db, source)
-        target_ent = graph_repo.get_entity_by_slug(db, target)
+        source_ent = graph_repo.get_entity_by_slug(db, source, game_project_id=game_project_id)
+        target_ent = graph_repo.get_entity_by_slug(db, target, game_project_id=game_project_id)
 
         if not source_ent or not target_ent:
             # If either node doesn't exist, no paths can be found
