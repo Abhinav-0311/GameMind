@@ -3,9 +3,9 @@ from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from app.database import Base
+from app.database import Base, ProjectScopedMixin
 
-class Document(Base):
+class Document(Base, ProjectScopedMixin):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -1,11 +1,11 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, DateTime, UniqueConstraint, Index, text
+from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, ForeignKeyConstraint, DateTime, UniqueConstraint, Index, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from app.database import Base
+from app.database import Base, ProjectScopedMixin
 
-class WorldEntity(Base):
+class WorldEntity(Base, ProjectScopedMixin):
     __tablename__ = "world_entities"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -15,7 +15,8 @@ class WorldEntity(Base):
 
     # Constraints
     __table_args__ = (
-        UniqueConstraint("slug", name="uq_entity_slug"),
+        UniqueConstraint("game_project_id", "slug", name="uq_entity_project_slug"),
+        UniqueConstraint("game_project_id", "id", name="uq_entity_project_id"),
     )
 
     # Relationships
@@ -81,12 +82,12 @@ class WorldEntityVersion(Base):
     )
 
 
-class WorldRelationship(Base):
+class WorldRelationship(Base, ProjectScopedMixin):
     __tablename__ = "world_relationships"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    source_id = Column(UUID(as_uuid=True), ForeignKey("world_entities.id", ondelete="CASCADE"), nullable=False)
-    target_id = Column(UUID(as_uuid=True), ForeignKey("world_entities.id", ondelete="CASCADE"), nullable=False)
+    source_id = Column(UUID(as_uuid=True), nullable=False)
+    target_id = Column(UUID(as_uuid=True), nullable=False)
     rel_type = Column(String(50), nullable=False)
     weight = Column(Float, nullable=False, default=1.0)
     version = Column(Integer, nullable=False, default=1)
@@ -100,6 +101,18 @@ class WorldRelationship(Base):
 
     # Constraints & Indexes
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["game_project_id", "source_id"],
+            ["world_entities.game_project_id", "world_entities.id"],
+            ondelete="CASCADE",
+            name="fk_world_relationships_source"
+        ),
+        ForeignKeyConstraint(
+            ["game_project_id", "target_id"],
+            ["world_entities.game_project_id", "world_entities.id"],
+            ondelete="CASCADE",
+            name="fk_world_relationships_target"
+        ),
         UniqueConstraint("source_id", "target_id", "rel_type", "version", name="uq_relationship_version"),
         # Partial Unique Index to enforce active relationship constraints
         Index(

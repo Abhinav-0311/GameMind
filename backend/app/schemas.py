@@ -9,7 +9,20 @@ class ChunkResponse(BaseModel):
     id: UUID
     chunk_index: int
     content: str
-    metadata_json: Optional[Dict[str, Any]] = Field(default=None, alias="metadata")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, alias="metadata")
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_sqlalchemy_metadata(cls, data: Any) -> Any:
+        if data and not isinstance(data, dict):
+            attribs = {}
+            for field in cls.model_fields.keys():
+                if field == "metadata":
+                    attribs["metadata"] = getattr(data, "metadata_json", None)
+                elif hasattr(data, field):
+                    attribs[field] = getattr(data, field)
+            return attribs
+        return data
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -192,15 +205,45 @@ class ChatTelemetrySchema(BaseModel):
     safety_blocked: Optional[bool] = None
     error: Optional[str] = None
 
+class DialogueCitation(BaseModel):
+    document_id: UUID
+    chunk_id: UUID
+    title: str
+    similarity: float
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class NPCEmotions(BaseModel):
+    trust: float
+    fear: float
+    anger: float
+    curiosity: float
+    loyalty: float
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
 class DialogueChatResponse(BaseModel):
+    api_version: str = "1.0"
     npc_slug: str
     response_text: str
-    prompt_version: str
-    model_used: str
-    llm_provider: str = Field(..., description="The active LLM provider name used (e.g. 'gemini' or 'mock')")
-    telemetry: ChatTelemetrySchema
-    warnings: List[str] = []
-    conversation_id: Optional[UUID] = Field(default=None, description="Active conversation session identifier")
+    suggested_animation: Optional[str] = None
+    npc_emotions: Optional[NPCEmotions] = None
+    citations: List[DialogueCitation] = []
+    conversation_id: Optional[UUID] = None
+    # Keep old fields as optional to prevent breaking regression tests
+    prompt_version: Optional[str] = None
+    model_used: Optional[str] = None
+    llm_provider: Optional[str] = None
+    telemetry: Optional[ChatTelemetrySchema] = None
+    warnings: Optional[List[str]] = []
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
 
 # Conversation Schemas
 class ConversationCreate(BaseModel):
@@ -443,6 +486,38 @@ class HintStatusResponse(BaseModel):
     current_level: int
     last_requested_at: Optional[datetime] = None
     cooldown_remaining_seconds: int
+
+
+class QuestReward(BaseModel):
+    gold: int
+    xp: int
+    items: List[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuestGeneratedResponse(BaseModel):
+    api_version: str = "1.0"
+    npc_slug: str
+    title: str
+    description: str
+    difficulty: str
+    rewards: QuestReward
+    objectives: List[QuestObjectiveResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    retry_after_seconds: Optional[int] = None
+
+
+class ErrorEnvelope(BaseModel):
+    api_version: str = "1.0"
+    error: ErrorDetail
+
 
 
 

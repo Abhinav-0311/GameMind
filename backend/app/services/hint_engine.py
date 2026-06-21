@@ -21,10 +21,13 @@ class HintEngine:
         return f"hint:progress:{player_id}:{quest_id}"
 
     @classmethod
-    def get_progression_state(cls, db: Session, player_id: str, quest_id: uuid.UUID) -> tuple[int, datetime | None]:
-        """Retrieve hint progression level and last requested timestamp from world state flags."""
+    def get_progression_state(cls, db: Session, player_id: str, quest_id: uuid.UUID, game_project_id: str = "default_project") -> tuple[int, datetime | None]:
+        """Retrieve hint progression level and last requested timestamp from world state flags scoped by project."""
         flag_key = cls.get_progress_flag_key(player_id, quest_id)
-        flag = db.query(WorldStateFlag).filter(WorldStateFlag.flag_key == flag_key).first()
+        flag = db.query(WorldStateFlag).filter(
+            WorldStateFlag.flag_key == flag_key,
+            WorldStateFlag.game_project_id == game_project_id
+        ).first()
         if not flag:
             return 0, None
         try:
@@ -38,20 +41,24 @@ class HintEngine:
             return 0, None
 
     @classmethod
-    def save_progression_state(cls, db: Session, player_id: str, quest_id: uuid.UUID, level: int, requested_at: datetime) -> None:
-        """Persist progression level and request timestamp into world state flags."""
+    def save_progression_state(cls, db: Session, player_id: str, quest_id: uuid.UUID, level: int, requested_at: datetime, game_project_id: str = "default_project") -> None:
+        """Persist progression level and request timestamp into world state flags scoped by project."""
         flag_key = cls.get_progress_flag_key(player_id, quest_id)
         flag_value = json.dumps({
             "current_level": level,
             "last_requested_at": requested_at.isoformat()
         })
-        flag = db.query(WorldStateFlag).filter(WorldStateFlag.flag_key == flag_key).first()
+        flag = db.query(WorldStateFlag).filter(
+            WorldStateFlag.flag_key == flag_key,
+            WorldStateFlag.game_project_id == game_project_id
+        ).first()
         if not flag:
             flag = WorldStateFlag(
                 flag_key=flag_key,
                 flag_value=flag_value,
                 is_active=True,
-                priority=0
+                priority=0,
+                game_project_id=game_project_id
             )
             db.add(flag)
         else:
@@ -109,7 +116,7 @@ class HintEngine:
             logger.error(f"Error setting hint cache: {e}")
 
     @classmethod
-    async def generate_hint(cls, db: Session, quest_id: uuid.UUID, player_id: str, hint_level: int) -> dict:
+    async def generate_hint(cls, db: Session, quest_id: uuid.UUID, player_id: str, hint_level: int, game_project_id: str = "default_project") -> dict:
         """
         Orchestrate progressive hint generation.
         Enforces sequence limits, cooldown limits, version stamp cache, and deterministic rules.
@@ -118,7 +125,7 @@ class HintEngine:
         now = datetime.now(timezone.utc)
 
         # 1. Input parameters validations
-        quest = db.query(Quest).filter(Quest.id == quest_id).first()
+        quest = db.query(Quest).filter(Quest.id == quest_id, Quest.game_project_id == game_project_id).first()
         if not quest:
             raise ValueError(f"Quest with ID '{quest_id}' not found.")
 
@@ -127,7 +134,7 @@ class HintEngine:
             raise ValueError(f"Invalid hint level {hint_level}. Must be between 1 and {MAX_HINT_LEVEL}.")
 
         # Retrieve current progression state
-        current_level, last_requested = cls.get_progression_state(db, player_id, quest_id)
+        current_level, last_requested = cls.get_progression_state(db, player_id, quest_id, game_project_id=game_project_id)
 
         is_progression = (hint_level == current_level + 1) or (current_level == MAX_HINT_LEVEL and hint_level == MAX_HINT_LEVEL)
         is_reread = (hint_level <= current_level)
@@ -175,7 +182,7 @@ class HintEngine:
             )
             # Only update request time (cooldown reset) if it's a new progression request that hit cache
             if is_progression:
-                cls.save_progression_state(db, player_id, quest_id, hint_level, now)
+                cls.save_progression_state(db, player_id, quest_id, hint_level, now, game_project_id=game_project_id)
             cached_hint["cache_status"] = "hit"
             return cached_hint
 
@@ -194,7 +201,8 @@ class HintEngine:
         active_index = 0
         progress = db.query(QuestProgress).filter(
             QuestProgress.player_id == player_id,
-            QuestProgress.quest_id == quest_id
+            QuestProgress.quest_id == quest_id,
+            QuestProgress.game_project_id == game_project_id
         ).first()
         if progress and progress.objectives_state:
             # Find the first objective index that is not fully completed
@@ -288,7 +296,7 @@ class HintEngine:
 
         # 6. Save progression state to world state flags (only if it was a progression request)
         if is_progression:
-            cls.save_progression_state(db, player_id, quest_id, hint_level, now)
+            cls.save_progression_state(db, player_id, quest_id, hint_level, now, game_project_id=game_project_id)
 
         # 7. Write to stamps version cache
         cls.set_cached_hint(quest_id, player_id, quest.npc_slug, hint_payload)

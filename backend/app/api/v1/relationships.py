@@ -5,6 +5,7 @@ from app.models.npc import NPCProfile
 from app.models.relationship import NPCRelationship
 from app.schemas import NPCRelationshipResponse, NPCRelationshipUpdate
 from app.services.dialogue_service import DialogueService
+from app.dependencies import get_game_project_id
 from typing import List, Optional
 
 router = APIRouter(prefix="/relationships", tags=["relationships"])
@@ -30,11 +31,12 @@ def serialize_relationship(rel: NPCRelationship) -> dict:
 def get_relationships(
     npc_slug: Optional[str] = None,
     player_id: Optional[str] = "default_player",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """Retrieve standings list, optionally filtered by npc_slug and player_id."""
     try:
-        query = db.query(NPCRelationship)
+        query = db.query(NPCRelationship).filter(NPCRelationship.game_project_id == game_project_id)
         if npc_slug:
             query = query.filter(NPCRelationship.npc_slug == npc_slug)
         if player_id:
@@ -49,11 +51,16 @@ def get_relationships(
         )
 
 @router.post("/update", response_model=NPCRelationshipResponse)
-def update_relationship(payload: NPCRelationshipUpdate, db: Session = Depends(get_db)):
+def update_relationship(
+    payload: NPCRelationshipUpdate, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Create or update NPC relationship values for a specific player."""
     # Verify NPC slug exists
     npc = db.query(NPCProfile).filter(
         NPCProfile.slug == payload.npc_slug,
+        NPCProfile.game_project_id == game_project_id,
         NPCProfile.deleted_at.is_(None)
     ).first()
     if not npc:
@@ -66,7 +73,8 @@ def update_relationship(payload: NPCRelationshipUpdate, db: Session = Depends(ge
         player_id = payload.player_id or "default_player"
         rel = db.query(NPCRelationship).filter(
             NPCRelationship.npc_slug == payload.npc_slug,
-            NPCRelationship.player_id == player_id
+            NPCRelationship.player_id == player_id,
+            NPCRelationship.game_project_id == game_project_id
         ).first()
 
         if not rel:
@@ -79,7 +87,8 @@ def update_relationship(payload: NPCRelationshipUpdate, db: Session = Depends(ge
                 respect=payload.respect if payload.respect is not None else 50,
                 friendship=payload.friendship if payload.friendship is not None else 50,
                 fear=payload.fear if payload.fear is not None else 0,
-                last_reason=payload.last_reason
+                last_reason=payload.last_reason,
+                game_project_id=game_project_id
             )
             db.add(rel)
         else:

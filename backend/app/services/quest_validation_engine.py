@@ -28,7 +28,8 @@ class QuestValidationEngine:
         serialized = json.dumps({
             "title": quest_data.get("title", ""),
             "objectives": quest_data.get("objectives", []),
-            "rewards": quest_data.get("rewards", {})
+            "rewards": quest_data.get("rewards", {}),
+            "game_project_id": quest_data.get("game_project_id", "default_project")
         }, sort_keys=True)
         return hashlib.md5(serialized.encode("utf-8")).hexdigest()
 
@@ -213,7 +214,10 @@ class QuestValidationEngine:
 
         # 3. Duplicate Quest Check (Scan last 100 generated quests)
         title = quest_data.get("title", "")
-        last_quests = db.query(GeneratedQuest).order_by(desc(GeneratedQuest.created_at)).limit(MAX_DUPLICATE_SCAN).all()
+        project_id = quest_data.get("game_project_id", "default_project")
+        last_quests = db.query(GeneratedQuest).filter(
+            GeneratedQuest.game_project_id == project_id
+        ).order_by(desc(GeneratedQuest.created_at)).limit(MAX_DUPLICATE_SCAN).all()
         for q in last_quests:
             if q.title.strip().lower() == title.strip().lower():
                 reasons.append(f"Duplicate quest found: a quest with title '{title}' was recently generated.")

@@ -8,7 +8,7 @@ logger = logging.getLogger("gamemind.narrative_consistency")
 
 class NarrativeConsistencyService:
     @staticmethod
-    def check_consistency(db: Session, claim: Dict[str, str]) -> Tuple[bool, Optional[str]]:
+    def check_consistency(db: Session, claim: Dict[str, str], game_project_id: str = "default_project") -> Tuple[bool, Optional[str]]:
         """
         Evaluates a structured claim against active world relationships in the graph database.
         Schema: {"subject": "<entity_slug>", "predicate": "<relationship_type>", "object": "<entity_slug>"}
@@ -32,7 +32,7 @@ class NarrativeConsistencyService:
             error_str=None
         )
 
-        is_conflict, reason = contradiction_engine.check_contradiction(db, subject, obj, predicate)
+        is_conflict, reason = contradiction_engine.check_contradiction(db, subject, obj, predicate, game_project_id=game_project_id)
         if is_conflict:
             # Record failure in telemetry
             TelemetryService.record_narrative_metric(

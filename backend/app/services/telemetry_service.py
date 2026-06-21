@@ -51,19 +51,36 @@ class TelemetryService:
         return log
 
     @staticmethod
-    def get_overview_metrics(db: Session) -> Dict:
-        """Fetch total cost, average latency, request counts, and token summaries."""
-        total_cost = db.query(func.sum(LLMTelemetryLog.estimated_cost_usd)).scalar() or 0.0
-        total_requests = db.query(func.count(LLMTelemetryLog.id)).scalar() or 0
-        avg_latency = db.query(func.avg(LLMTelemetryLog.latency_ms)).scalar() or 0.0
-        total_input_tokens = db.query(func.sum(LLMTelemetryLog.input_tokens)).scalar() or 0
-        total_output_tokens = db.query(func.sum(LLMTelemetryLog.output_tokens)).scalar() or 0
-        safety_blocked_count = db.query(func.count(LLMTelemetryLog.id)).filter(LLMTelemetryLog.safety_blocked == True).scalar() or 0
-        error_count = db.query(func.count(LLMTelemetryLog.id)).filter(LLMTelemetryLog.error.isnot(None)).scalar() or 0
+    def get_overview_metrics(db: Session, game_project_id: str = "default_project") -> Dict:
+        """Fetch total cost, average latency, request counts, and token summaries scoped by project."""
+        from app.models.npc import NPCProfile
+        project_npcs_subquery = db.query(NPCProfile.slug).filter(NPCProfile.game_project_id == game_project_id)
+
+        total_cost = db.query(func.sum(LLMTelemetryLog.estimated_cost_usd)).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).scalar() or 0.0
+        total_requests = db.query(func.count(LLMTelemetryLog.id)).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).scalar() or 0
+        avg_latency = db.query(func.avg(LLMTelemetryLog.latency_ms)).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).scalar() or 0.0
+        total_input_tokens = db.query(func.sum(LLMTelemetryLog.input_tokens)).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).scalar() or 0
+        total_output_tokens = db.query(func.sum(LLMTelemetryLog.output_tokens)).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).scalar() or 0
+        safety_blocked_count = db.query(func.count(LLMTelemetryLog.id)).filter(
+            LLMTelemetryLog.npc_slug.in_(project_npcs_subquery),
+            LLMTelemetryLog.safety_blocked == True
+        ).scalar() or 0
+        error_count = db.query(func.count(LLMTelemetryLog.id)).filter(
+            LLMTelemetryLog.npc_slug.in_(project_npcs_subquery),
+            LLMTelemetryLog.error.isnot(None)
+        ).scalar() or 0
 
         # Breakdowns
-        by_action = db.query(LLMTelemetryLog.action_type, func.count(LLMTelemetryLog.id), func.sum(LLMTelemetryLog.estimated_cost_usd)).group_by(LLMTelemetryLog.action_type).all()
-        by_model = db.query(LLMTelemetryLog.model_used, func.count(LLMTelemetryLog.id)).group_by(LLMTelemetryLog.model_used).all()
+        by_action = db.query(
+            LLMTelemetryLog.action_type, 
+            func.count(LLMTelemetryLog.id), 
+            func.sum(LLMTelemetryLog.estimated_cost_usd)
+        ).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).group_by(LLMTelemetryLog.action_type).all()
+        
+        by_model = db.query(
+            LLMTelemetryLog.model_used, 
+            func.count(LLMTelemetryLog.id)
+        ).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).group_by(LLMTelemetryLog.model_used).all()
 
         return {
             "total_cost_usd": float(total_cost),
@@ -78,23 +95,40 @@ class TelemetryService:
         }
         
     @staticmethod
-    def get_cost_breakdown(db: Session) -> List[Dict]:
-        """Fetch cost breakdowns by NPC profile."""
+    def get_cost_breakdown(db: Session, game_project_id: str = "default_project") -> List[Dict]:
+        """Fetch cost breakdowns by NPC profile scoped by project."""
+        from app.models.npc import NPCProfile
+        project_npcs_subquery = db.query(NPCProfile.slug).filter(NPCProfile.game_project_id == game_project_id)
+
         rows = db.query(
             LLMTelemetryLog.npc_slug, 
             func.count(LLMTelemetryLog.id), 
             func.sum(LLMTelemetryLog.estimated_cost_usd)
-        ).group_by(LLMTelemetryLog.npc_slug).all()
+        ).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery)).group_by(LLMTelemetryLog.npc_slug).all()
         return [{"npc_slug": r[0], "requests_count": r[1], "total_cost_usd": float(r[2] or 0.0)} for r in rows]
 
     @staticmethod
-    def get_memory_metrics(db: Session) -> Dict:
-        """Fetch statistics about active, archived, promoted, and failed memories."""
-        active_count = db.query(func.count(NPCMemory.id)).filter(NPCMemory.archived == False).scalar() or 0
-        archived_count = db.query(func.count(NPCMemory.id)).filter(NPCMemory.archived == True).scalar() or 0
-        promoted_count = db.query(func.count(NPCMemory.id)).filter(NPCMemory.conversation_id.isnot(None)).scalar() or 0
-        avg_importance = db.query(func.avg(NPCMemory.importance_score)).scalar() or 0.0
-        failed_indexing = db.query(func.count(NPCMemory.id)).filter(NPCMemory.chroma_indexed == False).scalar() or 0
+    def get_memory_metrics(db: Session, game_project_id: str = "default_project") -> Dict:
+        """Fetch statistics about active, archived, promoted, and failed memories scoped by project."""
+        active_count = db.query(func.count(NPCMemory.id)).filter(
+            NPCMemory.archived == False,
+            NPCMemory.game_project_id == game_project_id
+        ).scalar() or 0
+        archived_count = db.query(func.count(NPCMemory.id)).filter(
+            NPCMemory.archived == True,
+            NPCMemory.game_project_id == game_project_id
+        ).scalar() or 0
+        promoted_count = db.query(func.count(NPCMemory.id)).filter(
+            NPCMemory.conversation_id.isnot(None),
+            NPCMemory.game_project_id == game_project_id
+        ).scalar() or 0
+        avg_importance = db.query(func.avg(NPCMemory.importance_score)).filter(
+            NPCMemory.game_project_id == game_project_id
+        ).scalar() or 0.0
+        failed_indexing = db.query(func.count(NPCMemory.id)).filter(
+            NPCMemory.chroma_indexed == False,
+            NPCMemory.game_project_id == game_project_id
+        ).scalar() or 0
         
         return {
             "active_memories": active_count,
@@ -236,30 +270,6 @@ class TelemetryService:
 
 
     @staticmethod
-    def record_graph_schema_lock_wait(
-        db: Session,
-        lock_wait_ms: int
-    ) -> LLMTelemetryLog:
-        log = LLMTelemetryLog(
-            conversation_id=None,
-            action_type="graph_schema_lock_wait",
-            npc_slug="system",
-            model_used="schema_lock",
-            llm_provider="database",
-            latency_ms=lock_wait_ms,
-            input_tokens=0,
-            output_tokens=0,
-            estimated_cost_usd=0.0,
-            safety_blocked=False,
-            safety_ratings=None,
-            error=None
-        )
-        db.add(log)
-        db.commit()
-        db.refresh(log)
-        return log
-
-    @staticmethod
     def record_graph_pending_ingest_cleanup_run(
         db: Session
     ) -> LLMTelemetryLog:
@@ -307,12 +317,15 @@ class TelemetryService:
         return log
 
     @staticmethod
-    def get_graph_metrics(db: Session) -> Dict:
-        """Fetch counts and aggregates for all custom graph metrics."""
-        from app.models.graph import PendingIngest
+    def get_graph_metrics(db: Session, game_project_id: str = "default_project") -> Dict:
+        """Fetch counts and aggregates for all custom graph metrics scoped by project."""
+        from app.models.graph import PendingIngest, WorldEntity
+        
+        project_entities_subquery = db.query(WorldEntity.slug).filter(WorldEntity.game_project_id == game_project_id)
         
         entity_creates = db.query(func.count(LLMTelemetryLog.id)).filter(
-            LLMTelemetryLog.action_type == "graph_entity_create"
+            LLMTelemetryLog.action_type == "graph_entity_create",
+            LLMTelemetryLog.npc_slug.in_(project_entities_subquery)
         ).scalar() or 0
         
         relationship_creates = db.query(func.count(LLMTelemetryLog.id)).filter(
@@ -329,10 +342,7 @@ class TelemetryService:
         
         pending_count = db.query(func.count(PendingIngest.validation_id)).scalar() or 0
         
-        lock_wait_ms = db.query(func.sum(LLMTelemetryLog.latency_ms)).filter(
-            LLMTelemetryLog.action_type == "graph_schema_lock_wait"
-        ).scalar() or 0
-        lock_wait_seconds = float(lock_wait_ms) / 1000.0
+        lock_wait_seconds = None  # Deprecated and unavailable
         
         cleanup_runs = db.query(func.count(LLMTelemetryLog.id)).filter(
             LLMTelemetryLog.action_type == "graph_pending_ingest_cleanup_run"

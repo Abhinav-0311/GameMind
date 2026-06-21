@@ -113,7 +113,8 @@ class RAGService:
         db: Session, 
         file_name: str, 
         file_bytes: bytes, 
-        content_type: str
+        content_type: str,
+        game_project_id: str = "default_project"
     ) -> Document:
         """Processes document: extracts, chunks, writes to DB, embeds, writes to ChromaDB."""
         # 1. Extract plain text
@@ -130,7 +131,8 @@ class RAGService:
         db_doc = Document(
             title=file_name,
             content_type=content_type,
-            file_path=None # For this release we don't save files locally, we process bytes in-memory
+            file_path=None, # For this release we don't save files locally, we process bytes in-memory
+            game_project_id=game_project_id
         )
         db.add(db_doc)
         db.flush() # Populate the ID
@@ -159,7 +161,8 @@ class RAGService:
             chroma_metadatas.append({
                 "document_id": str(db_doc.id),
                 "title": file_name,
-                "chunk_index": idx
+                "chunk_index": idx,
+                "game_project_id": game_project_id
             })
 
         # 5. Generate embeddings using Gemini API
@@ -194,7 +197,7 @@ class RAGService:
         db.refresh(db_doc)
         return db_doc
 
-    def query_lore(self, query_text: str, limit: int = 5) -> list[dict]:
+    def query_lore(self, query_text: str, limit: int = 5, game_project_id: str = "default_project") -> list[dict]:
         """Queries ChromaDB, maps to source records, returns citation and confidence score."""
         if not self.gemini_service.is_available():
             raise ValueError("Gemini Service is not configured. Cannot generate query embedding.")
@@ -215,7 +218,8 @@ class RAGService:
             
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=n_results
+                n_results=n_results,
+                where={"game_project_id": game_project_id}
             )
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")

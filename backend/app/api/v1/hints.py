@@ -6,13 +6,18 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas import HintGenerateRequest, HintResponse, HintStatusResponse
 from app.services.hint_engine import HintEngine, HINT_COOLDOWN_SECONDS
+from app.dependencies import get_game_project_id
 
 logger = logging.getLogger("gamemind.api.hints")
 
 router = APIRouter(prefix="/hints", tags=["hints"])
 
 @router.post("/generate", response_model=HintResponse, status_code=status.HTTP_200_OK)
-async def generate_hint(request: HintGenerateRequest, db: Session = Depends(get_db)):
+async def generate_hint(
+    request: HintGenerateRequest, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """
     Generate progressive hints (Level 1 subtle, Level 2 medium, Level 3 direct).
     Enforces sequential progression rules and request cooldowns.
@@ -22,7 +27,8 @@ async def generate_hint(request: HintGenerateRequest, db: Session = Depends(get_
             db=db,
             quest_id=request.quest_id,
             player_id=request.player_id,
-            hint_level=request.hint_level
+            hint_level=request.hint_level,
+            game_project_id=game_project_id
         )
         return hint_data
     except ValueError as val_err:
@@ -40,12 +46,19 @@ async def generate_hint(request: HintGenerateRequest, db: Session = Depends(get_
         )
 
 @router.get("/status", response_model=HintStatusResponse, status_code=status.HTTP_200_OK)
-def get_hint_status(quest_id: uuid.UUID, player_id: str, db: Session = Depends(get_db)):
+def get_hint_status(
+    quest_id: uuid.UUID, 
+    player_id: str, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """
     Retrieve current progression level, last request time, and remaining cooldown.
     """
     try:
-        current_level, last_requested = HintEngine.get_progression_state(db, player_id, quest_id)
+        current_level, last_requested = HintEngine.get_progression_state(
+            db, player_id, quest_id, game_project_id=game_project_id
+        )
         
         # Calculate remaining cooldown seconds
         cooldown_remaining = 0

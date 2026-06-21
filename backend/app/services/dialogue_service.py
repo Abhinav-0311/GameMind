@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class DialogueService:
     @staticmethod
-    def assemble_prompt(db: Session, request: DialogueAssembleRequest, history: Optional[List] = None) -> DialogueAssembleResponse:
+    def assemble_prompt(db: Session, request: DialogueAssembleRequest, history: Optional[List] = None, game_project_id: str = "default_project") -> DialogueAssembleResponse:
         """
         Deterministic dialog prompt assembler.
         Retrieves the NPC, queries selected chunks, formats variables, and outputs telemetry metrics.
@@ -20,6 +20,7 @@ class DialogueService:
         # 1. Lookup active NPC profile by slug
         npc = db.query(NPCProfile).filter(
             NPCProfile.slug == request.npc_slug,
+            NPCProfile.game_project_id == game_project_id,
             NPCProfile.deleted_at.is_(None)
         ).first()
 
@@ -40,7 +41,11 @@ class DialogueService:
         retrieved_chunks_meta = []
         
         if request.selected_chunk_ids:
-            chunks = db.query(DocumentChunk).filter(DocumentChunk.id.in_(request.selected_chunk_ids)).all()
+            from app.models.document import Document
+            chunks = db.query(DocumentChunk).join(Document).filter(
+                DocumentChunk.id.in_(request.selected_chunk_ids),
+                Document.game_project_id == game_project_id
+            ).all()
             chunk_map = {chunk.id: chunk for chunk in chunks}
             
             for cid in request.selected_chunk_ids:
@@ -107,7 +112,7 @@ class DialogueService:
 
         # 5a. NPC Personality & Traits Block (Phase 8)
         from app.services.personality_engine import PersonalityEngine
-        personality = PersonalityEngine.evaluate_personality(db, npc.slug)
+        personality = PersonalityEngine.evaluate_personality(db, npc.slug, game_project_id=game_project_id)
         personality_lines = []
         traits = personality.get("traits", {})
         if traits:
@@ -127,7 +132,7 @@ class DialogueService:
 
         # 5b. NPC Emotion State Block (Phase 8)
         from app.services.emotion_engine import EmotionEngine
-        emotions = EmotionEngine.get_emotional_state(db, npc.slug, player_id)
+        emotions = EmotionEngine.get_emotional_state(db, npc.slug, player_id, game_project_id=game_project_id)
         emotion_str = (
             f"Trust: {emotions.get('trust', 50)}/100\n"
             f"Fear: {emotions.get('fear', 0)}/100\n"
@@ -182,13 +187,14 @@ class DialogueService:
         gemini = GeminiService()
         rag = RAGService(gemini)
         mem_service = MemoryService(gemini, rag)
-        retrieved_memories = mem_service.retrieve_memories(db, npc.id, player_msg, limit=5, player_id=player_id)
+        retrieved_memories = mem_service.retrieve_memories(db, npc.id, player_msg, limit=5, player_id=player_id, game_project_id=game_project_id)
 
         # Retrieve relationship details
         from app.models.relationship import NPCRelationship
         rel = db.query(NPCRelationship).filter(
             NPCRelationship.npc_slug == npc.slug,
-            NPCRelationship.player_id == player_id
+            NPCRelationship.player_id == player_id,
+            NPCRelationship.game_project_id == game_project_id
         ).first()
 
         if not rel:
@@ -214,7 +220,8 @@ class DialogueService:
         # Retrieve active world state flags ordered by priority DESC, updated_at DESC
         from app.models.world_state import WorldStateFlag
         active_flags = db.query(WorldStateFlag).filter(
-            WorldStateFlag.is_active == True
+            WorldStateFlag.is_active == True,
+            WorldStateFlag.game_project_id == game_project_id
         ).order_by(
             WorldStateFlag.priority.desc(),
             WorldStateFlag.updated_at.desc()
@@ -225,18 +232,20 @@ class DialogueService:
         else:
             world_state_str = "\n".join([f"- {flag.flag_key}: {flag.flag_value}" for flag in active_flags])
 
-        # Retrieve player quest progress sheets for this NPC
+        # Retrieve player quest quest progress sheets for this NPC
         from app.models.quest import Quest, QuestProgress
         active_quests = db.query(QuestProgress, Quest).join(Quest, Quest.id == QuestProgress.quest_id).filter(
             QuestProgress.player_id == player_id,
             QuestProgress.quest_giver_slug == npc.slug,
-            QuestProgress.status == "active"
+            QuestProgress.status == "active",
+            QuestProgress.game_project_id == game_project_id
         ).all()
 
         completed_quests = db.query(QuestProgress, Quest).join(Quest, Quest.id == QuestProgress.quest_id).filter(
             QuestProgress.player_id == player_id,
             QuestProgress.quest_giver_slug == npc.slug,
-            QuestProgress.status == "completed"
+            QuestProgress.status == "completed",
+            QuestProgress.game_project_id == game_project_id
         ).order_by(QuestProgress.completed_at.desc()).limit(3).all()
 
         quest_lines = []

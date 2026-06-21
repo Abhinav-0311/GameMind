@@ -2,15 +2,19 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.services.telemetry_service import TelemetryService
+from app.dependencies import get_game_project_id
 from typing import Optional
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 @router.get("/overview")
-def get_overview(db: Session = Depends(get_db)):
-    """Retrieve overall LLM usage metrics (requests count, total costs, avg latency, and token totals)."""
+def get_overview(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Retrieve overall LLM usage metrics (requests count, total costs, avg latency, and token totals) scoped by project."""
     try:
-        return TelemetryService.get_overview_metrics(db)
+        return TelemetryService.get_overview_metrics(db, game_project_id=game_project_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -18,10 +22,13 @@ def get_overview(db: Session = Depends(get_db)):
         )
 
 @router.get("/costs")
-def get_costs(db: Session = Depends(get_db)):
-    """Retrieve cost allocations aggregated by NPC profile."""
+def get_costs(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Retrieve cost allocations aggregated by NPC profile scoped by project."""
     try:
-        return TelemetryService.get_cost_breakdown(db)
+        return TelemetryService.get_cost_breakdown(db, game_project_id=game_project_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -29,10 +36,13 @@ def get_costs(db: Session = Depends(get_db)):
         )
 
 @router.get("/memory")
-def get_memory_stats(db: Session = Depends(get_db)):
-    """Retrieve counts of active, archived, promoted memories, average importance score, and indexing failures."""
+def get_memory_stats(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Retrieve counts of active, archived, promoted memories, average importance score, and indexing failures scoped by project."""
     try:
-        return TelemetryService.get_memory_metrics(db)
+        return TelemetryService.get_memory_metrics(db, game_project_id=game_project_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -46,13 +56,18 @@ def get_logs(
     npc_slug: Optional[str] = None,
     action_type: Optional[str] = None,
     has_error: Optional[bool] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
 ):
-    """Retrieve paginated and filterable raw telemetry trace logs."""
+    """Retrieve paginated and filterable raw telemetry trace logs scoped by project."""
     try:
         from app.models.telemetry import LLMTelemetryLog
+        from app.models.npc import NPCProfile
         from sqlalchemy import desc
-        query = db.query(LLMTelemetryLog)
+        
+        # Scope by NPCs belonging to the project
+        project_npcs_subquery = db.query(NPCProfile.slug).filter(NPCProfile.game_project_id == game_project_id)
+        query = db.query(LLMTelemetryLog).filter(LLMTelemetryLog.npc_slug.in_(project_npcs_subquery))
         
         if npc_slug:
             query = query.filter(LLMTelemetryLog.npc_slug == npc_slug)
@@ -98,10 +113,13 @@ def get_logs(
         )
 
 @router.get("/graph")
-def get_graph_stats(db: Session = Depends(get_db)):
-    """Retrieve graph database metrics (entity creations, overrides, validation failures, schema locks, etc.)."""
+def get_graph_stats(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Retrieve graph database metrics scoped by project."""
     try:
-        return TelemetryService.get_graph_metrics(db)
+        return TelemetryService.get_graph_metrics(db, game_project_id=game_project_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

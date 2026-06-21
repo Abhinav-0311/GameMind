@@ -8,7 +8,7 @@ from app.repositories.graph_repository import graph_repo
 logger = logging.getLogger("gamemind.graph_analytics")
 
 class GraphAnalyticsService:
-    def get_topological_metrics(self, db: Session) -> Dict[str, Any]:
+    def get_topological_metrics(self, db: Session, game_project_id: str = "default_project") -> Dict[str, Any]:
         """
         Calculate graph topological metrics only from active graph state.
         Active nodes must have an active version (valid_to is null).
@@ -16,10 +16,13 @@ class GraphAnalyticsService:
         """
         start_time = time.time()
         
-        # 1. Fetch active entities
+        # 1. Fetch active entities scoped by project
         active_entities = db.query(WorldEntity).join(
             WorldEntityVersion, WorldEntity.id == WorldEntityVersion.entity_id
-        ).filter(WorldEntityVersion.valid_to.is_(None)).all()
+        ).filter(
+            WorldEntityVersion.valid_to.is_(None),
+            WorldEntity.game_project_id == game_project_id
+        ).all()
         
         active_node_ids = {e.id for e in active_entities}
         entity_map = {e.id: e for e in active_entities}

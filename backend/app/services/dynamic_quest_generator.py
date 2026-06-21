@@ -21,14 +21,14 @@ class DynamicQuestGenerator:
     def get_cached_quest(
         cls,
         npc_slug: str,
-        player_id: str
+        player_id: str,
+        game_project_id: str = "default_project"
     ) -> Tuple[Optional[Dict[str, Any]], bool]:
         """
         Retrieves a cached generated quest using O(1) version stamp validation.
-        Key format: graph:cache:generated_quests:<npc_slug>:<player_id>
         """
-        meta_key = f"graph:cache:generated_quests:{npc_slug}:{player_id}:meta"
-        content_key = f"graph:cache:generated_quests:{npc_slug}:{player_id}:content"
+        meta_key = f"graph:cache:generated_quests:{game_project_id}:{npc_slug}:{player_id}:meta"
+        content_key = f"graph:cache:generated_quests:{game_project_id}:{npc_slug}:{player_id}:content"
 
         try:
             redis_client = graph_cache.redis
@@ -62,11 +62,12 @@ class DynamicQuestGenerator:
         npc_slug: str,
         player_id: str,
         quest_data: Dict[str, Any],
-        ttl: int = 3600
+        ttl: int = 3600,
+        game_project_id: str = "default_project"
     ) -> None:
         """Caches the generated quest with version stamps."""
-        meta_key = f"graph:cache:generated_quests:{npc_slug}:{player_id}:meta"
-        content_key = f"graph:cache:generated_quests:{npc_slug}:{player_id}:content"
+        meta_key = f"graph:cache:generated_quests:{game_project_id}:{npc_slug}:{player_id}:meta"
+        content_key = f"graph:cache:generated_quests:{game_project_id}:{npc_slug}:{player_id}:content"
 
         try:
             redis_client = graph_cache.redis
@@ -91,7 +92,8 @@ class DynamicQuestGenerator:
         db: Session,
         npc_slug: str,
         player_id: str = "default_player",
-        player_level: int = 1
+        player_level: int = 1,
+        game_project_id: str = "default_project"
     ) -> Dict[str, Any]:
         """
         Orchestrates the dynamic quest generation pipeline.
@@ -103,12 +105,16 @@ class DynamicQuestGenerator:
             raise ValueError(f"Player level must be between 1 and 100. Got {player_level}.")
 
         # Check NPC exists
-        npc = db.query(NPCProfile).filter(NPCProfile.slug == npc_slug, NPCProfile.deleted_at.is_(None)).first()
+        npc = db.query(NPCProfile).filter(
+            NPCProfile.slug == npc_slug,
+            NPCProfile.game_project_id == game_project_id,
+            NPCProfile.deleted_at.is_(None)
+        ).first()
         if not npc:
             raise ValueError(f"NPC Profile with slug '{npc_slug}' not found.")
 
         # 1. Check generated quest cache
-        cached_quest, hit = cls.get_cached_quest(npc_slug, player_id)
+        cached_quest, hit = cls.get_cached_quest(npc_slug, player_id, game_project_id=game_project_id)
         if hit:
             # Increment Cache Hits
             TelemetryService.record_narrative_metric(
@@ -150,7 +156,10 @@ class DynamicQuestGenerator:
 
         # Consume active world state event flags
         try:
-            active_flags = db.query(WorldStateFlag).filter(WorldStateFlag.is_active == True).all()
+            active_flags = db.query(WorldStateFlag).filter(
+                WorldStateFlag.is_active == True,
+                WorldStateFlag.game_project_id == game_project_id
+            ).all()
             for flag in active_flags:
                 if "threat" in flag.flag_key.lower():
                     # Elevate target quantity and difficulty based on threat flags
@@ -216,7 +225,8 @@ class DynamicQuestGenerator:
             "objectives": objectives,
             "rewards": rewards,
             "branches": narrative["branches"],
-            "consequences": narrative["consequences"]
+            "consequences": narrative["consequences"],
+            "game_project_id": game_project_id
         }
 
         # 7. Validate
@@ -231,7 +241,8 @@ class DynamicQuestGenerator:
             title=quest_payload["title"],
             objectives=quest_payload["objectives"],
             rewards=quest_payload["rewards"],
-            difficulty=quest_payload["difficulty"]
+            difficulty=quest_payload["difficulty"],
+            game_project_id=game_project_id
         )
         db.add(db_quest)
         db.commit()
@@ -241,7 +252,7 @@ class DynamicQuestGenerator:
         graph_cache.increment_entity_stamp(npc_slug)
 
         # 10. Cache generated quest
-        cls.set_cached_quest(npc_slug, player_id, quest_payload)
+        cls.set_cached_quest(npc_slug, player_id, quest_payload, game_project_id=game_project_id)
 
         # 11. Record latency and metrics
         duration = time.time() - start_time

@@ -11,18 +11,23 @@ from app.schemas import (
 from app.services.dialogue_service import DialogueService
 from app.services.llm.factory import get_llm_provider
 from app.config import settings
+from app.dependencies import get_game_project_id, get_player_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dialogue", tags=["dialogue"])
 
 @router.post("/assemble", response_model=DialogueAssembleResponse)
-def assemble_dialogue(request: DialogueAssembleRequest, db: Session = Depends(get_db)):
+def assemble_dialogue(
+    request: DialogueAssembleRequest, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """
     Assemble context parameters and the final prompt for dialogue simulation deterministically.
     """
     try:
-        response = DialogueService.assemble_prompt(db, request)
+        response = DialogueService.assemble_prompt(db, request, game_project_id=game_project_id)
         return response
     except ValueError as e:
         raise HTTPException(
@@ -39,7 +44,9 @@ def assemble_dialogue(request: DialogueAssembleRequest, db: Session = Depends(ge
 async def chat_dialogue(
     request: DialogueChatRequest, 
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    player_id: str = Depends(get_player_id)
 ):
     """
     Execute a live chat response generation using the configured LLM provider.
@@ -47,9 +54,13 @@ async def chat_dialogue(
     try:
         conv = None
         history = None
+        active_player_id = request.player_id or player_id
         if request.conversation_id:
             from app.models.session import Conversation, Message
-            conv = db.query(Conversation).filter(Conversation.id == request.conversation_id).first()
+            conv = db.query(Conversation).filter(
+                Conversation.id == request.conversation_id,
+                Conversation.game_project_id == game_project_id
+            ).first()
             if not conv or conv.npc_slug != request.npc_slug:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -72,7 +83,7 @@ async def chat_dialogue(
             db.flush()
 
         # 1. Assemble the prompt deterministically
-        assembled = DialogueService.assemble_prompt(db, request, history=history)
+        assembled = DialogueService.assemble_prompt(db, request, history=history, game_project_id=game_project_id)
         
         # 2. Instantiate provider from factory
         provider = get_llm_provider()
@@ -168,15 +179,54 @@ async def chat_dialogue(
             
         provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
 
+        # Resolve animations and emotions via Presentation Service
+        from app.services.emotion_engine import EmotionEngine
+        from app.services.runtime_presentation_service import RuntimePresentationService
+        from app.models.npc import NPCProfile
+        from app.services.gemini_service import GeminiService
+        from app.services.rag_service import RAGService
+        
+        # 1. Fetch current emotional state
+        emotions_raw = EmotionEngine.get_emotional_state(db, assembled.npc_slug, active_player_id, game_project_id=game_project_id)
+        
+        # 2. Get normalized emotions (0.0 - 1.0)
+        normalized_emotions = RuntimePresentationService.get_normalized_emotions(emotions_raw)
+        
+        # 3. Determine dominant emotion & animation suggestions
+        dominant = RuntimePresentationService.dominant_emotion(emotions_raw)
+        npc = db.query(NPCProfile).filter(
+            NPCProfile.slug == assembled.npc_slug,
+            NPCProfile.game_project_id == game_project_id,
+            NPCProfile.deleted_at.is_(None)
+        ).first()
+        animation_hints = npc.animation_hints if npc else None
+        suggested_anim = RuntimePresentationService.resolve_animation(dominant, animation_hints)
+        
+        # 4. Resolve citations
+        gemini = GeminiService()
+        rag_service = RAGService(gemini)
+        citations = RuntimePresentationService.resolve_citations(
+            assembled.retrieved_chunks,
+            request.player_message,
+            rag_service,
+            game_project_id,
+            db
+        )
+
         return DialogueChatResponse(
+            api_version="1.0",
             npc_slug=assembled.npc_slug,
             response_text=response_text,
+            suggested_animation=suggested_anim,
+            npc_emotions=normalized_emotions,
+            citations=citations,
+            conversation_id=request.conversation_id,
+            # Maintain backward compatibility
             prompt_version=request.prompt_version or "v1",
             model_used=model_name,
             llm_provider=provider_type,
             telemetry=telemetry,
-            warnings=all_warnings,
-            conversation_id=request.conversation_id
+            warnings=all_warnings
         )
     except ValueError as e:
         db.rollback()

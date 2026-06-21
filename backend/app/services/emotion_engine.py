@@ -10,7 +10,7 @@ logger = logging.getLogger("gamemind.emotion_engine")
 
 class EmotionEngine:
     @staticmethod
-    def get_emotional_state(db: Session, npc_slug: str, player_id: str) -> Dict[str, int]:
+    def get_emotional_state(db: Session, npc_slug: str, player_id: str, game_project_id: str = "default_project") -> Dict[str, int]:
         """
         Unified emotional state reader. Resolves trust/fear from relationships
         and anger/curiosity/loyalty from JSON flags in world_state_flags.
@@ -26,7 +26,8 @@ class EmotionEngine:
         # 1. Fetch trust & fear from npc_relationships
         rel = db.query(NPCRelationship).filter(
             NPCRelationship.npc_slug == npc_slug,
-            NPCRelationship.player_id == player_id
+            NPCRelationship.player_id == player_id,
+            NPCRelationship.game_project_id == game_project_id
         ).first()
 
         trust = rel.trust if rel else 50
@@ -35,7 +36,8 @@ class EmotionEngine:
         # 2. Fetch anger, curiosity, loyalty from world_state_flags
         flag_key = f"emotion:{npc_slug}:{player_id}"
         flag = db.query(WorldStateFlag).filter(
-            WorldStateFlag.flag_key == flag_key
+            WorldStateFlag.flag_key == flag_key,
+            WorldStateFlag.game_project_id == game_project_id
         ).first()
 
         anger = 0
@@ -65,7 +67,8 @@ class EmotionEngine:
         npc_slug: str,
         player_id: str,
         updates: Dict[str, int],
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        game_project_id: str = "default_project"
     ) -> Dict[str, int]:
         """
         Unified emotional state updater.
@@ -84,13 +87,15 @@ class EmotionEngine:
         # 1. Lock/Fetch NPCRelationship
         rel = db.query(NPCRelationship).filter(
             NPCRelationship.npc_slug == npc_slug,
-            NPCRelationship.player_id == player_id
+            NPCRelationship.player_id == player_id,
+            NPCRelationship.game_project_id == game_project_id
         ).with_for_update().first()
 
         # 2. Lock/Fetch WorldStateFlag
         flag_key = f"emotion:{npc_slug}:{player_id}"
         flag = db.query(WorldStateFlag).filter(
-            WorldStateFlag.flag_key == flag_key
+            WorldStateFlag.flag_key == flag_key,
+            WorldStateFlag.game_project_id == game_project_id
         ).with_for_update().first()
 
         # Update trust / fear if present
@@ -101,7 +106,8 @@ class EmotionEngine:
                     npc_slug=npc_slug,
                     player_id=player_id,
                     trust=50,
-                    fear=0
+                    fear=0,
+                    game_project_id=game_project_id
                 )
                 db.add(rel)
             if "trust" in updates:
@@ -142,7 +148,8 @@ class EmotionEngine:
                     flag_key=flag_key,
                     flag_value=json.dumps(new_data),
                     is_active=True,
-                    priority=0
+                    priority=0,
+                    game_project_id=game_project_id
                 )
                 db.add(flag)
             else:

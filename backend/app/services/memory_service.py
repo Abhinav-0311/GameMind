@@ -36,7 +36,8 @@ class MemoryService:
         memory_type: str = "episodic",
         importance_score: float = 1.0,
         conversation_id: uuid.UUID = None,
-        metadata: dict = None
+        metadata: dict = None,
+        game_project_id: str = "default_project"
     ) -> NPCMemory:
         """
         Creates memory: commits to PostgreSQL first, then attempts Chroma vector indexing.
@@ -49,7 +50,8 @@ class MemoryService:
             memory_type=memory_type,
             importance_score=importance_score,
             chroma_indexed=False,
-            metadata_json=metadata
+            metadata_json=metadata,
+            game_project_id=game_project_id
         )
         db.add(db_memory)
         db.commit()
@@ -78,7 +80,8 @@ class MemoryService:
         chroma_metadata = {
             "npc_id": str(memory.npc_id),
             "conversation_id": str(memory.conversation_id) if memory.conversation_id else "",
-            "memory_type": memory.memory_type
+            "memory_type": memory.memory_type,
+            "game_project_id": memory.game_project_id
         }
         if memory.metadata_json:
             for k, v in memory.metadata_json.items():
@@ -118,7 +121,8 @@ class MemoryService:
         npc_id: uuid.UUID,
         query_text: str,
         limit: int = 5,
-        player_id: str = "default_player"
+        player_id: str = "default_player",
+        game_project_id: str = "default_project"
     ) -> str:
         """
         Retrieves matching dynamic memories using Cosine distance, pulls SQL source of truth,
@@ -166,7 +170,7 @@ class MemoryService:
             
             results = self.memory_collection.query(
                 query_embeddings=[query_vector],
-                where={"npc_id": str(npc_id)},
+                where={"$and": [{"npc_id": str(npc_id)}, {"game_project_id": game_project_id}]},
                 n_results=n_results
             )
         except Exception as e:
@@ -277,7 +281,7 @@ class MemoryService:
             
         return "\n".join([f"- {text}" for text in selected_memories])
 
-    def consolidate_memories(self, db: Session, npc_slug: str) -> dict:
+    def consolidate_memories(self, db: Session, npc_slug: str, game_project_id: str = "default_project") -> dict:
         """
         Algorithmic, archive-only duplicate memory consolidation without Gemini.
         Groups memories by similarity (distance <= 0.15) and archives duplicates.
@@ -285,13 +289,18 @@ class MemoryService:
         from app.models.npc import NPCProfile
         import math
         
-        npc = db.query(NPCProfile).filter(NPCProfile.slug == npc_slug, NPCProfile.deleted_at.is_(None)).first()
+        npc = db.query(NPCProfile).filter(
+            NPCProfile.slug == npc_slug,
+            NPCProfile.game_project_id == game_project_id,
+            NPCProfile.deleted_at.is_(None)
+        ).first()
         if not npc:
             raise ValueError(f"NPC profile '{npc_slug}' not found.")
             
         # Get all non-archived memories
         memories = db.query(NPCMemory).filter(
             NPCMemory.npc_id == npc.id,
+            NPCMemory.game_project_id == game_project_id,
             NPCMemory.archived == False
         ).all()
         

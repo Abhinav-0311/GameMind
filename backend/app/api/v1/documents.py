@@ -5,6 +5,7 @@ from app.schemas import DocumentResponse, DocumentDetailResponse
 from app.models.document import Document, DocumentChunk
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
+from app.dependencies import get_game_project_id
 import uuid
 from typing import List
 
@@ -20,7 +21,8 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """Upload a document (.txt, .md, .pdf) to extract text, chunk, embed, and store in PG and ChromaDB."""
     try:
@@ -43,7 +45,8 @@ def upload_document(
             db=db,
             file_name=file.filename,
             file_bytes=content_bytes,
-            content_type=file.content_type or "text/plain"
+            content_type=file.content_type or "text/plain",
+            game_project_id=game_project_id
         )
         return doc
     except ValueError as ve:
@@ -58,14 +61,24 @@ def upload_document(
         )
 
 @router.get("/", response_model=List[DocumentResponse])
-def get_documents(db: Session = Depends(get_db)):
+def get_documents(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Retrieve all documents metadata."""
-    return db.query(Document).order_by(Document.created_at.desc()).all()
+    return db.query(Document).filter(Document.game_project_id == game_project_id).order_by(Document.created_at.desc()).all()
 
 @router.get("/{document_id}", response_model=DocumentDetailResponse)
-def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_document(
+    document_id: uuid.UUID, 
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id)
+):
     """Retrieve a single document, including all of its generated chunks."""
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.game_project_id == game_project_id
+    ).first()
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -84,6 +97,7 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
         "content_type": doc.content_type,
         "created_at": doc.created_at,
         "updated_at": doc.updated_at,
+        "chunks_count": len(chunks),
         "chunks": chunks
     }
 
@@ -91,10 +105,14 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
 def delete_document(
     document_id: uuid.UUID,
     db: Session = Depends(get_db),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    game_project_id: str = Depends(get_game_project_id)
 ):
     """Delete a document, cascade deleting database chunks, and clean up ChromaDB vectors."""
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.game_project_id == game_project_id
+    ).first()
     if not doc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
