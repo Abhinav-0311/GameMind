@@ -15,3 +15,12 @@ node_modules/
 .next/
 out/
 build/
+
+# Unity ignored folders
+Unity/Library/
+Unity/Temp/
+Unity/Obj/
+Unity/Build/
+Unity/Builds/
+Unity/Logs/
+Unity/UserSettings/
