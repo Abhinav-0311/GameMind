@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base, ensure_schema_with_advisory_lock
+from app.database import engine, Base
 from app.api.v1.documents import router as documents_router
 from app.api.v1.query import router as query_router
 from app.api.v1.npcs import router as npcs_router
@@ -20,14 +20,6 @@ import logging
 # Setup standard logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("gamemind")
-
-# Automatically create and verify PostgreSQL tables on startup with advisory lock serialization
-try:
-    logger.info("Initializing database tables with advisory lock...")
-    ensure_schema_with_advisory_lock(engine)
-    logger.info("Database tables initialized successfully.")
-except Exception as e:
-    logger.error(f"Database initialization failed: {e}")
 
 from contextlib import asynccontextmanager
 import asyncio
