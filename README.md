@@ -96,3 +96,41 @@ The system maintains strict production-level quality gates:
 - **Frontend Verification:** `npm run lint` passes with 0 errors and 0 warnings.
 - **Offline Builds:** Production builds (`npm run build`) complete successfully without internet access (using a local system font stack fallback instead of loading Google Fonts from the network).
 - **Docker Connectivity:** Connects directly via `chromadb.HttpClient` without local fallback or PostHog telemetry error logs.
+
+---
+
+## Database Migrations & Rebase Instructions
+
+### Local Automatic Migrations
+In the local development environment, migrations run automatically on startup inside the backend container. The container's startup command is configured as:
+```bash
+alembic upgrade head && exec uvicorn ...
+```
+
+### Production Migrations
+In production environments, automatic migrations on startup are disabled. Production migrations must be executed as a separate deployment job (e.g., a Kubernetes Job or a CI/CD pre-deployment step) running `alembic upgrade head` before any application replica container launches, ensuring database schema synchronization and avoiding startup races.
+
+### Rebaseline & Reset Procedure (Data-Loss Warning)
+
+> [!WARNING]
+> This reset procedure will destroy all data in your local development database. Back up any custom data before proceeding.
+
+To reset the local development database and apply the rebaselined migration history from scratch:
+1. **Back up** any local data you wish to keep.
+2. **Stop and delete** all active services and their associated database volume:
+   ```bash
+   docker compose down -v
+   ```
+3. **Rebuild and start** the services, which automatically runs `alembic upgrade head` on the clean database:
+   ```bash
+   docker compose up -d --build
+   ```
+4. **Restore** only intentional seed data if necessary.
+5. **Re-run** backend tests to confirm schema validation.
+
+### Migration Testing
+To run the full backend test suite, including the programmatic disposable database migration and inspection tests:
+```bash
+docker exec gamemind_backend pytest
+```
+
