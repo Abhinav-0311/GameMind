@@ -1,8 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas import QueryRequest, QueryResponse
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.dependencies import get_game_project_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -17,10 +20,11 @@ def query_lore(
     game_project_id: str = Depends(get_game_project_id)
 ):
     """Query the vector database (ChromaDB) for semantic matches against uploaded lore scoped by project."""
-    if not rag_service.gemini_service.is_available():
+    # Chroma unavailable -> return 503 with "Vector index unavailable"
+    if not rag_service.chroma_client or not rag_service.collection:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Gemini Service is not configured. Please supply a valid GEMINI_API_KEY."
+            detail="Vector index unavailable"
         )
     
     try:
@@ -29,12 +33,22 @@ def query_lore(
             limit=request.limit or 5,
             game_project_id=game_project_id
         )
+        
+        message = None
+        if not results:
+            message = "No matching lore fragments found. Ensure documents are uploaded."
+        elif not rag_service.gemini_service.is_available():
+            message = "Retrieved matches using Local Demo mode (Chroma local embeddings)."
+
         return {
             "query": request.query,
-            "results": results
+            "results": results,
+            "message": message
         }
     except Exception as e:
+        logger.error(f"Error querying lore: {e}")
+        # Only return Chroma unavailable errors when query/index access truly cannot work
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred during query: {e}"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector index unavailable"
         )

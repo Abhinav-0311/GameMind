@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, DocumentResponse } from "@/lib/api";
+import { api, DocumentResponse, HealthResponse } from "@/lib/api";
 
 export default function WorkspaceOverview() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Mock Recent Query Log (Phase 1 UI - Neutral scoring)
@@ -22,9 +23,14 @@ export default function WorkspaceOverview() {
         setDocuments(docs);
       } catch (err) {
         console.error("Failed to fetch documents for dashboard stats:", err);
-      } finally {
-        setIsLoading(false);
       }
+      try {
+        const healthData = await api.getHealth();
+        setHealth(healthData);
+      } catch (err) {
+        console.error("Failed to fetch health status:", err);
+      }
+      setIsLoading(false);
     };
     fetchStats();
   }, []);
@@ -48,12 +54,24 @@ export default function WorkspaceOverview() {
     return documents.reduce((sum, doc) => sum + (doc.chunks_count || 0), 0);
   };
 
+  const dbStatusText = health ? (health.database === "healthy" ? "Connected" : "Degraded") : "Connected";
+  const dbStatusColor = health ? (health.database === "healthy" ? "text-emerald-400" : "text-rose-400") : "text-emerald-400";
+
+  const isLocalDemo = health ? health.ai_mode === "local_demo" : true;
+  const aiModeText = health ? (health.ai_mode === "gemini" ? "Gemini Live" : "Local Demo") : "Local Demo";
+  const aiModeColor = health ? (health.ai_mode === "gemini" ? "text-emerald-400" : "text-amber-400") : "text-amber-400";
+  
+  const vectorEngineText = health ? (health.ai_mode === "gemini" ? "Gemini 768" : "Local Chroma") : "Local Chroma";
+  const vectorDimensionText = health ? `${health.vector_dimension} (Cosine)` : "384 (Cosine)";
+
   const systemMetrics = [
     { label: "Documents Indexed", value: isLoading ? "..." : String(documents.length), type: "mono" },
     { label: "Chunks Stored", value: isLoading ? "..." : String(getTotalChunks()), type: "mono" },
-    { label: "Vector Dimension", value: "768 (Cosine)", type: "mono" },
-    { label: "Database Status", value: "Connected", type: "status", color: "text-emerald-400" },
-    { label: "Gemini Service", value: "Active", type: "status", color: "text-emerald-400" },
+    { label: "Vector Dimension", value: vectorDimensionText, type: "mono" },
+    { label: "Database Status", value: dbStatusText, type: "status", color: dbStatusColor },
+    { label: "AI Mode", value: aiModeText, type: "status", color: aiModeColor },
+    { label: "Vector Engine", value: vectorEngineText, type: "mono" },
+    { label: "API Cost Rate", value: isLocalDemo ? "$0" : "Gemini Standard", type: "mono" },
   ];
 
   return (
@@ -182,7 +200,7 @@ export default function WorkspaceOverview() {
                   <span className="text-slate-500 uppercase tracking-wide text-[9px]">{item.label}</span>
                   {item.type === "status" ? (
                     <div className="flex items-center gap-1.5 font-sans text-xs">
-                      <span className="text-emerald-500 text-[10px]">●</span>
+                      <span className={`${item.color || "text-emerald-500"} text-[10px]`}>●</span>
                       <span className="text-[#fafafa] font-mono text-[11px] uppercase tracking-wide">{item.value}</span>
                     </div>
                   ) : (
