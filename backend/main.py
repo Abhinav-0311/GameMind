@@ -14,6 +14,7 @@ from app.api.v1.analytics import router as analytics_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.narrative import router as narrative_router
 from app.api.v1.hints import router as hints_router
+from app.api.v1.blueprints import router as blueprints_router
 from app.config import settings
 import logging
 
@@ -93,6 +94,7 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(conversations_router, prefix="/api/v1")
 app.include_router(narrative_router, prefix="/api/v1")
 app.include_router(hints_router, prefix="/api/v1")
+app.include_router(blueprints_router, prefix="/api/v1")
 
 
 @app.get("/health")
