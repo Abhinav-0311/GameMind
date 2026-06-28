@@ -40,6 +40,10 @@ export interface HealthResponse {
   database: string;
   chromadb: string;
   gemini_api: string;
+  ai_mode: string;
+  embedding_provider: string;
+  vector_collection: string;
+  vector_dimension: number;
 }
 
 export const api = {
@@ -257,6 +261,44 @@ export const api = {
     }
     return res.json();
   },
+
+  async generateBlueprint(documentId: string): Promise<BlueprintResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ document_id: documentId }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to generate blueprint");
+    }
+    return res.json();
+  },
+
+  async getBlueprints(): Promise<BlueprintResponse[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints`);
+    if (!res.ok) throw new Error("Failed to fetch blueprints");
+    return res.json();
+  },
+
+  async approveBlueprint(blueprintId: string): Promise<BlueprintResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/approve`, {
+      method: "PUT",
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to approve blueprint");
+    }
+    return res.json();
+  },
+
+  async exportBlueprint(blueprintId: string): Promise<BlueprintExportResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/export`);
+    if (!res.ok) throw new Error("Failed to export blueprint");
+    return res.json();
+  },
 };
 
 export interface NPCProfile {
@@ -437,6 +479,39 @@ export interface HintStatusResponse {
   current_level: number;
   last_requested_at: string | null;
   cooldown_remaining_seconds: number;
+}
+
+export interface BlueprintSectionResponse {
+  content: Record<string, unknown>;
+  citations: string[];
+  confidence: string;
+  warnings: string[];
+}
+
+export interface BlueprintResponse {
+  id: string;
+  game_project_id: string;
+  title: string;
+  document_id?: string;
+  summary: BlueprintSectionResponse;
+  narrative_direction: BlueprintSectionResponse;
+  art_style_direction: BlueprintSectionResponse;
+  npc_archetypes: BlueprintSectionResponse;
+  npc_memory_design: BlueprintSectionResponse;
+  level_design_suggestions: BlueprintSectionResponse;
+  quest_hooks: BlueprintSectionResponse;
+  unity_runtime_preview: BlueprintSectionResponse;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlueprintExportResponse {
+  api_version: string;
+  blueprint_id: string;
+  game_project_id: string;
+  exported_at: string;
+  runtime_data: Record<string, unknown>;
 }
 
 
