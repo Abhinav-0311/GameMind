@@ -62,6 +62,8 @@ class QueryResultResponse(BaseModel):
 class QueryResponse(BaseModel):
     query: str
     results: List[QueryResultResponse]
+    message: Optional[str] = None
+
 
 # NPC Profile Schemas
 class NPCProfileBase(BaseModel):
@@ -517,11 +519,3 @@ class ErrorDetail(BaseModel):
 class ErrorEnvelope(BaseModel):
     api_version: str = "1.0"
     error: ErrorDetail
-
-
-
-
-
-
-
-

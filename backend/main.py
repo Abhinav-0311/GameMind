@@ -33,6 +33,23 @@ async def lifespan(app: FastAPI):
     app.state.cleanup_stop_event = stop_event
     task = asyncio.create_task(cleanup_worker_loop(stop_event))
     app.state.cleanup_task = task
+    
+    # Run backfill/reindex for existing DocumentChunk rows into local collection
+    try:
+        from app.database import SessionLocal
+        from app.services.gemini_service import GeminiService
+        from app.services.rag_service import RAGService
+        
+        gemini = GeminiService()
+        if not gemini.is_available():
+            logger.info("Gemini API key is not configured. Running startup local collection backfill...")
+            db = SessionLocal()
+            rag = RAGService(gemini)
+            rag.backfill_local_collection(db)
+            db.close()
+    except Exception as be:
+        logger.error(f"Startup vector database backfill failed: {be}")
+
     yield
     # Shutdown logic: Set stop_event and wait for graceful cleanup
     logger.info("Stopping background cleanup worker task inside lifespan context...")
@@ -106,12 +123,23 @@ def health_check():
         logger.error(f"ChromaDB connection verification failed: {e}")
 
     gemini_status = "not_configured"
+    is_gemini_active = False
     if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "your_gemini_api_key_here":
         gemini_status = "configured"
+        is_gemini_active = True
+
+    ai_mode = "gemini" if is_gemini_active else "local_demo"
+    embedding_provider = "gemini_api" if is_gemini_active else "chroma_default"
+    vector_collection = "lore_chunks" if is_gemini_active else "lore_chunks_local"
+    vector_dimension = 768 if is_gemini_active else 384
 
     return {
         "status": "healthy" if db_status == "healthy" and chroma_status == "healthy" else "degraded",
         "database": db_status,
         "chromadb": chroma_status,
-        "gemini_api": gemini_status
+        "gemini_api": gemini_status,
+        "ai_mode": ai_mode,
+        "embedding_provider": embedding_provider,
+        "vector_collection": vector_collection,
+        "vector_dimension": vector_dimension
     }

@@ -19,6 +19,7 @@ class RAGService:
 
     def _init_chroma(self):
         """Initialize ChromaDB client and retrieve/create the lore collection with Cosine distance."""
+        self.collection_name = "lore_chunks" if self.gemini_service.is_available() else "lore_chunks_local"
         try:
             # Connect to Chrome running in Docker or local instance
             self.chroma_client = chromadb.HttpClient(
@@ -27,22 +28,23 @@ class RAGService:
             )
             # Create collection with Cosine distance space
             self.collection = self.chroma_client.get_or_create_collection(
-                name="lore_chunks",
+                name=self.collection_name,
                 metadata={"hnsw:space": "cosine"}
             )
-            logger.info("Successfully connected to ChromaDB server.")
+            logger.info(f"Successfully connected to ChromaDB server. Collection: {self.collection_name}")
         except Exception as e:
             logger.error(f"Failed to connect to ChromaDB server: {e}. Attempting local persistent client...")
             try:
                 # Fallback for local dev/testing outside Docker
                 self.chroma_client = chromadb.PersistentClient(path="./chroma_db_local")
                 self.collection = self.chroma_client.get_or_create_collection(
-                    name="lore_chunks",
+                    name=self.collection_name,
                     metadata={"hnsw:space": "cosine"}
                 )
-                logger.info("ChromaDB local persistent fallback initialized.")
+                logger.info(f"ChromaDB local persistent fallback initialized. Collection: {self.collection_name}")
             except Exception as le:
                 logger.critical(f"ChromaDB completely unavailable: {le}")
+
 
     def extract_text(self, file_bytes: bytes, file_name: str, content_type: str) -> str:
         """Extract plain text from TXT, MD, or PDF files."""
@@ -165,11 +167,22 @@ class RAGService:
                 "game_project_id": game_project_id
             })
 
-        # 5. Generate embeddings using Gemini API
+        # 5. Generate embeddings using Gemini API or fallback to local
         if not self.gemini_service.is_available():
-            # Commit the DB document anyway, but warn
+            # If Gemini is unavailable, insert to local collection without embeddings (using Chroma's server-side generation)
+            if self.collection:
+                try:
+                    self.collection.add(
+                        ids=chroma_ids,
+                        documents=chroma_texts,
+                        metadatas=chroma_metadatas
+                    )
+                except Exception as e:
+                    db.rollback()
+                    logger.error(f"Failed to write to ChromaDB local collection. Transaction rolled back: {e}")
+                    raise e
             db.commit()
-            logger.warning("Gemini Service unavailable. Skipping vector DB embedding.")
+            db.refresh(db_doc)
             return db_doc
 
         try:
@@ -199,15 +212,10 @@ class RAGService:
 
     def query_lore(self, query_text: str, limit: int = 5, game_project_id: str = "default_project") -> list[dict]:
         """Queries ChromaDB, maps to source records, returns citation and confidence score."""
-        if not self.gemini_service.is_available():
-            raise ValueError("Gemini Service is not configured. Cannot generate query embedding.")
         if not self.collection:
             raise ValueError("ChromaDB vector collection is unavailable.")
 
-        # 1. Embed query
-        query_embedding = self.gemini_service.generate_embedding(query_text)
-
-        # 2. Query ChromaDB
+        # 1. Query ChromaDB
         try:
             collection_count = self.collection.count()
             n_results = limit
@@ -216,16 +224,24 @@ class RAGService:
                     return []
                 n_results = min(limit, int(collection_count))
             
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where={"game_project_id": game_project_id}
-            )
+            if self.gemini_service.is_available():
+                query_embedding = self.gemini_service.generate_embedding(query_text)
+                results = self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=n_results,
+                    where={"game_project_id": game_project_id}
+                )
+            else:
+                results = self.collection.query(
+                    query_texts=[query_text],
+                    n_results=n_results,
+                    where={"game_project_id": game_project_id}
+                )
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")
-            return []
+            raise e
 
-        # 3. Format response
+        # 2. Format response
         formatted_results = []
         if not results or not results["ids"] or len(results["ids"][0]) == 0:
             return formatted_results
@@ -262,3 +278,79 @@ class RAGService:
             })
 
         return formatted_results
+
+    def backfill_local_collection(self, db: Session):
+        """
+        Read existing DocumentChunk rows from relational DB and add them
+        to the local collection (lore_chunks_local) if they aren't already indexed.
+        Uses batching and handles individual chunk indexing failures gracefully.
+        """
+        if not self.chroma_client:
+            logger.warning("Chroma client not initialized. Skipping backfill.")
+            return
+
+        try:
+            # Always ensure lore_chunks_local is created
+            local_collection = self.chroma_client.get_or_create_collection(
+                name="lore_chunks_local",
+                metadata={"hnsw:space": "cosine"}
+            )
+        except Exception as e:
+            logger.error(f"Failed to retrieve or create lore_chunks_local collection: {e}")
+            return
+
+        from app.models.document import DocumentChunk
+        # 1. Batch read DocumentChunks from DB to avoid high memory consumption
+        chunk_query = db.query(DocumentChunk)
+        total_chunks = chunk_query.count()
+        if total_chunks == 0:
+            logger.info("No DocumentChunks found in SQL database for local backfill.")
+            return
+
+        logger.info(f"Starting vector database local backfill check for {total_chunks} chunks...")
+
+        batch_size = 100
+        offset = 0
+        while offset < total_chunks:
+            batch = chunk_query.offset(offset).limit(batch_size).all()
+            if not batch:
+                break
+
+            # Get list of IDs in this batch
+            ids_to_check = [str(chunk.id) for chunk in batch]
+            try:
+                # Retrieve existing vector records by ID in a single call to avoid duplicates
+                existing_res = local_collection.get(ids=ids_to_check, include=[])
+                existing_ids = set(existing_res.get("ids", []))
+            except Exception as get_err:
+                logger.error(f"Error checking existing IDs in local collection: {get_err}")
+                existing_ids = set()
+
+            # Filter out chunks that already exist in Chroma
+            missing_chunks = [c for c in batch if str(c.id) not in existing_ids]
+
+            if missing_chunks:
+                logger.info(f"Backfilling {len(missing_chunks)} chunks to lore_chunks_local (batch offset {offset})...")
+                # Add chunks one-by-one or in a sub-batch, handling individual failures gracefully so we do not crash startup
+                for chunk in missing_chunks:
+                    try:
+                        # Fetch associated document title/project
+                        doc_title = chunk.document.title if chunk.document else "Untitled"
+                        doc_project = chunk.document.game_project_id if chunk.document else "default_project"
+                        
+                        local_collection.add(
+                            ids=[str(chunk.id)],
+                            documents=[chunk.content],
+                            metadatas=[{
+                                "document_id": str(chunk.document_id),
+                                "title": doc_title,
+                                "chunk_index": chunk.chunk_index,
+                                "game_project_id": doc_project
+                            }]
+                        )
+                    except Exception as add_err:
+                        logger.error(f"Failed to index individual chunk {chunk.id} in lore_chunks_local: {add_err}")
+
+            offset += batch_size
+
+        logger.info("Vector database local backfill check completed.")
