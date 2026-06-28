@@ -1,4 +1,5 @@
 from app.models.document import Document, DocumentChunk
+from app.models.blueprint import GameBlueprint
 from app.models.npc import NPCProfile
 from app.models.session import Conversation, Message
 from app.models.memory import NPCMemory

@@ -519,3 +519,50 @@ class ErrorDetail(BaseModel):
 class ErrorEnvelope(BaseModel):
     api_version: str = "1.0"
     error: ErrorDetail
+
+
+# Game Blueprint Schemas
+class BlueprintSectionResponse(BaseModel):
+    content: Dict[str, Any]
+    citations: List[str] = []
+    confidence: str
+    warnings: List[str] = []
+
+class BlueprintGenerateRequest(BaseModel):
+    document_id: UUID = Field(..., description="ID of the GDD document to generate blueprint from")
+
+class BlueprintResponse(BaseModel):
+    id: UUID
+    game_project_id: str
+    title: str
+    document_id: Optional[UUID] = None
+    summary: BlueprintSectionResponse
+    narrative_direction: BlueprintSectionResponse
+    art_style_direction: BlueprintSectionResponse
+    npc_archetypes: BlueprintSectionResponse
+    npc_memory_design: BlueprintSectionResponse
+    level_design_suggestions: BlueprintSectionResponse
+    quest_hooks: BlueprintSectionResponse
+    unity_runtime_preview: BlueprintSectionResponse
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
+class BlueprintExportResponse(BaseModel):
+    api_version: str = "1.0"
+    blueprint_id: UUID
+    game_project_id: str
+    exported_at: datetime
+    runtime_data: Dict[str, Any]
+
+
+
+
+
+
+
+
