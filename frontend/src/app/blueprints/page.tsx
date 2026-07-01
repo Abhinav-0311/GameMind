@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { api, DocumentResponse, BlueprintResponse, BlueprintExportResponse } from "@/lib/api";
+import { api, DocumentResponse, BlueprintResponse, BlueprintExportResponse, MaterializationReportResponse, BlueprintRuntimeBundleResponse } from "@/lib/api";
 
 export default function BlueprintsDashboard() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
@@ -12,6 +12,12 @@ export default function BlueprintsDashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportData, setExportData] = useState<BlueprintExportResponse | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // Materialization States
+  const [materializeReport, setMaterializeReport] = useState<MaterializationReportResponse | null>(null);
+  const [runtimeBundle, setRuntimeBundle] = useState<BlueprintRuntimeBundleResponse | null>(null);
+  const [isMaterializing, setIsMaterializing] = useState(false);
+  const [showBundleModal, setShowBundleModal] = useState(false);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -70,6 +76,39 @@ export default function BlueprintsDashboard() {
       setShowExportModal(true);
     } catch {
       alert("Failed to export blueprint");
+    }
+  };
+
+  const handleMaterialize = async () => {
+    if (!activeBlueprint) return;
+    setIsMaterializing(true);
+    setMaterializeReport(null);
+    try {
+      const report = await api.materializeBlueprint(activeBlueprint.id);
+      setMaterializeReport(report);
+      
+      // Refresh blueprints to get updated manifest
+      const bps = await api.getBlueprints();
+      setBlueprints(bps);
+      const updated = bps.find((bp) => bp.id === activeBlueprint.id);
+      if (updated) {
+        setActiveBlueprint(updated);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Materialization failed");
+    } finally {
+      setIsMaterializing(false);
+    }
+  };
+
+  const handleFetchBundle = async () => {
+    if (!activeBlueprint) return;
+    try {
+      const bundle = await api.getBlueprintRuntimeBundle(activeBlueprint.id);
+      setRuntimeBundle(bundle);
+      setShowBundleModal(true);
+    } catch {
+      alert("Failed to fetch runtime bundle");
     }
   };
 
@@ -215,6 +254,23 @@ export default function BlueprintsDashboard() {
                       Approve Blueprint
                     </button>
                   )}
+                  {activeBlueprint.status === "approved" && (
+                    <button
+                      onClick={handleMaterialize}
+                      disabled={isMaterializing}
+                      className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider disabled:opacity-50"
+                    >
+                      {isMaterializing ? "Materializing..." : "Materialize Blueprint"}
+                    </button>
+                  )}
+                  {activeBlueprint.status === "approved" && activeBlueprint.materialization_manifest && (
+                    <button
+                      onClick={handleFetchBundle}
+                      className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider"
+                    >
+                      Runtime Bundle
+                    </button>
+                  )}
                   <button
                     onClick={handleExport}
                     className="bg-[#fafafa] hover:bg-slate-200 text-black font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider shadow"
@@ -223,6 +279,62 @@ export default function BlueprintsDashboard() {
                   </button>
                 </div>
               </div>
+
+              {/* Materialization Report Card */}
+              {materializeReport && (
+                <div className="rounded border border-[#262626] bg-[#161616] p-5 space-y-4 font-mono text-xs animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-[#262626] pb-2">
+                    <span className="font-bold text-amber-400">⚡ Materialization Report</span>
+                    <span className="text-[10px] text-slate-500">Status: {materializeReport.status.toUpperCase()}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-slate-500 uppercase block">NPCs</span>
+                      <div className="text-[11px] text-slate-300">
+                        Created: <span className="text-emerald-400">{materializeReport.npcs.created.length}</span><br />
+                        Updated: <span className="text-sky-400">{materializeReport.npcs.updated.length}</span><br />
+                        Skipped: <span className="text-amber-400">{materializeReport.npcs.skipped.length}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-slate-500 uppercase block">Quests</span>
+                      <div className="text-[11px] text-slate-300">
+                        Created: <span className="text-emerald-400">{materializeReport.quests.created.length}</span><br />
+                        Updated: <span className="text-sky-400">{materializeReport.quests.updated.length}</span><br />
+                        Skipped: <span className="text-amber-400">{materializeReport.quests.skipped.length}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-slate-500 uppercase block">Memories</span>
+                      <div className="text-[11px] text-slate-300">
+                        Created: <span className="text-emerald-400">{materializeReport.memories.created.length}</span><br />
+                        Updated: <span className="text-sky-400">{materializeReport.memories.updated.length}</span><br />
+                        Skipped: <span className="text-amber-400">{materializeReport.memories.skipped.length}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-slate-500 uppercase block">Flags</span>
+                      <div className="text-[11px] text-slate-300">
+                        Created: <span className="text-emerald-400">{materializeReport.flags.created.length}</span><br />
+                        Updated: <span className="text-sky-400">{materializeReport.flags.updated.length}</span><br />
+                        Skipped: <span className="text-amber-400">{materializeReport.flags.skipped.length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {materializeReport.warnings && materializeReport.warnings.length > 0 && (
+                    <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded text-[11px] text-amber-300 space-y-1.5">
+                      <span className="font-semibold block">Warnings & Safe Skips:</span>
+                      <ul className="list-disc pl-4 space-y-1 text-[10px]">
+                        {materializeReport.warnings.map((w, idx) => (
+                          <li key={idx}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Module Tab Selector */}
               <div className="flex border-b border-[#262626] overflow-x-auto pb-px">
@@ -344,6 +456,43 @@ export default function BlueprintsDashboard() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+                  alert("Copied to clipboard!");
+                }}
+                className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded text-xs transition font-mono uppercase tracking-wider"
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Runtime Bundle Modal */}
+      {showBundleModal && runtimeBundle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-[#111111] border border-[#262626] rounded-lg shadow-2xl p-6 space-y-4 animate-scale-in">
+            <div className="flex justify-between items-center border-b border-[#262626] pb-3">
+              <span className="text-xs font-bold text-[#fafafa] font-mono">Unity Runtime Bundle Config</span>
+              <button
+                onClick={() => setShowBundleModal(false)}
+                className="text-slate-500 hover:text-[#fafafa] text-xs font-mono"
+              >
+                CLOSE
+              </button>
+            </div>
+            
+            <p className="text-[11px] text-slate-400 font-medium">
+              This bundle contains the active database state of all entities materialized under this blueprint.
+            </p>
+
+            <pre className="p-4 rounded border border-[#262626] bg-[#070707] text-xs text-sky-400/90 font-mono overflow-auto max-h-[350px] leading-relaxed select-all">
+              {JSON.stringify(runtimeBundle, null, 2)}
+            </pre>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(runtimeBundle, null, 2));
                   alert("Copied to clipboard!");
                 }}
                 className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded text-xs transition font-mono uppercase tracking-wider"

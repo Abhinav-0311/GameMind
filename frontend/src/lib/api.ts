@@ -299,6 +299,23 @@ export const api = {
     if (!res.ok) throw new Error("Failed to export blueprint");
     return res.json();
   },
+
+  async materializeBlueprint(blueprintId: string): Promise<MaterializationReportResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/materialize`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to materialize blueprint");
+    }
+    return res.json();
+  },
+
+  async getBlueprintRuntimeBundle(blueprintId: string): Promise<BlueprintRuntimeBundleResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/runtime-bundle`);
+    if (!res.ok) throw new Error("Failed to fetch blueprint runtime bundle");
+    return res.json();
+  },
 };
 
 export interface NPCProfile {
@@ -502,6 +519,7 @@ export interface BlueprintResponse {
   quest_hooks: BlueprintSectionResponse;
   unity_runtime_preview: BlueprintSectionResponse;
   status: string;
+  materialization_manifest?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -512,6 +530,31 @@ export interface BlueprintExportResponse {
   game_project_id: string;
   exported_at: string;
   runtime_data: Record<string, unknown>;
+}
+
+export interface MaterializationReportSection {
+  created: string[];
+  updated: string[];
+  skipped: string[];
+}
+
+export interface MaterializationReportResponse {
+  status: string;
+  npcs: MaterializationReportSection;
+  quests: MaterializationReportSection;
+  memories: MaterializationReportSection;
+  flags: MaterializationReportSection;
+  warnings: string[];
+}
+
+export interface BlueprintRuntimeBundleResponse {
+  api_version: string;
+  blueprint_id: string;
+  game_project_id: string;
+  npcs: Record<string, unknown>[];
+  quests: Record<string, unknown>[];
+  memories: Record<string, unknown>[];
+  world_flags: Record<string, unknown>[];
 }
 
 
