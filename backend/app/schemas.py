@@ -545,6 +545,7 @@ class BlueprintResponse(BaseModel):
     quest_hooks: BlueprintSectionResponse
     unity_runtime_preview: BlueprintSectionResponse
     status: str
+    materialization_manifest: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -558,6 +559,30 @@ class BlueprintExportResponse(BaseModel):
     game_project_id: str
     exported_at: datetime
     runtime_data: Dict[str, Any]
+
+
+# Phase 3B schemas
+class MaterializationReportSection(BaseModel):
+    created: List[str] = []
+    updated: List[str] = []
+    skipped: List[str] = []
+
+class MaterializationReportResponse(BaseModel):
+    status: str
+    npcs: MaterializationReportSection
+    quests: MaterializationReportSection
+    memories: MaterializationReportSection
+    flags: MaterializationReportSection
+    warnings: List[str] = []
+
+class BlueprintRuntimeBundleResponse(BaseModel):
+    api_version: str = "1.0"
+    blueprint_id: UUID
+    game_project_id: str
+    npcs: List[NPCProfileResponse]
+    quests: List[QuestResponse]
+    memories: List[NPCMemoryResponse]
+    world_flags: List[WorldStateFlagResponse]
 
 
 
