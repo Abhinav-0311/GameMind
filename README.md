@@ -1,136 +1,117 @@
-# GameMind - AI-Powered Game Development Dashboard
+# GameMind
 
-GameMind is an intelligent AI narrative engine, knowledge graph, and developer platform designed to connect game content with AI. It enables game studios and indie developers to manage game lore, configure NPC profiles, traverse relationship graphs, test dialogue generation, and monitor progressive hint systems.
+GameMind is an AI-powered game design co-pilot and Unity runtime assistant for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard and exported for Unity.
 
-This is **Release 3C.3 (Stabilized Product)**, which stabilizes the core APIs, vector search indexes, NPC dialogue pipelines, and progressive hints testing suite under a unified developer workspace.
+The project combines a FastAPI backend, PostgreSQL, ChromaDB vector search, a Next.js developer dashboard, and Unity C# runtime scripts. It is designed to run in a zero-cost local demo mode without mandatory paid AI APIs, while keeping the AI provider layer optional and swappable.
 
----
+## What It Does
 
-## Technical Stack
+- Upload and index game documents such as GDDs, lore files, character notes, and quest rules.
+- Query the lore index with citations, confidence scores, and local Chroma retrieval.
+- Generate game blueprints from uploaded GDDs using local rules, templates, and schema validation.
+- Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, quest hooks, and Unity runtime previews.
+- Manage NPC profiles, quests, world state, memory, dialogue assembly, progressive hints, and analytics.
+- Export structured JSON that Unity can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
 
-* **Backend:** FastAPI (Python 3.11), SQLAlchemy, PostgreSQL (15), ChromaDB (0.5.23)
-* **Frontend:** Next.js (TypeScript, Tailwind CSS, App Router)
-* **AI Engine:** Google Gemini API (`text-embedding-004` & `gemini-1.5-flash`) with Mock Fallback provider
-* **Infrastructure:** Docker & Docker Compose
+## Tech Stack
 
----
+- **Frontend:** Next.js, TypeScript
+- **Backend:** FastAPI, Python, SQLAlchemy, Alembic
+- **Database:** PostgreSQL
+- **Vector Search:** ChromaDB
+- **Game Runtime:** Unity, C#
+- **Infrastructure:** Docker Compose
+- **AI Mode:** zero-cost local demo by default, optional provider integrations
 
-## Implemented Core Features
+## Project Structure
 
-1. **Lore Knowledge Base (RAG)**
-   - Text extraction (TXT, MD, PDF) and whitespace boundary chunking.
-   - Vector embeddings generation (`text-embedding-004`) with Cosine distance indexing in ChromaDB.
-   - Semantic query console with source citations, similarity score mapping, and confidence ratings.
-
-2. **NPC Studio & Dialogue Debugger**
-   - NPC profile management (create, update, soft-delete with exclusion flags).
-   - Dialogue prompt assembly pipeline with manual RAG chunk checklist selection.
-   - Interactive live chat debugger with support for custom models and multi-turn conversation persistence.
-
-3. **World Knowledge Graph & Memory Engine**
-   - Node entities, directed relationships, and BFS/DFS graph traversals.
-   - Episodic NPC memory with importance scoring.
-   - Graph-aware memory ranking: adjacent entities in the graph receive vector search score boosts.
-
-4. **Progressive Hint Studio**
-   - Progressive hint escalation (Level 1 → Level 2 → Level 3).
-   - Enforces sequential levels, rate-limiting cooldown timers, and telemetry validation.
-   - Interactive testing panel for Player ID, Quest ID, and Hint Level with real-time countdown display and validation error banners.
-
-5. **Analytics & Telemetry Dashboard**
-   - KPI metrics for total API calls, token usage, cost estimation, and cache stats.
-   - Dedicated Progressive Hint telemetry section (`hints_generated_total`, `cache_hits`, `cache_misses`, `cooldown_blocks`).
-   - Logging table for auditing telemetry metrics and LLM responses.
-
----
-
-## Setup Instructions
-
-### Prerequisites
-1. **Docker Desktop** installed and running on your system.
-2. A **Gemini API Key** from [Google AI Studio](https://aistudio.google.com/) (optional, fallbacks to Mock provider if missing).
-3. **Node.js** (v18+) installed on your host machine to run the frontend.
-
-### Canonical Development Setup
-
-1. **Configure Environment Variables**:
-   Copy `.env.example` to `.env` in the project root:
-   ```bash
-   cp .env.example .env
-   ```
-   Modify `.env` to configure settings:
-   ```env
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gamemind
-   CHROMA_HOST=localhost
-   CHROMA_PORT=8000
-   GEMINI_API_KEY=your_real_gemini_api_key_here
-   LLM_PROVIDER=mock
-   GEMINI_MODEL=gemini-1.5-flash
-   ```
-
-2. **Start Services via Docker Compose**:
-   Run the following from the root directory:
-   ```bash
-   docker compose up -d --build
-   ```
-   This initializes:
-   - **PostgreSQL Database** (`gamemind_db`) exposed on host port `5432`.
-   - **ChromaDB Server** (`gamemind_chroma` running image `0.5.23` with telemetry disabled) mapped to host port `8001`.
-   - **FastAPI Backend Server** (`gamemind_backend`) exposed on host port `8000`.
-
-3. **Start Frontend Locally**:
-   From the `frontend` directory:
-   ```bash
-   npm install
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) to view the developer dashboard.
-
----
-
-## Quality Gates and Verification
-
-The system maintains strict production-level quality gates:
-
-- **Backend Verification:** 97/97 tests passing cleanly (`pytest`) with defensive query clamping to prevent HNSW contiguous array exceptions when query sizes exceed collection counts.
-- **Frontend Verification:** `npm run lint` passes with 0 errors and 0 warnings.
-- **Offline Builds:** Production builds (`npm run build`) complete successfully without internet access (using a local system font stack fallback instead of loading Google Fonts from the network).
-- **Docker Connectivity:** Connects directly via `chromadb.HttpClient` without local fallback or PostHog telemetry error logs.
-
----
-
-## Database Migrations & Rebase Instructions
-
-### Local Automatic Migrations
-In the local development environment, migrations run automatically on startup inside the backend container. The container's startup command is configured as:
-```bash
-alembic upgrade head && exec uvicorn ...
+```text
+backend/        FastAPI app, services, models, migrations, tests
+frontend/       Next.js developer dashboard
+Unity/          Unity C# runtime integration scripts
+docs/demo/      Demo GDD used for the blueprint golden path
+docker-compose.yml
 ```
 
-### Production Migrations
-In production environments, automatic migrations on startup are disabled. Production migrations must be executed as a separate deployment job (e.g., a Kubernetes Job or a CI/CD pre-deployment step) running `alembic upgrade head` before any application replica container launches, ensuring database schema synchronization and avoiding startup races.
+## Local Setup
 
-### Rebaseline & Reset Procedure (Data-Loss Warning)
+1. Copy the environment example:
 
-> [!WARNING]
-> This reset procedure will destroy all data in your local development database. Back up any custom data before proceeding.
+```bash
+cp .env.example .env
+```
 
-To reset the local development database and apply the rebaselined migration history from scratch:
-1. **Back up** any local data you wish to keep.
-2. **Stop and delete** all active services and their associated database volume:
-   ```bash
-   docker compose down -v
-   ```
-3. **Rebuild and start** the services, which automatically runs `alembic upgrade head` on the clean database:
-   ```bash
-   docker compose up -d --build
-   ```
-4. **Restore** only intentional seed data if necessary.
-5. **Re-run** backend tests to confirm schema validation.
+2. Start backend services:
 
-### Migration Testing
-To run the full backend test suite, including the programmatic disposable database migration and inspection tests:
+```bash
+docker compose up -d --build
+```
+
+This starts PostgreSQL, ChromaDB, and the FastAPI backend. Backend migrations run automatically on local container startup.
+
+3. Start the dashboard:
+
+```bash
+cd frontend
+npm install
+npm.cmd run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+http://localhost:8000/docs
+```
+
+## Verification
+
+Run backend tests:
+
 ```bash
 docker exec gamemind_backend pytest
 ```
 
+Run frontend checks:
+
+```bash
+cd frontend
+npm.cmd run lint
+npm.cmd run build
+```
+
+Check backend health:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected local demo mode:
+
+```json
+{
+  "status": "healthy",
+  "database": "healthy",
+  "chromadb": "healthy",
+  "gemini_api": "not_configured",
+  "ai_mode": "local_demo",
+  "embedding_provider": "chroma_default",
+  "vector_collection": "lore_chunks_local",
+  "vector_dimension": 384
+}
+```
+
+## Demo Flow
+
+1. Upload `docs/demo/sample_gdd_frostpeak.md` through the Knowledge Base.
+2. Open Blueprint Studio.
+3. Generate a blueprint from the uploaded GDD.
+4. Review all generated sections with citations, confidence, and warnings.
+5. Approve and export the Unity runtime JSON.
+6. Use the Unity scripts as the runtime integration base for NPC dialogue, quest, and hint flows.
+
+## Production Notes
+
+Local development runs migrations automatically in the backend container. Production deployments should run `alembic upgrade head` as a separate migration job before application replicas start.
+
+Gemini/cloud model integrations are optional. The main demo path is intentionally provider-agnostic and works without paid API usage.
