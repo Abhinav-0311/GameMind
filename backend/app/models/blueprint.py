@@ -23,6 +23,7 @@ class GameBlueprint(Base, ProjectScopedMixin):
     unity_runtime_preview = Column(JSONB, nullable=False)
 
     status = Column(String(50), nullable=False, default="draft")
+    materialization_manifest = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -6,14 +6,21 @@ from datetime import datetime
 
 from app.database import get_db
 from app.dependencies import get_game_project_id
-from app.schemas import BlueprintGenerateRequest, BlueprintResponse, BlueprintExportResponse
+from app.schemas import (
+    BlueprintGenerateRequest, BlueprintResponse, BlueprintExportResponse,
+    MaterializationReportResponse, BlueprintRuntimeBundleResponse
+)
 from app.models.blueprint import GameBlueprint
 from app.services.blueprint_service import BlueprintService
+from app.services.materializer_service import BlueprintMaterializerService
 
 router = APIRouter(prefix="/blueprints", tags=["blueprints"])
 
 def get_blueprint_service():
     return BlueprintService()
+
+def get_materializer_service():
+    return BlueprintMaterializerService()
 
 @router.post("/generate", response_model=BlueprintResponse, status_code=status.HTTP_201_CREATED)
 def generate_blueprint(
@@ -95,3 +102,23 @@ def export_blueprint(
         "exported_at": datetime.utcnow(),
         "runtime_data": blueprint.unity_runtime_preview.get("content", {})
     }
+
+@router.post("/{blueprint_id}/materialize", response_model=MaterializationReportResponse)
+def materialize_blueprint(
+    blueprint_id: UUID,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    materializer_service: BlueprintMaterializerService = Depends(get_materializer_service)
+):
+    """Materializes an approved blueprint into active database records (NPCs, quests, flags)."""
+    return materializer_service.materialize_blueprint(db, blueprint_id, game_project_id)
+
+@router.get("/{blueprint_id}/runtime-bundle", response_model=BlueprintRuntimeBundleResponse)
+def get_runtime_bundle(
+    blueprint_id: UUID,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    materializer_service: BlueprintMaterializerService = Depends(get_materializer_service)
+):
+    """Returns the consolidated, manifest-linked game configuration bundle for Unity."""
+    return materializer_service.get_runtime_bundle(db, blueprint_id, game_project_id)
