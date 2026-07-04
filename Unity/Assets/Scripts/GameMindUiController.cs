@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using GameMind.Contracts;
 
@@ -199,6 +200,8 @@ namespace GameMind
         // Programmatically generate a complete, responsive canvas UI styled in minimalist dark mode
         private void CreateCanvasUI()
         {
+            EnsureEventSystem();
+
             GameObject canvasObj = new GameObject("GameMindCanvas");
             Canvas canvas = canvasObj.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -225,6 +228,7 @@ namespace GameMind
             interactButton = interactObj.AddComponent<Button>();
             Image btnImg = interactObj.AddComponent<Image>();
             btnImg.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+            interactButton.targetGraphic = btnImg;
             GameObject interactTextObj = new GameObject("Text");
             interactTextObj.transform.SetParent(interactObj.transform, false);
             Text btnText = interactTextObj.AddComponent<Text>();
@@ -271,6 +275,7 @@ namespace GameMind
             closeDialogueButton = closeDlgObj.AddComponent<Button>();
             Image clsImg = closeDlgObj.AddComponent<Image>();
             clsImg.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+            closeDialogueButton.targetGraphic = clsImg;
             GameObject clsTextObj = new GameObject("Text");
             clsTextObj.transform.SetParent(closeDlgObj.transform, false);
             Text clsText = clsTextObj.AddComponent<Text>();
@@ -332,6 +337,7 @@ namespace GameMind
             acceptQuestButton = acceptQstObj.AddComponent<Button>();
             Image accImg = acceptQstObj.AddComponent<Image>();
             accImg.color = new Color(0.2f, 0.4f, 0.2f, 0.9f); // green highlight
+            acceptQuestButton.targetGraphic = accImg;
             GameObject accTextObj = new GameObject("Text");
             accTextObj.transform.SetParent(acceptQstObj.transform, false);
             Text accText = accTextObj.AddComponent<Text>();
@@ -394,6 +400,7 @@ namespace GameMind
             requestHintButton = reqHntObj.AddComponent<Button>();
             Image reqImg = reqHntObj.AddComponent<Image>();
             reqImg.color = new Color(0.2f, 0.2f, 0.4f, 0.9f); // blue highlight
+            requestHintButton.targetGraphic = reqImg;
             GameObject reqTextObj = new GameObject("Text");
             reqTextObj.transform.SetParent(reqHntObj.transform, false);
             Text reqText = reqTextObj.AddComponent<Text>();
@@ -410,6 +417,15 @@ namespace GameMind
             reqRect.sizeDelta = new Vector2(120, 30);
             requestHintButton.onClick.AddListener(RequestHint);
             hintPanel.SetActive(false); // Locked until quest is accepted!
+        }
+
+        private void EnsureEventSystem()
+        {
+            if (FindFirstObjectByType<EventSystem>() != null) return;
+
+            GameObject eventSystemObj = new GameObject("EventSystem");
+            eventSystemObj.AddComponent<EventSystem>();
+            eventSystemObj.AddComponent<StandaloneInputModule>();
         }
     }
 }
