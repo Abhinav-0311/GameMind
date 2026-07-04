@@ -35,7 +35,7 @@ namespace GameMind
         private void Start()
         {
             // Find NPC Eldrin interaction controller in the scene
-            NpcInteractionController npc = FindObjectOfType<NpcInteractionController>();
+            NpcInteractionController npc = FindFirstObjectByType<NpcInteractionController>();
             if (npc != null)
             {
                 eldrinController = npc;
