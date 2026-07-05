@@ -1,425 +1,422 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { api, QuestResponse, HintResponse, HintStatusResponse } from "@/lib/api";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { api, HintResponse, HintStatusResponse, QuestResponse } from "@/lib/api";
 
 export default function HintStudioPage() {
-  // Quest state
   const [quests, setQuests] = useState<QuestResponse[]>([]);
   const [selectedQuestId, setSelectedQuestId] = useState("");
-  const [useCustomQuestId, setUseCustomQuestId] = useState(false);
   const [customQuestId, setCustomQuestId] = useState("");
-
-  // Input state
+  const [useCustomQuestId, setUseCustomQuestId] = useState(false);
   const [playerId, setPlayerId] = useState("default_player");
-  const [hintLevel, setHintLevel] = useState<number>(1);
-
-  // Async UI states
-  const [isQuestsLoading, setIsQuestsLoading] = useState(true);
+  const [hintLevel, setHintLevel] = useState(1);
+  const [isLoadingQuests, setIsLoadingQuests] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
-
-  // Result payloads
   const [generatedHint, setGeneratedHint] = useState<HintResponse | null>(null);
   const [statusInfo, setStatusInfo] = useState<HintStatusResponse | null>(null);
-
-  // Warnings & Error Banners
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [networkError, setNetworkError] = useState<string | null>(null);
-
-  // Real-time Cooldown Timer
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const activeQuestId = useCustomQuestId ? customQuestId.trim() : selectedQuestId;
 
-  const loadQuests = async () => {
-    setIsQuestsLoading(true);
-    setNetworkError(null);
+  const selectedQuest = useMemo(
+    () => quests.find((quest) => quest.id === selectedQuestId) ?? null,
+    [quests, selectedQuestId]
+  );
+
+  const loadQuests = useCallback(async () => {
+    setIsLoadingQuests(true);
+    setError(null);
+
     try {
       const list = await api.getQuests();
       setQuests(list);
-      if (list.length > 0) {
-        setSelectedQuestId(list[0].id);
-      }
-    } catch (err: unknown) {
-      console.error(err);
-      setNetworkError("Backend unavailable: Failed to fetch quests list. Please ensure the backend container is running.");
+      setSelectedQuestId((current) => {
+        if (current && list.some((quest) => quest.id === current)) return current;
+        return list[0]?.id ?? "";
+      });
+    } catch (err) {
+      console.error("Failed to load quests:", err);
+      setError("Quests could not be loaded. Check that the backend is running.");
     } finally {
-      setIsQuestsLoading(false);
+      setIsLoadingQuests(false);
     }
-  };
+  }, []);
 
-  const triggerCooldown = (seconds: number) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setCooldownSeconds(seconds);
-  };
+  const syncStatus = useCallback(
+    async (silent = false) => {
+      if (!activeQuestId) {
+        if (!silent) setNotice("Choose a quest before checking progression.");
+        return;
+      }
 
-  const formatCooldown = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const remaining = secs % 60;
-    return `${mins}:${remaining < 10 ? "0" : ""}${remaining}`;
-  };
+      if (!silent) setIsCheckingStatus(true);
+      setNotice(null);
+      setError(null);
 
-  // POST Hint Generation Request
-  const handleGenerateHint = async () => {
+      try {
+        const response = await api.getHintStatus(activeQuestId, playerId.trim());
+        setStatusInfo(response);
+        setCooldownSeconds(response.cooldown_remaining_seconds);
+      } catch (err) {
+        console.error("Failed to sync hint status:", err);
+        if (!silent) setError("Hint progression could not be loaded for this quest and player.");
+      } finally {
+        if (!silent) setIsCheckingStatus(false);
+      }
+    },
+    [activeQuestId, playerId]
+  );
+
+  useEffect(() => {
+    void Promise.resolve().then(loadQuests);
+  }, [loadQuests]);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  const requestHint = async () => {
     if (!activeQuestId) {
-      setValidationError("Quest ID is required.");
+      setNotice("Choose a quest before requesting a hint.");
       return;
     }
+
     setIsGenerating(true);
-    setValidationError(null);
-    setNetworkError(null);
+    setNotice(null);
+    setError(null);
+
     try {
-      const res = await api.generateHint({
+      const response = await api.generateHint({
         quest_id: activeQuestId,
         player_id: playerId.trim(),
         hint_level: hintLevel,
       });
-      setGeneratedHint(res);
-      // Immediately retrieve updated status (cooldown remaining & current progression level)
-      await handleCheckStatus(true);
-    } catch (err: unknown) {
-      console.error(err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      // Surface validation warnings (e.g. HTTP 422 details)
-      if (errMsg && (errMsg.includes("violation") || errMsg.includes("wait") || errMsg.includes("Cooldown") || errMsg.includes("Progression") || errMsg.includes("cooldown"))) {
-        setValidationError(errMsg);
+      setGeneratedHint(response);
+      await syncStatus(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Hint could not be generated.";
+      if (
+        message.toLowerCase().includes("cooldown") ||
+        message.toLowerCase().includes("progression") ||
+        message.toLowerCase().includes("wait") ||
+        message.toLowerCase().includes("violation")
+      ) {
+        setNotice(message);
       } else {
-        setNetworkError("Network Failure: Failed to generate hint. Ensure backend container is online.");
+        setError(message);
       }
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // GET Hint Status Request
-  const handleCheckStatus = async (silent: boolean = false) => {
-    if (!activeQuestId) {
-      if (!silent) setValidationError("Quest ID is required.");
-      return;
-    }
-    if (!silent) setIsCheckingStatus(true);
-    setValidationError(null);
-    setNetworkError(null);
-    try {
-      const res = await api.getHintStatus(activeQuestId, playerId.trim());
-      setStatusInfo(res);
-      triggerCooldown(res.cooldown_remaining_seconds);
-    } catch (err: unknown) {
-      console.error(err);
-      if (!silent) {
-        setNetworkError("Network Failure: Failed to query progression status. Ensure backend container is online.");
-      }
-    } finally {
-      if (!silent) setIsCheckingStatus(false);
-    }
-  };
-
-  // Load quests list on page mount
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadQuests();
-  }, []);
-
-  // Cooldown countdown mechanism
-  useEffect(() => {
-    if (cooldownSeconds > 0) {
-      timerRef.current = setInterval(() => {
-        setCooldownSeconds((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [cooldownSeconds]);
+  const currentLevel = statusInfo?.current_level ?? 0;
+  const canRequest = Boolean(activeQuestId) && cooldownSeconds === 0 && !isGenerating && !isLoadingQuests;
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12 animate-fade-in font-sans">
-      {/* Header */}
-      <div className="space-y-1.5 border-b border-[#262626] pb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-bold text-[#fafafa] tracking-tight">
-            Progressive Hint Studio
-          </h2>
-          <p className="text-xs text-[#a1a1aa] font-medium leading-relaxed">
-            Test progressive escalation paths, simulate cooldown thresholds, and verify live cache validations.
+    <main className="mx-auto max-w-6xl pb-14">
+      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
+        <div className="max-w-3xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">Hint Studio</p>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+            Test help that respects progression.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
+            Progressive hints should guide players without spoiling the solution too early. Check the current level,
+            cooldown, cache state, and generated hint for a selected quest.
           </p>
-        </div>
-        <button
-          onClick={loadQuests}
-          className="bg-[#111111] hover:bg-[#171717] border border-[#262626] rounded text-slate-400 font-mono text-[10px] uppercase tracking-wider py-1 px-3 outline-none transition"
-        >
-          Reload Quests
-        </button>
-      </div>
 
-      {/* Network Failure / Offline Banner */}
-      {networkError && (
-        <div className="rounded border border-red-950 bg-red-950/20 p-4 flex items-start gap-3 animate-pulse">
-          <span className="text-red-400 text-sm">⚠️</span>
-          <div className="space-y-1 text-xs">
-            <span className="font-bold text-red-200">System Connection Error</span>
-            <p className="text-red-400 leading-relaxed font-mono">{networkError}</p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={requestHint}
+              disabled={!canRequest}
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#f7f8fa] px-5 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isGenerating ? "Requesting..." : cooldownSeconds > 0 ? `Cooldown ${formatCooldown(cooldownSeconds)}` : "Request hint"}
+            </button>
+            <button
+              type="button"
+              onClick={() => syncStatus(false)}
+              disabled={!activeQuestId || isCheckingStatus}
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-[#27303a] px-5 text-sm font-semibold text-[#f7f8fa] transition hover:border-[#3b4654] hover:bg-[#12161b] focus:outline-none focus:ring-2 focus:ring-[#3b4654] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isCheckingStatus ? "Syncing..." : "Sync status"}
+            </button>
           </div>
         </div>
-      )}
 
-      {/* Validation Error Banner */}
-      {validationError && (
-        <div className="rounded border border-amber-950 bg-amber-950/20 p-4 flex items-start gap-3">
-          <span className="text-amber-400 text-sm">⚠️</span>
-          <div className="space-y-1 text-xs">
-            <span className="font-bold text-amber-200">Progression Request Blocked</span>
-            <p className="text-amber-400 leading-relaxed font-mono">{validationError}</p>
+        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Player state</p>
+          <div className="mt-5 divide-y divide-[#222a33]">
+            <FactRow label="Current level" value={`${currentLevel} / 3`} />
+            <FactRow label="Cooldown" value={cooldownSeconds > 0 ? formatCooldown(cooldownSeconds) : "Ready"} />
+            <FactRow label="Cache" value={generatedHint?.cache_status ?? "None"} />
+            <FactRow label="Spoiler" value={generatedHint?.spoiler_level ?? "None"} />
           </div>
-        </div>
-      )}
+          <div className="mt-5">
+            <ProgressDots currentLevel={currentLevel} />
+          </div>
+        </aside>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column: Form Settings (2 cols) */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="rounded border border-[#262626] bg-[#111111]/45 p-6 space-y-5">
-            <span className="text-xs font-semibold text-[#fafafa] border-b border-[#262626] pb-2.5 block uppercase tracking-wider">
-              Hint Configuration Settings
-            </span>
+      {error && <Alert tone="error" message={error} onDismiss={() => setError(null)} />}
+      {notice && <Alert tone="notice" message={notice} onDismiss={() => setNotice(null)} />}
 
-            {/* Player ID Field */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide">
-                Player Account Identifier
-              </label>
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+          <div className="border-b border-[#222a33] px-5 py-4">
+            <h2 className="text-base font-semibold text-[#f7f8fa]">Hint request</h2>
+            <p className="mt-1 text-sm leading-6 text-[#a5afbd]">
+              Select the player and quest, then request the next useful level of help.
+            </p>
+          </div>
+
+          <div className="space-y-5 p-5">
+            <label className="block">
+              <span className="text-xs font-semibold text-[#a5afbd]">Player ID</span>
               <input
                 type="text"
                 value={playerId}
-                onChange={(e) => setPlayerId(e.target.value)}
-                className="w-full bg-[#0a0a0a] border border-[#262626] rounded text-slate-300 font-mono text-xs py-2 px-3 placeholder-slate-700 outline-none focus:border-slate-700 transition"
-                placeholder="Enter unique player_id..."
+                onChange={(event) => setPlayerId(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition placeholder:text-[#6f7a87] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20"
               />
-            </div>
+            </label>
 
-            {/* Quest ID Selection toggle and inputs */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide">
-                  Active World Quest
+            <div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs font-semibold text-[#a5afbd]" htmlFor="quest-select">
+                  Quest
                 </label>
                 <button
                   type="button"
-                  onClick={() => setUseCustomQuestId(!useCustomQuestId)}
-                  className="text-[10px] font-mono text-slate-400 hover:text-[#fafafa] transition hover:underline"
+                  onClick={loadQuests}
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-[#8bdff0] transition hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
                 >
-                  {useCustomQuestId ? "Use Quest Selector Dropdown" : "Use Custom UUID Fallback"}
+                  Reload
                 </button>
               </div>
 
-              {useCustomQuestId ? (
-                <input
-                  type="text"
-                  value={customQuestId}
-                  onChange={(e) => setCustomQuestId(e.target.value)}
-                  className="w-full bg-[#0a0a0a] border border-[#262626] rounded text-slate-300 font-mono text-xs py-2 px-3 placeholder-slate-700 outline-none focus:border-slate-700 transition"
-                  placeholder="Enter quest UUID (e.g. f81d4fae-7dec-11d0-a765-00a0c91e6bf6)..."
-                />
-              ) : isQuestsLoading ? (
-                <div className="w-full py-2 px-3 bg-[#0a0a0a] border border-[#262626] rounded text-slate-600 font-mono text-xs animate-pulse">
-                  LOADING WORKSPACE QUESTS...
-                </div>
-              ) : quests.length === 0 ? (
-                <div className="w-full py-2 px-3 bg-[#0a0a0a] border border-[#262626] rounded text-amber-500 font-mono text-xs">
-                  NO ACTIVE QUESTS FOUND - SWITCH TO CUSTOM UUID FALLBACK
+              {isLoadingQuests ? (
+                <div className="mt-2 h-11 animate-pulse rounded-md bg-[#151b22]" />
+              ) : quests.length === 0 && !useCustomQuestId ? (
+                <div className="mt-2 rounded-md border border-[#222a33] bg-[#0b0f13] p-4">
+                  <p className="text-sm leading-6 text-[#a5afbd]">
+                    No quests are available yet. Generate and accept one in the simulator first.
+                  </p>
+                  <Link
+                    href="/vertical-slice"
+                    className="mt-3 inline-flex min-h-9 items-center rounded-md border border-[#303a46] px-3 text-xs font-semibold text-[#f7f8fa] transition hover:border-[#4a5563] hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+                  >
+                    Open simulator
+                  </Link>
                 </div>
               ) : (
                 <select
+                  id="quest-select"
                   value={selectedQuestId}
-                  onChange={(e) => setSelectedQuestId(e.target.value)}
-                  className="w-full bg-[#0a0a0a] border border-[#262626] rounded text-slate-300 text-xs py-2 px-3 outline-none focus:border-slate-700 transition"
+                  onChange={(event) => setSelectedQuestId(event.target.value)}
+                  disabled={useCustomQuestId}
+                  className="mt-2 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {quests.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.title} (Giver: {q.npc_slug})
+                  {quests.map((quest) => (
+                    <option key={quest.id} value={quest.id}>
+                      {quest.title} ({quest.npc_slug})
                     </option>
                   ))}
                 </select>
               )}
             </div>
 
-            {/* Hint Escalation Level Radio Group */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wide block">
-                Requested Hint Level (Escalation Phase)
-              </label>
-              <div className="grid grid-cols-3 gap-3">
+            <details className="rounded-md border border-[#222a33] bg-[#0b0f13]">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[#a5afbd] transition hover:text-[#f7f8fa]">
+                Advanced quest ID
+              </summary>
+              <div className="space-y-3 border-t border-[#222a33] p-4">
+                <label className="flex items-center gap-3 text-sm text-[#a5afbd]">
+                  <input
+                    type="checkbox"
+                    checked={useCustomQuestId}
+                    onChange={(event) => setUseCustomQuestId(event.target.checked)}
+                    className="h-4 w-4 accent-[#8bdff0]"
+                  />
+                  Use a custom quest ID
+                </label>
+                <input
+                  type="text"
+                  value={customQuestId}
+                  onChange={(event) => setCustomQuestId(event.target.value)}
+                  disabled={!useCustomQuestId}
+                  placeholder="Quest UUID"
+                  className="min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition placeholder:text-[#6f7a87] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+            </details>
+
+            <div>
+              <p className="text-xs font-semibold text-[#a5afbd]">Requested hint level</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 {[
-                  { level: 1, name: "Subtle (Level 1)", desc: "Thematic cluing" },
-                  { level: 2, name: "Medium (Level 2)", desc: "Location/Target details" },
-                  { level: 3, name: "Direct (Level 3)", desc: "LLM action solution" },
+                  { level: 1, title: "Subtle", description: "Nudge without revealing the answer." },
+                  { level: 2, title: "Directed", description: "Name a location, target, or next step." },
+                  { level: 3, title: "Direct", description: "Give the clearest action to take." },
                 ].map((item) => (
                   <button
                     key={item.level}
                     type="button"
                     onClick={() => setHintLevel(item.level)}
-                    className={`p-3 rounded border text-left flex flex-col justify-between transition ${
+                    className={`min-h-32 rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
                       hintLevel === item.level
-                        ? "bg-[#171717] border-[#262626] text-[#fafafa] font-bold"
-                        : "bg-[#0a0a0a] border-transparent text-[#a1a1aa] hover:border-[#262626]/50"
+                        ? "border-[#8bdff0] bg-[#8bdff0] text-[#061014]"
+                        : "border-[#27303a] bg-[#0a0e12] text-[#f7f8fa] hover:border-[#4a5563] hover:bg-[#121922]"
                     }`}
                   >
-                    <span className="text-xs font-semibold">{item.name}</span>
-                    <span className="text-[10px] text-slate-500 font-mono font-medium block mt-1">
-                      {item.desc}
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em]">Level {item.level}</span>
+                    <span className="mt-3 block text-lg font-semibold">{item.title}</span>
+                    <span className={`mt-2 block text-sm leading-6 ${hintLevel === item.level ? "text-[#14323a]" : "text-[#a5afbd]"}`}>
+                      {item.description}
                     </span>
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* Controls Actions row */}
-            <div className="pt-2 flex items-center gap-3">
-              <button
-                onClick={handleGenerateHint}
-                disabled={isGenerating || isQuestsLoading || !activeQuestId || cooldownSeconds > 0}
-                className={`flex-1 py-2 px-4 rounded text-xs font-semibold tracking-wide transition uppercase ${
-                  cooldownSeconds > 0
-                    ? "bg-[#171717] text-slate-600 border border-[#262626] cursor-not-allowed"
-                    : isGenerating
-                    ? "bg-slate-800 text-slate-400 cursor-wait"
-                    : "bg-[#b9ff66] text-[#0a0a0a] hover:bg-[#a6e655]"
-                }`}
-              >
-                {isGenerating
-                  ? "Generating Hint..."
-                  : cooldownSeconds > 0
-                  ? `Cooldown Active (${formatCooldown(cooldownSeconds)})`
-                  : "Request Hint"}
-              </button>
-
-              <button
-                onClick={() => handleCheckStatus(false)}
-                disabled={isCheckingStatus || isQuestsLoading || !activeQuestId}
-                className="py-2 px-4 bg-[#111111] hover:bg-[#171717] border border-[#262626] rounded text-slate-300 font-mono text-xs uppercase tracking-wide transition outline-none"
-              >
-                {isCheckingStatus ? "Checking..." : "Sync Status"}
-              </button>
-            </div>
           </div>
         </div>
 
-        {/* Right Column: Output / Display (1 col) */}
-        <div className="space-y-6">
-          {/* Progression State Summary */}
-          <div className="rounded border border-[#262626] bg-[#111111] p-5 space-y-4">
-            <span className="text-xs font-semibold text-[#fafafa] border-b border-[#262626] pb-2 block uppercase tracking-wider">
-              Progression Registry
-            </span>
-
-            <div className="space-y-3 font-mono text-[11px]">
-              {/* Cooldown timer row */}
-              <div className="flex items-center justify-between border-b border-[#262626]/50 pb-2">
-                <span className="text-slate-500">REQUEST COOLDOWN</span>
-                {cooldownSeconds > 0 ? (
-                  <span className="font-bold text-amber-500 animate-pulse font-mono">
-                    {formatCooldown(cooldownSeconds)} REMAINING
-                  </span>
-                ) : (
-                  <span className="font-bold text-emerald-400 uppercase tracking-wide">NO COOLDOWN</span>
-                )}
-              </div>
-
-              {/* Progression level badges row */}
-              <div className="flex items-center justify-between border-b border-[#262626]/50 pb-2.5">
-                <span className="text-slate-500">CURRENT HINT LEVEL</span>
-                <div className="flex items-center gap-1">
-                  {[0, 1, 2, 3].map((l) => {
-                    const current = statusInfo?.current_level ?? 0;
-                    const isActive = l === current;
-                    return (
-                      <span
-                        key={l}
-                        className={`h-4.5 w-6 text-[9px] font-bold rounded flex items-center justify-center border font-mono select-none ${
-                          isActive
-                            ? "bg-[#b9ff66] text-[#0a0a0a] border-[#b9ff66]"
-                            : l < current
-                            ? "bg-[#171717] text-slate-400 border-[#262626]"
-                            : "bg-[#0a0a0a] text-slate-700 border-[#262626]/30"
-                        }`}
-                      >
-                        L{l}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Cache status badge row */}
-              <div className="flex items-center justify-between border-b border-[#262626]/50 pb-2">
-                <span className="text-slate-500">CACHE STATUS</span>
-                {generatedHint ? (
-                  generatedHint.cache_status === "hit" ? (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">
-                      Cache Hit
-                    </span>
-                  ) : (
-                    <span className="px-1.5 py-0.5 rounded bg-slate-500/10 border border-slate-500/20 text-slate-400 text-[9px] font-bold uppercase tracking-wider">
-                      Cache Miss
-                    </span>
-                  )
-                ) : (
-                  <span className="text-slate-600">AWAITING GENERATION</span>
-                )}
-              </div>
-
-              {/* Last requested timestamp */}
-              <div className="flex flex-col gap-1">
-                <span className="text-slate-500 text-[9px] uppercase tracking-wide">LAST GENERATED AT</span>
-                <span className="text-slate-400 text-[10px]">
-                  {statusInfo?.last_requested_at
-                    ? new Date(statusInfo.last_requested_at).toLocaleString()
-                    : "Never requested"}
-                </span>
-              </div>
+        <aside className="space-y-6">
+          <section className="rounded-lg border border-[#222a33] bg-[#101419]">
+            <div className="border-b border-[#222a33] px-5 py-4">
+              <h2 className="text-base font-semibold text-[#f7f8fa]">Generated hint</h2>
+              <p className="mt-1 text-xs text-[#7c8794]">The player-facing text returned by the hint engine.</p>
             </div>
-          </div>
-
-          {/* Hint Output Box */}
-          <div className="rounded border border-[#262626] bg-[#111111]/40 p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#262626] pb-2">
-              <span className="text-xs font-semibold text-[#fafafa] uppercase tracking-wider">
-                Hint Output Clue
-              </span>
-              {generatedHint && (
-                <span
-                  className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${
-                    generatedHint.spoiler_level === "low"
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                      : generatedHint.spoiler_level === "medium"
-                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                      : "bg-red-500/10 border-red-500/20 text-red-400"
-                  }`}
-                >
-                  {generatedHint.spoiler_level} spoiler
-                </span>
+            <div className="p-5">
+              {generatedHint ? (
+                <div>
+                  <div className="mb-4 flex items-center gap-2">
+                    <span className="rounded-full bg-[#8bdff0] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#061014]">
+                      Level {generatedHint.hint_level}
+                    </span>
+                    <span className="rounded-full border border-[#27303a] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a5afbd]">
+                      {generatedHint.spoiler_level}
+                    </span>
+                  </div>
+                  <p className="rounded-md border border-[#222a33] bg-[#0b0f13] p-4 text-sm leading-7 text-[#f7f8fa]">
+                    {generatedHint.hint}
+                  </p>
+                </div>
+              ) : (
+                <div className="py-10 text-center">
+                  <h3 className="text-sm font-semibold text-[#f7f8fa]">No hint generated</h3>
+                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-[#a5afbd]">
+                    Select a quest and request a level when the cooldown is ready.
+                  </p>
+                </div>
               )}
             </div>
+          </section>
 
-            {generatedHint ? (
-              <div className="p-3 bg-[#0a0a0a] rounded border border-[#262626] text-xs text-[#fafafa] leading-relaxed font-sans select-text font-medium">
-                {generatedHint.hint}
+          <section className="rounded-lg border border-[#222a33] bg-[#101419] p-5">
+            <h2 className="text-base font-semibold text-[#f7f8fa]">Selected quest</h2>
+            {selectedQuest && !useCustomQuestId ? (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm font-semibold text-[#f7f8fa]">{selectedQuest.title}</p>
+                <p className="text-sm leading-6 text-[#a5afbd]">{selectedQuest.description}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <FactTile label="Giver" value={selectedQuest.npc_slug} />
+                  <FactTile label="Difficulty" value={selectedQuest.difficulty} />
+                </div>
               </div>
             ) : (
-              <div className="py-8 text-center text-slate-500 font-mono text-[10px] uppercase tracking-wider select-none">
-                No hint generated yet. Choose settings and click request.
-              </div>
+              <p className="mt-4 text-sm leading-6 text-[#a5afbd]">
+                {useCustomQuestId ? "Using custom quest ID." : "No quest selected."}
+              </p>
             )}
-          </div>
-        </div>
-      </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function Alert({
+  tone,
+  message,
+  onDismiss,
+}: {
+  tone: "error" | "notice";
+  message: string;
+  onDismiss: () => void;
+}) {
+  const styles =
+    tone === "error"
+      ? "border-rose-500/25 bg-rose-500/10 text-rose-100"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-100";
+
+  return (
+    <div className={`mb-6 flex items-center justify-between gap-4 rounded-md border px-4 py-3 text-sm ${styles}`}>
+      <span>{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="rounded px-2 py-1 text-xs font-semibold transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+      >
+        Dismiss
+      </button>
     </div>
   );
+}
+
+function ProgressDots({ currentLevel }: { currentLevel: number }) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {[0, 1, 2, 3].map((level) => (
+        <div
+          key={level}
+          className={`rounded-md border px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            level === currentLevel
+              ? "border-[#8bdff0] bg-[#8bdff0] text-[#061014]"
+              : level < currentLevel
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                : "border-[#222a33] bg-[#0b0f13] text-[#7c8794]"
+          }`}
+        >
+          L{level}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FactRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <span className="text-sm text-[#a5afbd]">{label}</span>
+      <span className="max-w-40 truncate text-right text-sm font-semibold capitalize text-[#f7f8fa]">{value}</span>
+    </div>
+  );
+}
+
+function FactTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
+      <p className="text-xs text-[#7c8794]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[#f7f8fa]">{value}</p>
+    </div>
+  );
+}
+
+function formatCooldown(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }

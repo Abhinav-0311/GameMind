@@ -33,14 +33,15 @@ export interface QueryResult {
 export interface QueryResponse {
   query: string;
   results: QueryResult[];
+  message?: string | null;
 }
 
 export interface HealthResponse {
   status: string;
   database: string;
   chromadb: string;
-  gemini_api: string;
   ai_mode: string;
+  llm_provider: string;
   embedding_provider: string;
   vector_collection: string;
   vector_dimension: number;
@@ -556,5 +557,3 @@ export interface BlueprintRuntimeBundleResponse {
   memories: Record<string, unknown>[];
   world_flags: Record<string, unknown>[];
 }
-
-

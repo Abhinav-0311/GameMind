@@ -1,57 +1,230 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { api, DocumentResponse, BlueprintResponse, BlueprintExportResponse, MaterializationReportResponse, BlueprintRuntimeBundleResponse } from "@/lib/api";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  api,
+  BlueprintExportResponse,
+  BlueprintResponse,
+  BlueprintRuntimeBundleResponse,
+  BlueprintSectionResponse,
+  DocumentResponse,
+  MaterializationReportResponse,
+} from "@/lib/api";
+
+interface ReviewSection {
+  id: string;
+  title: string;
+  description: string;
+  section: BlueprintSectionResponse;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function statusLabel(blueprint: BlueprintResponse | null) {
+  if (!blueprint) return "No blueprint";
+  if (blueprint.materialization_manifest) return "Runtime ready";
+  if (blueprint.status === "approved") return "Approved";
+  return "Draft";
+}
+
+function confidenceClass(confidence: string) {
+  if (confidence === "High") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300";
+  if (confidence === "Medium") return "border-amber-500/20 bg-amber-500/10 text-amber-300";
+  return "border-[#313943] bg-[#15191f] text-[#aab4c0]";
+}
+
+function readableValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "None detected";
+    return value
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const record = item as Record<string, unknown>;
+          return String(record.title || record.name || record.objective || record.description || JSON.stringify(record));
+        }
+        return String(item);
+      })
+      .join(", ");
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => `${key.replaceAll("_", " ")}: ${readableValue(entry)}`)
+      .join(" | ");
+  }
+
+  return value === undefined || value === null || value === "" ? "Not detected" : String(value);
+}
+
+function sectionPreview(section: BlueprintSectionResponse) {
+  return Object.entries(section.content).slice(0, 5);
+}
+
+function reportCount(section?: { created: string[]; updated: string[]; skipped: string[] }) {
+  if (!section) return 0;
+  return section.created.length + section.updated.length + section.skipped.length;
+}
 
 export default function BlueprintsDashboard() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState<string>("");
+  const [selectedDocId, setSelectedDocId] = useState("");
   const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
   const [activeBlueprint, setActiveBlueprint] = useState<BlueprintResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("summary");
+  const [activeSectionId, setActiveSectionId] = useState("summary");
+  const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [exportData, setExportData] = useState<BlueprintExportResponse | null>(null);
-  const [showExportModal, setShowExportModal] = useState(false);
-
-  // Materialization States
-  const [materializeReport, setMaterializeReport] = useState<MaterializationReportResponse | null>(null);
-  const [runtimeBundle, setRuntimeBundle] = useState<BlueprintRuntimeBundleResponse | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
   const [isMaterializing, setIsMaterializing] = useState(false);
-  const [showBundleModal, setShowBundleModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [exportData, setExportData] = useState<BlueprintExportResponse | null>(null);
+  const [runtimeBundle, setRuntimeBundle] = useState<BlueprintRuntimeBundleResponse | null>(null);
+  const [materializeReport, setMaterializeReport] = useState<MaterializationReportResponse | null>(null);
+
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [docs, existingBlueprints] = await Promise.all([
+        api.getDocuments(),
+        api.getBlueprints(),
+      ]);
+
+      setDocuments(docs);
+      setBlueprints(existingBlueprints);
+
+      if (docs.length > 0) {
+        setSelectedDocId((current) => current || docs[0].id);
+      }
+
+      if (existingBlueprints.length > 0) {
+        setActiveBlueprint((current) => current || existingBlueprints[0]);
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Could not load Blueprint Studio. Check that the backend is running.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        const docs = await api.getDocuments();
-        setDocuments(docs);
-        if (docs.length > 0) {
-          setSelectedDocId(docs[0].id);
-        }
-
-        const bps = await api.getBlueprints();
-        setBlueprints(bps);
-        if (bps.length > 0) {
-          setActiveBlueprint(bps[0]);
-        }
-      } catch (err) {
-        console.error("Failed to load initial data:", err);
-      }
-    };
-    loadInitialData();
+    Promise.resolve().then(loadInitialData);
   }, []);
+
+  const reviewSections: ReviewSection[] = useMemo(() => {
+    if (!activeBlueprint) return [];
+
+    return [
+      {
+        id: "summary",
+        title: "Game summary",
+        description: "Premise, genre, world setup, and core player role.",
+        section: activeBlueprint.summary,
+      },
+      {
+        id: "narrative",
+        title: "Narrative direction",
+        description: "Conflict, factions, story themes, and lore background.",
+        section: activeBlueprint.narrative_direction,
+      },
+      {
+        id: "art",
+        title: "Art style",
+        description: "Visual identity, palette, and presentation language.",
+        section: activeBlueprint.art_style_direction,
+      },
+      {
+        id: "npcs",
+        title: "NPC cast",
+        description: "Characters, roles, personalities, and dialogue setup.",
+        section: activeBlueprint.npc_archetypes,
+      },
+      {
+        id: "memory",
+        title: "Memory design",
+        description: "Facts and events NPCs should remember at runtime.",
+        section: activeBlueprint.npc_memory_design,
+      },
+      {
+        id: "levels",
+        title: "Level design",
+        description: "Spaces, gates, activities, and progression ideas.",
+        section: activeBlueprint.level_design_suggestions,
+      },
+      {
+        id: "quests",
+        title: "Quest hooks",
+        description: "Objectives, rewards, and playable mission seeds.",
+        section: activeBlueprint.quest_hooks,
+      },
+      {
+        id: "unity",
+        title: "Unity preview",
+        description: "Runtime-facing shape prepared for the Unity client.",
+        section: activeBlueprint.unity_runtime_preview,
+      },
+    ];
+  }, [activeBlueprint]);
+
+  const activeSection = reviewSections.find((section) => section.id === activeSectionId) || reviewSections[0];
+  const selectedDocument = documents.find((doc) => doc.id === selectedDocId);
+  const blueprintIsApproved = activeBlueprint?.status === "approved";
+  const blueprintIsMaterialized = Boolean(activeBlueprint?.materialization_manifest);
+  const payload = runtimeBundle || exportData;
+
+  const workflowSteps = [
+    {
+      label: "Source",
+      value: selectedDocument ? selectedDocument.title : "Choose a document",
+      complete: documents.length > 0,
+    },
+    {
+      label: "Blueprint",
+      value: activeBlueprint ? activeBlueprint.title : "Generate plan",
+      complete: Boolean(activeBlueprint),
+    },
+    {
+      label: "Approval",
+      value: activeBlueprint ? statusLabel(activeBlueprint) : "Review first",
+      complete: Boolean(activeBlueprint && (blueprintIsApproved || blueprintIsMaterialized)),
+    },
+    {
+      label: "Runtime",
+      value: blueprintIsMaterialized ? "Unity ready" : "Not materialized",
+      complete: blueprintIsMaterialized,
+    },
+  ];
 
   const handleGenerate = async () => {
     if (!selectedDocId) return;
+
     setIsGenerating(true);
+    setError(null);
+    setSuccess(null);
+    setMaterializeReport(null);
+    setExportData(null);
+    setRuntimeBundle(null);
+
     try {
-      const newBp = await api.generateBlueprint(selectedDocId);
-      setBlueprints((prev) => [newBp, ...prev]);
-      setActiveBlueprint(newBp);
-      // Reload blueprints list
-      const bps = await api.getBlueprints();
-      setBlueprints(bps);
+      const newBlueprint = await api.generateBlueprint(selectedDocId);
+      const existingBlueprints = await api.getBlueprints();
+      setBlueprints(existingBlueprints);
+      setActiveBlueprint(newBlueprint);
+      setActiveSectionId("summary");
+      setSuccess("Blueprint generated. Review the sections before approval.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Generation failed");
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Blueprint generation failed.");
     } finally {
       setIsGenerating(false);
     }
@@ -59,451 +232,460 @@ export default function BlueprintsDashboard() {
 
   const handleApprove = async () => {
     if (!activeBlueprint) return;
+
+    setIsApproving(true);
+    setError(null);
+    setSuccess(null);
+
     try {
       const updated = await api.approveBlueprint(activeBlueprint.id);
       setActiveBlueprint(updated);
-      setBlueprints((prev) => prev.map((bp) => (bp.id === updated.id ? updated : bp)));
-    } catch {
-      alert("Failed to approve blueprint");
-    }
-  };
-
-  const handleExport = async () => {
-    if (!activeBlueprint) return;
-    try {
-      const exp = await api.exportBlueprint(activeBlueprint.id);
-      setExportData(exp);
-      setShowExportModal(true);
-    } catch {
-      alert("Failed to export blueprint");
+      setBlueprints((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setSuccess("Blueprint approved. It can now be materialized into runtime data.");
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Could not approve blueprint.");
+    } finally {
+      setIsApproving(false);
     }
   };
 
   const handleMaterialize = async () => {
     if (!activeBlueprint) return;
+
     setIsMaterializing(true);
+    setError(null);
+    setSuccess(null);
     setMaterializeReport(null);
+
     try {
       const report = await api.materializeBlueprint(activeBlueprint.id);
+      const existingBlueprints = await api.getBlueprints();
+      const updated = existingBlueprints.find((item) => item.id === activeBlueprint.id) || activeBlueprint;
       setMaterializeReport(report);
-      
-      // Refresh blueprints to get updated manifest
-      const bps = await api.getBlueprints();
-      setBlueprints(bps);
-      const updated = bps.find((bp) => bp.id === activeBlueprint.id);
-      if (updated) {
-        setActiveBlueprint(updated);
-      }
+      setBlueprints(existingBlueprints);
+      setActiveBlueprint(updated);
+      setSuccess("Runtime data materialized. Unity can now fetch the runtime bundle.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Materialization failed");
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Materialization failed.");
     } finally {
       setIsMaterializing(false);
     }
   };
 
-  const handleFetchBundle = async () => {
+  const handleExport = async () => {
     if (!activeBlueprint) return;
+
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const exported = await api.exportBlueprint(activeBlueprint.id);
+      setExportData(exported);
+      setRuntimeBundle(null);
+    } catch (err) {
+      console.error(err);
+      setError("Could not create Unity export payload.");
+    }
+  };
+
+  const handleRuntimeBundle = async () => {
+    if (!activeBlueprint) return;
+
+    setError(null);
+    setSuccess(null);
+
     try {
       const bundle = await api.getBlueprintRuntimeBundle(activeBlueprint.id);
       setRuntimeBundle(bundle);
-      setShowBundleModal(true);
-    } catch {
-      alert("Failed to fetch runtime bundle");
+      setExportData(null);
+    } catch (err) {
+      console.error(err);
+      setError("Could not fetch runtime bundle.");
     }
   };
 
-  const tabs = [
-    { id: "summary", label: "Game Summary" },
-    { id: "narrative", label: "Narrative Direction" },
-    { id: "art", label: "Art Style Direction" },
-    { id: "npcs", label: "NPC Archetypes" },
-    { id: "memory", label: "NPC Memory Design" },
-    { id: "levels", label: "Level Suggestions" },
-    { id: "quests", label: "Quest Hooks" },
-    { id: "unity", label: "Unity Runtime Preview" }
-  ];
-
-  const getSectionData = (tabId: string) => {
-    if (!activeBlueprint) return null;
-    switch (tabId) {
-      case "summary": return activeBlueprint.summary;
-      case "narrative": return activeBlueprint.narrative_direction;
-      case "art": return activeBlueprint.art_style_direction;
-      case "npcs": return activeBlueprint.npc_archetypes;
-      case "memory": return activeBlueprint.npc_memory_design;
-      case "levels": return activeBlueprint.level_design_suggestions;
-      case "quests": return activeBlueprint.quest_hooks;
-      case "unity": return activeBlueprint.unity_runtime_preview;
-      default: return null;
-    }
+  const handleCopyPayload = async () => {
+    if (!payload) return;
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setSuccess("Payload copied to clipboard.");
   };
-
-  const activeSection = getSectionData(activeTab);
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-8 animate-fade-in">
-      
-      {/* Title Header */}
-      <div className="space-y-1.5 border-b border-[#262626] pb-4">
-        <h2 className="text-base font-bold text-[#fafafa] tracking-tight">
-          Game Blueprint Studio
-        </h2>
-        <p className="text-xs text-[#a1a1aa] font-medium leading-relaxed">
-          Select a Game Design Document to analyze. Generate standard blueprint models, review source citations, track template warnings, and export runtime payloads for Unity.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
-        {/* Left Control Panel: Select and Generate */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="rounded border border-[#262626] bg-[#111111] p-5 space-y-5">
-            <span className="text-xs font-semibold text-[#fafafa] block border-b border-[#262626] pb-3">
-              GDD Document Index
-            </span>
-            
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase font-mono text-slate-500 tracking-wider">Select Source GDD</label>
-              {documents.length === 0 ? (
-                <p className="text-xs text-[#a1a1aa] italic">No GDD documents uploaded yet.</p>
-              ) : (
-                <select
-                  value={selectedDocId}
-                  onChange={(e) => setSelectedDocId(e.target.value)}
-                  className="w-full bg-[#0a0a0a] border border-[#262626] rounded px-3 py-2 text-xs text-[#fafafa] focus:outline-none focus:border-amber-500 transition font-mono"
-                >
-                  {documents.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      {doc.title}
-                    </option>
-                  ))}
-                </select>
-              )}
+    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+      <section className="space-y-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#7f8b9a]">
+              Blueprint Studio
             </div>
-
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || documents.length === 0}
-              className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-[#262626] disabled:text-slate-500 text-black font-semibold rounded py-2 text-xs transition duration-200 uppercase tracking-wider font-mono shadow"
-            >
-              {isGenerating ? "Analyzing GDD..." : "Generate Blueprint"}
-            </button>
+            <div className="space-y-3">
+              <h1 className="text-3xl font-semibold tracking-tight text-[#f5f7fa]">
+                Turn a GDD into runtime-ready game systems.
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
+                Generate a structured plan for narrative, art direction, NPCs, memory, quests, level ideas, and Unity
+                runtime data. Review it, approve it, then materialize it.
+              </p>
+            </div>
           </div>
 
-          {/* List of existing blueprints */}
-          <div className="rounded border border-[#262626] bg-[#111111] p-5 space-y-3">
-            <span className="text-xs font-semibold text-[#fafafa] block border-b border-[#262626] pb-3">
-              Blueprints List
-            </span>
-            {blueprints.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">No blueprints generated yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                {blueprints.map((bp) => (
-                  <button
-                    key={bp.id}
-                    onClick={() => {
-                      setActiveBlueprint(bp);
-                      setExportData(null);
-                    }}
-                    className={`w-full text-left p-2.5 rounded border text-xs transition font-mono ${
-                      activeBlueprint?.id === bp.id
-                        ? "border-amber-500/50 bg-amber-500/5 text-[#fafafa]"
-                        : "border-[#262626] hover:bg-[#1c1c1c]/50 text-slate-400"
-                    }`}
-                  >
-                    <div className="font-semibold truncate">{bp.title}</div>
-                    <div className="flex justify-between items-center mt-1.5 text-[10px] text-slate-500">
-                      <span>Status: {bp.status.toUpperCase()}</span>
-                      <span>{new Date(bp.created_at).toLocaleDateString()}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/knowledge"
+              className="inline-flex min-h-10 items-center rounded-md border border-[#2f3742] px-4 text-sm font-semibold text-[#dbe2ea] transition hover:border-[#8bdff0]/50 hover:text-[#f5f7fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]/20"
+            >
+              Upload source
+            </Link>
+            {activeBlueprint && !blueprintIsApproved && (
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={isApproving}
+                className="inline-flex min-h-10 items-center rounded-md bg-[#f5f7fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:bg-[#252b34] disabled:text-[#66717f]"
+              >
+                {isApproving ? "Approving" : "Approve blueprint"}
+              </button>
+            )}
+            {activeBlueprint && blueprintIsApproved && (
+              <button
+                type="button"
+                onClick={handleMaterialize}
+                disabled={isMaterializing}
+                className="inline-flex min-h-10 items-center rounded-md bg-[#f5f7fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:bg-[#252b34] disabled:text-[#66717f]"
+              >
+                {isMaterializing ? "Materializing" : "Materialize runtime"}
+              </button>
             )}
           </div>
         </div>
 
-        {/* Right Blueprint Panel: Review, Approve, Export */}
-        <div className="lg:col-span-3 space-y-6">
-          {activeBlueprint ? (
-            <div className="rounded border border-[#262626] bg-[#111111] p-6 space-y-6">
-              
-              {/* Header: Title, Status, Action Buttons */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#262626] pb-4">
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-[#fafafa] font-mono">{activeBlueprint.title}</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-500 font-mono">ID: {activeBlueprint.id}</span>
-                    <span className={`px-2 py-0.5 rounded text-[9px] font-mono uppercase tracking-wide border ${
-                      activeBlueprint.status === "approved"
-                        ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
-                        : "border-amber-500/30 bg-amber-500/5 text-amber-400"
-                    }`}>
-                      {activeBlueprint.status}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  {activeBlueprint.status !== "approved" && (
-                    <button
-                      onClick={handleApprove}
-                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider"
-                    >
-                      Approve Blueprint
-                    </button>
-                  )}
-                  {activeBlueprint.status === "approved" && (
-                    <button
-                      onClick={handleMaterialize}
-                      disabled={isMaterializing}
-                      className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider disabled:opacity-50"
-                    >
-                      {isMaterializing ? "Materializing..." : "Materialize Blueprint"}
-                    </button>
-                  )}
-                  {activeBlueprint.status === "approved" && activeBlueprint.materialization_manifest && (
-                    <button
-                      onClick={handleFetchBundle}
-                      className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider"
-                    >
-                      Runtime Bundle
-                    </button>
-                  )}
-                  <button
-                    onClick={handleExport}
-                    className="bg-[#fafafa] hover:bg-slate-200 text-black font-semibold px-4 py-1.5 rounded text-xs transition font-mono uppercase tracking-wider shadow"
-                  >
-                    Export to Unity JSON
-                  </button>
-                </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {workflowSteps.map((step, index) => (
+            <div key={step.label} className="rounded-md border border-[#242a32] bg-[#0f1216] p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#7f8b9a]">
+                  {index + 1}. {step.label}
+                </span>
+                <span
+                  className={`h-2 w-2 rounded-full ${step.complete ? "bg-emerald-300" : "bg-[#3a424d]"}`}
+                  aria-hidden="true"
+                />
               </div>
+              <div className="mt-3 truncate text-sm font-semibold text-[#f5f7fa]">{step.value}</div>
+            </div>
+          ))}
+        </div>
 
-              {/* Materialization Report Card */}
-              {materializeReport && (
-                <div className="rounded border border-[#262626] bg-[#161616] p-5 space-y-4 font-mono text-xs animate-fade-in">
-                  <div className="flex items-center justify-between border-b border-[#262626] pb-2">
-                    <span className="font-bold text-amber-400">⚡ Materialization Report</span>
-                    <span className="text-[10px] text-slate-500">Status: {materializeReport.status.toUpperCase()}</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-[9px] text-slate-500 uppercase block">NPCs</span>
-                      <div className="text-[11px] text-slate-300">
-                        Created: <span className="text-emerald-400">{materializeReport.npcs.created.length}</span><br />
-                        Updated: <span className="text-sky-400">{materializeReport.npcs.updated.length}</span><br />
-                        Skipped: <span className="text-amber-400">{materializeReport.npcs.skipped.length}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[9px] text-slate-500 uppercase block">Quests</span>
-                      <div className="text-[11px] text-slate-300">
-                        Created: <span className="text-emerald-400">{materializeReport.quests.created.length}</span><br />
-                        Updated: <span className="text-sky-400">{materializeReport.quests.updated.length}</span><br />
-                        Skipped: <span className="text-amber-400">{materializeReport.quests.skipped.length}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[9px] text-slate-500 uppercase block">Memories</span>
-                      <div className="text-[11px] text-slate-300">
-                        Created: <span className="text-emerald-400">{materializeReport.memories.created.length}</span><br />
-                        Updated: <span className="text-sky-400">{materializeReport.memories.updated.length}</span><br />
-                        Skipped: <span className="text-amber-400">{materializeReport.memories.skipped.length}</span>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[9px] text-slate-500 uppercase block">Flags</span>
-                      <div className="text-[11px] text-slate-300">
-                        Created: <span className="text-emerald-400">{materializeReport.flags.created.length}</span><br />
-                        Updated: <span className="text-sky-400">{materializeReport.flags.updated.length}</span><br />
-                        Skipped: <span className="text-amber-400">{materializeReport.flags.skipped.length}</span>
-                      </div>
-                    </div>
-                  </div>
+        {(error || success) && (
+          <div
+            className={`rounded-md border px-4 py-3 text-sm ${
+              error
+                ? "border-rose-500/25 bg-rose-500/10 text-rose-200"
+                : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+            }`}
+          >
+            {error || success}
+          </div>
+        )}
+      </section>
 
-                  {materializeReport.warnings && materializeReport.warnings.length > 0 && (
-                    <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded text-[11px] text-amber-300 space-y-1.5">
-                      <span className="font-semibold block">Warnings & Safe Skips:</span>
-                      <ul className="list-disc pl-4 space-y-1 text-[10px]">
-                        {materializeReport.warnings.map((w, idx) => (
-                          <li key={idx}>{w}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
+      <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
+        <aside className="space-y-5">
+          <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-5">
+            <h2 className="text-sm font-semibold text-[#f5f7fa]">Create from source</h2>
+            <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
+              Choose the GDD or lore document that best represents this game idea.
+            </p>
 
-              {/* Module Tab Selector */}
-              <div className="flex border-b border-[#262626] overflow-x-auto pb-px">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`whitespace-nowrap px-4 py-2 border-b-2 text-xs font-semibold transition ${
-                      activeTab === tab.id
-                        ? "border-amber-500 text-amber-500"
-                        : "border-transparent text-slate-400 hover:text-[#fafafa]"
-                    }`}
+            <div className="mt-5 space-y-4">
+              {documents.length === 0 ? (
+                <div className="rounded-md border border-[#2f3742] bg-[#090b0e] p-4">
+                  <p className="text-sm font-semibold text-[#f5f7fa]">No documents yet</p>
+                  <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
+                    Upload a GDD before generating a blueprint.
+                  </p>
+                  <Link
+                    href="/knowledge"
+                    className="mt-4 inline-flex min-h-10 items-center rounded-md bg-[#f5f7fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa]"
                   >
-                    {tab.label}
+                    Upload document
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <label className="block text-xs font-semibold text-[#dbe2ea]" htmlFor="source-document">
+                    Source document
+                  </label>
+                  <select
+                    id="source-document"
+                    value={selectedDocId}
+                    onChange={(event) => setSelectedDocId(event.target.value)}
+                    className="min-h-11 w-full rounded-md border border-[#252b34] bg-[#090b0e] px-3 text-sm text-[#f5f7fa] outline-none transition hover:border-[#38414d] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/15"
+                  >
+                    {documents.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {doc.title}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="rounded-md border border-[#242a32] bg-[#090b0e] p-4">
+                    <div className="text-sm font-medium text-[#f5f7fa]">
+                      {selectedDocument?.title || "Selected document"}
+                    </div>
+                    <div className="mt-2 text-sm text-[#9aa5b4]">
+                      {selectedDocument?.chunks_count || 0} searchable chunks
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={isGenerating || !selectedDocId}
+                    className="min-h-11 w-full rounded-md bg-[#f5f7fa] text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:bg-[#252b34] disabled:text-[#66717f]"
+                  >
+                    {isGenerating ? "Generating blueprint" : "Generate blueprint"}
                   </button>
+                </>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+            <div className="border-b border-[#242a32] p-5">
+              <h2 className="text-sm font-semibold text-[#f5f7fa]">Recent blueprints</h2>
+              <p className="mt-1 text-sm text-[#9aa5b4]">Select a plan to review or ship.</p>
+            </div>
+
+            {isLoading ? (
+              <div className="space-y-3 p-4">
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="h-16 animate-pulse rounded-md bg-[#15191f]" />
                 ))}
               </div>
-
-              {/* Tab Content Display */}
-              {activeSection && (
-                <div className="space-y-6">
-                  
-                  {/* Warning notices if any */}
-                  {activeSection.warnings && activeSection.warnings.length > 0 && (
-                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-300 space-y-1">
-                      <div className="font-bold flex items-center gap-1.5">
-                        <span>⚠️ Template Fallback Notice</span>
+            ) : blueprints.length === 0 ? (
+              <div className="p-5 text-sm leading-6 text-[#9aa5b4]">
+                No generated blueprints yet.
+              </div>
+            ) : (
+              <div className="max-h-[28rem] divide-y divide-[#20262e] overflow-y-auto">
+                {blueprints.map((blueprint) => {
+                  const selected = activeBlueprint?.id === blueprint.id;
+                  return (
+                    <button
+                      key={blueprint.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveBlueprint(blueprint);
+                        setActiveSectionId("summary");
+                        setExportData(null);
+                        setRuntimeBundle(null);
+                        setMaterializeReport(null);
+                      }}
+                      className={`block w-full px-5 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0]/20 ${
+                        selected ? "bg-[#15191f]" : "hover:bg-[#121820]"
+                      }`}
+                    >
+                      <div className="truncate text-sm font-semibold text-[#f5f7fa]">{blueprint.title}</div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-xs text-[#7f8b9a]">{formatDate(blueprint.created_at)}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs ${confidenceClass(blueprint.summary.confidence)}`}>
+                          {statusLabel(blueprint)}
+                        </span>
                       </div>
-                      <ul className="list-disc pl-4 space-y-1 mt-1 font-mono text-[11px]">
-                        {activeSection.warnings.map((w: string, idx: number) => (
-                          <li key={idx}>{w}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </aside>
 
-                  {/* Section Metadata Panel (Citations & Confidence) */}
-                  <div className="grid grid-cols-2 gap-4 p-4 rounded border border-[#262626] bg-[#0c0c0c]/80 font-mono text-xs">
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase tracking-wider mb-1">Confidence Rating</span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${
-                        activeSection.confidence === "High"
-                          ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
-                          : activeSection.confidence === "Medium"
-                          ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
-                          : "border-rose-500/30 bg-rose-500/5 text-rose-400"
-                      }`}>
-                        {activeSection.confidence}
-                      </span>
+        <main className="space-y-6">
+          {!activeBlueprint ? (
+            <section className="rounded-md border border-[#242a32] bg-[#0f1216] px-6 py-16 text-center">
+              <h2 className="text-xl font-semibold text-[#f5f7fa]">Generate your first blueprint</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#9aa5b4]">
+                Pick a source document and GameMind will extract a structured game plan ready for review.
+              </p>
+            </section>
+          ) : (
+            <>
+              <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+                <div className="border-b border-[#242a32] px-6 py-5">
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-2xl font-semibold tracking-tight text-[#f5f7fa]">
+                          {activeBlueprint.title}
+                        </h2>
+                        <span className="rounded-full border border-[#2f3742] bg-[#15191f] px-3 py-1 text-xs font-medium text-[#dbe2ea]">
+                          {statusLabel(activeBlueprint)}
+                        </span>
+                      </div>
+                      <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
+                        Review each section. Approval is the boundary between draft generation and runtime data.
+                      </p>
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[9px] uppercase tracking-wider mb-1">Source Citations</span>
-                      <span className="text-[#fafafa] font-semibold">
-                        {activeSection.citations && activeSection.citations.length > 0
-                          ? `${activeSection.citations.length} chunks mapped`
-                          : "None (Generated by Rule fallback)"}
-                      </span>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleExport}
+                        className="min-h-10 rounded-md border border-[#2f3742] px-4 text-sm font-semibold text-[#dbe2ea] transition hover:border-[#8bdff0]/50 hover:text-[#f5f7fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]/20"
+                      >
+                        Export JSON
+                      </button>
+                      {blueprintIsMaterialized && (
+                        <button
+                          type="button"
+                          onClick={handleRuntimeBundle}
+                          className="min-h-10 rounded-md border border-[#2f3742] px-4 text-sm font-semibold text-[#dbe2ea] transition hover:border-[#8bdff0]/50 hover:text-[#f5f7fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]/20"
+                        >
+                          Runtime bundle
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  {/* Core Structured Payload */}
-                  <div className="space-y-4">
-                    <span className="text-[10px] uppercase font-mono text-slate-500 tracking-wider block">Generated Configuration Payload</span>
-                    <pre className="p-4 rounded border border-[#262626] bg-[#090909] text-xs text-amber-500/90 font-mono overflow-auto max-h-[300px] leading-relaxed select-text">
-                      {JSON.stringify(activeSection.content, null, 2)}
-                    </pre>
-                  </div>
-
-                  {/* Citations List if present */}
-                  {activeSection.citations && activeSection.citations.length > 0 && (
-                    <div className="space-y-2">
-                      <span className="text-[10px] uppercase font-mono text-slate-500 tracking-wider block">Source Chunk ID Registers</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {activeSection.citations.map((c: string, idx: number) => (
-                          <span key={idx} className="bg-[#1c1c1c] text-slate-400 border border-[#262626] rounded px-2 py-0.5 font-mono text-[9px]">
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                 </div>
+
+                <div className="grid lg:grid-cols-[260px_1fr]">
+                  <nav className="border-b border-[#242a32] p-4 lg:border-b-0 lg:border-r">
+                    <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+                      {reviewSections.map((section) => {
+                        const selected = activeSection?.id === section.id;
+                        return (
+                          <button
+                            key={section.id}
+                            type="button"
+                            onClick={() => setActiveSectionId(section.id)}
+                            className={`rounded-md px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0]/20 ${
+                              selected ? "bg-[#1c222a] text-[#f5f7fa]" : "text-[#9aa5b4] hover:bg-[#15191f] hover:text-[#f5f7fa]"
+                            }`}
+                          >
+                            <div className="text-sm font-semibold">{section.title}</div>
+                            <div className="mt-1 line-clamp-2 text-xs leading-5 text-[#7f8b9a]">
+                              {section.description}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </nav>
+
+                  {activeSection && (
+                    <article className="space-y-6 p-6">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-semibold text-[#f5f7fa]">{activeSection.title}</h3>
+                          <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">{activeSection.description}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <span className={`rounded-full border px-3 py-1 text-xs ${confidenceClass(activeSection.section.confidence)}`}>
+                            {activeSection.section.confidence} confidence
+                          </span>
+                          <span className="rounded-full border border-[#2f3742] bg-[#15191f] px-3 py-1 text-xs text-[#aab4c0]">
+                            {activeSection.section.citations.length} citations
+                          </span>
+                        </div>
+                      </div>
+
+                      {activeSection.section.warnings.length > 0 && (
+                        <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                          <div className="text-sm font-semibold text-amber-200">Source detail needed</div>
+                          <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-100/90">
+                            {activeSection.section.warnings.map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="grid gap-3">
+                        {sectionPreview(activeSection.section).map(([key, value]) => (
+                          <div key={key} className="rounded-md border border-[#242a32] bg-[#090b0e] p-5">
+                            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#7f8b9a]">
+                              {key.replaceAll("_", " ")}
+                            </div>
+                            <p className="mt-3 text-sm leading-7 text-[#f5f7fa]">{readableValue(value)}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <details className="rounded-md border border-[#242a32] bg-[#090b0e]">
+                        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[#8bdff0] outline-none transition hover:text-[#b7eef7] focus-visible:ring-2 focus-visible:ring-[#8bdff0]/20">
+                          Structured payload
+                        </summary>
+                        <pre className="max-h-80 overflow-auto border-t border-[#242a32] p-4 text-xs leading-5 text-[#aab4c0]">
+                          {JSON.stringify(activeSection.section.content, null, 2)}
+                        </pre>
+                      </details>
+                    </article>
+                  )}
+                </div>
+              </section>
+
+              {materializeReport && (
+                <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-6">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-[#f5f7fa]">Materialization complete</h2>
+                      <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
+                        Runtime records created, updated, or safely skipped from this blueprint.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                      {materializeReport.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                    {[
+                      ["NPCs", materializeReport.npcs],
+                      ["Quests", materializeReport.quests],
+                      ["Memories", materializeReport.memories],
+                      ["World flags", materializeReport.flags],
+                    ].map(([label, report]) => (
+                      <div key={label as string} className="rounded-md border border-[#242a32] bg-[#090b0e] p-4">
+                        <div className="text-sm font-semibold text-[#f5f7fa]">{label as string}</div>
+                        <div className="mt-2 text-2xl font-semibold text-[#f5f7fa]">
+                          {reportCount(report as MaterializationReportResponse["npcs"])}
+                        </div>
+                        <div className="mt-1 text-xs text-[#7f8b9a]">runtime operations</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
 
-            </div>
-          ) : (
-            <div className="rounded border border-[#262626] bg-[#111111] p-12 text-center text-slate-500 italic text-xs font-mono">
-              Select or generate a blueprint to start.
-            </div>
+              {payload && (
+                <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+                  <div className="flex flex-col gap-4 border-b border-[#242a32] p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#f5f7fa]">
+                        {runtimeBundle ? "Runtime bundle" : "Export payload"}
+                      </h2>
+                      <p className="mt-1 text-sm text-[#9aa5b4]">Use this only when inspecting the Unity contract.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyPayload}
+                      className="min-h-10 rounded-md bg-[#f5f7fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa]"
+                    >
+                      Copy payload
+                    </button>
+                  </div>
+                  <pre className="max-h-96 overflow-auto p-5 text-xs leading-5 text-[#aab4c0]">
+                    {JSON.stringify(payload, null, 2)}
+                  </pre>
+                </section>
+              )}
+            </>
           )}
-        </div>
-
-      </div>
-
-      {/* Export Modal Display */}
-      {showExportModal && exportData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-[#111111] border border-[#262626] rounded-lg shadow-2xl p-6 space-y-4 animate-scale-in">
-            <div className="flex justify-between items-center border-b border-[#262626] pb-3">
-              <span className="text-xs font-bold text-[#fafafa] font-mono">Unity Runtime Config Export Payload</span>
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="text-slate-500 hover:text-[#fafafa] text-xs font-mono"
-              >
-                CLOSE
-              </button>
-            </div>
-            
-            <p className="text-[11px] text-slate-400 font-medium">
-              Copy this flat JSON configuration schema to seed your Unity dialogue profiles, quest databases, and level variables.
-            </p>
-
-            <pre className="p-4 rounded border border-[#262626] bg-[#070707] text-xs text-emerald-400/90 font-mono overflow-auto max-h-[350px] leading-relaxed select-all">
-              {JSON.stringify(exportData, null, 2)}
-            </pre>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-                  alert("Copied to clipboard!");
-                }}
-                className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded text-xs transition font-mono uppercase tracking-wider"
-              >
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Runtime Bundle Modal */}
-      {showBundleModal && runtimeBundle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-[#111111] border border-[#262626] rounded-lg shadow-2xl p-6 space-y-4 animate-scale-in">
-            <div className="flex justify-between items-center border-b border-[#262626] pb-3">
-              <span className="text-xs font-bold text-[#fafafa] font-mono">Unity Runtime Bundle Config</span>
-              <button
-                onClick={() => setShowBundleModal(false)}
-                className="text-slate-500 hover:text-[#fafafa] text-xs font-mono"
-              >
-                CLOSE
-              </button>
-            </div>
-            
-            <p className="text-[11px] text-slate-400 font-medium">
-              This bundle contains the active database state of all entities materialized under this blueprint.
-            </p>
-
-            <pre className="p-4 rounded border border-[#262626] bg-[#070707] text-xs text-sky-400/90 font-mono overflow-auto max-h-[350px] leading-relaxed select-all">
-              {JSON.stringify(runtimeBundle, null, 2)}
-            </pre>
-
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(runtimeBundle, null, 2));
-                  alert("Copied to clipboard!");
-                }}
-                className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-4 py-2 rounded text-xs transition font-mono uppercase tracking-wider"
-              >
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+        </main>
+      </section>
     </div>
   );
 }

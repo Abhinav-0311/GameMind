@@ -4,7 +4,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 export const metadata: Metadata = {
   title: "GameMind Workspace",
-  description: "Internal AAA game narrative development platform.",
+  description: "Game design co-pilot for GDD analysis, blueprint generation, and Unity runtime testing.",
 };
 
 export default function RootLayout({
