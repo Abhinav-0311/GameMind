@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.quest import Quest, QuestObjective, QuestProgress
 from app.models.world_state import WorldStateFlag
 from app.services.llm.factory import get_llm_provider
+from app.config import settings
 from app.services.telemetry_service import TelemetryService
 from app.services.graph_cache import graph_cache
 
@@ -274,7 +275,7 @@ class HintEngine:
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_output_tokens=200,
-                model_name="gemini-1.5-flash"
+                model_name=settings.LOCAL_MODEL_NAME
             )
             # Clean brackets that mock provider might return
             hint_text = response_text

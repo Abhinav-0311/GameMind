@@ -64,7 +64,7 @@ def test_conversation_persistence_lifecycle(db):
     from unittest.mock import patch
     with patch("app.api.v1.dialogue.settings") as mock_settings:
         mock_settings.LLM_PROVIDER = "mock"
-        mock_settings.GEMINI_MODEL = "mock-model"
+        mock_settings.LOCAL_MODEL_NAME = "mock-model"
         
         chat_response = client.post("/api/v1/dialogue/chat", json=chat_payload)
         assert chat_response.status_code == 200
@@ -98,7 +98,7 @@ def test_conversation_persistence_lifecycle(db):
     }
     with patch("app.api.v1.dialogue.settings") as mock_settings:
         mock_settings.LLM_PROVIDER = "mock"
-        mock_settings.GEMINI_MODEL = "mock-model"
+        mock_settings.LOCAL_MODEL_NAME = "mock-model"
         
         second_response = client.post("/api/v1/dialogue/chat", json=second_chat_payload)
         assert second_response.status_code == 200

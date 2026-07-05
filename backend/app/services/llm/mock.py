@@ -2,6 +2,8 @@ import re
 from app.services.llm.base import LLMProvider
 
 class MockLLMProvider(LLMProvider):
+    provider_name = "local_mock"
+
     async def generate_response(
         self, 
         system_prompt: str, 
@@ -46,7 +48,7 @@ class MockLLMProvider(LLMProvider):
         else:
             mock_response += "No lore context was provided for this query.\n"
 
-        mock_response += f"\nYou asked:\n\"{user_prompt}\"\n\n(Mock response generated without Gemini using {model_name}.)"
+        mock_response += f"\nYou asked:\n\"{user_prompt}\"\n\n(Local demo response generated using {model_name}.)"
         
         telemetry = {
             "latency_ms": 100,

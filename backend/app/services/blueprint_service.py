@@ -10,6 +10,35 @@ from app.models.blueprint import GameBlueprint
 logger = logging.getLogger(__name__)
 
 class BlueprintService:
+    def _clean_markdown(self, text: str) -> str:
+        text = text.strip()
+        text = re.sub(r"^\s*[-*]\s*", "", text)
+        text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+        text = re.sub(r"^#+\s*", "", text)
+        return text.strip()
+
+    def _clean_title(self, text: str) -> str:
+        text = self._clean_markdown(text)
+        text = re.sub(r"^(NPC|Quest Hook\s*\d*)\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"[^A-Za-z0-9\s'-]", "", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _iter_chunk_lines(self, chunks: List[DocumentChunk]):
+        for chunk in chunks:
+            for line in chunk.content.split("\n"):
+                cleaned = self._clean_markdown(line)
+                if cleaned:
+                    yield chunk, cleaned
+
+    def _objective_to_title(self, objective: str, fallback_index: int) -> str:
+        objective = self._clean_markdown(objective)
+        objective = re.sub(r"^Objective:\s*", "", objective, flags=re.IGNORECASE)
+        objective = re.split(r"\bPlayers\b|\bReward:\b|\.", objective, maxsplit=1, flags=re.IGNORECASE)[0]
+        objective = self._clean_title(objective)
+        if not objective:
+            return f"Quest Hook {fallback_index + 1}"
+        return objective[:80]
+
     def generate_blueprint_from_gdd(self, db: Session, document_id: UUID, game_project_id: str) -> GameBlueprint:
         # 1. Enforce document ownership by game_project_id
         doc = db.query(Document).filter(
@@ -172,20 +201,31 @@ class BlueprintService:
         warnings = []
         confidence = "Low"
 
-        # Look for character names/NPC profiles
         found_npcs = []
-        for chunk in chunks:
-            # Look for specific names from sample GDD or NPC references
-            matches = re.findall(r"(eldrin|ignis|kaelen|archmage|warlord|commander)", chunk.content, re.IGNORECASE)
-            if matches:
+        seen_names = set()
+        for chunk, line in self._iter_chunk_lines(chunks):
+            npc_match = re.match(r"^NPC\s+([^:]+):\s*(.+)$", line, re.IGNORECASE)
+            if not npc_match:
+                continue
+
+            raw_name = self._clean_title(npc_match.group(1))
+            description = self._clean_markdown(npc_match.group(2))
+            if not raw_name or raw_name.lower() in seen_names:
+                continue
+
+            seen_names.add(raw_name.lower())
+            archetype = description.split(".")[0].strip() or "Character profile"
+            found_npcs.append({
+                "name": raw_name,
+                "archetype": archetype,
+                "dialogue_style": description
+            })
+
+            if str(chunk.id) not in citations:
                 citations.append(str(chunk.id))
-                # Try to extract description lines
-                for line in chunk.content.split("\n"):
-                    if any(name in line.lower() for name in ["eldrin", "ignis", "kaelen"]):
-                        found_npcs.append(line.strip())
 
         if found_npcs:
-            content["npcs"] = [{"name": line.split(":")[0] if ":" in line else line[:20], "archetype": "Extracted profile", "dialogue_style": line} for line in found_npcs[:3]]
+            content["npcs"] = found_npcs[:5]
             confidence = "High"
         else:
             warnings.append("No explicit NPC archetypes or character files detected in GDD.")
@@ -264,20 +304,51 @@ class BlueprintService:
         warnings = []
         confidence = "Low"
 
-        found_objectives = []
-        for chunk in chunks:
-            if re.search(r"(quest|mission|task|objective|reward|gold|xp)", chunk.content, re.IGNORECASE):
-                citations.append(str(chunk.id))
-                # Search for specific goals
-                for line in chunk.content.split("\n"):
-                    if any(kw in line.lower() for kw in ["objective", "reward", "reclaim", "fight"]):
-                        found_objectives.append(line.strip())
+        found_quests = []
+        seen_titles = set()
+        seen_objectives = set()
+        for chunk, line in self._iter_chunk_lines(chunks):
+            quest_match = re.match(
+                r"^(?:Quest Hook\s*(\d+)|Quest\s*(\d+))\s*:\s*(.+)$",
+                line,
+                re.IGNORECASE
+            )
+            if not quest_match:
+                continue
 
-        if found_objectives:
-            content["quests"] = [
-                {"id": f"q_{idx}", "title": "Reclaim Frostpeak Questline", "objective": line}
-                for idx, line in enumerate(found_objectives[:3])
-            ]
+            quest_body = quest_match.group(3).strip()
+            objective_match = re.search(
+                r"Objective:\s*(.*?)(?:\s*Reward:\s*(.*))?$",
+                quest_body,
+                re.IGNORECASE
+            )
+            objective = self._clean_markdown(objective_match.group(1).strip()) if objective_match else quest_body
+            reward = self._clean_markdown(objective_match.group(2).strip()) if objective_match and objective_match.group(2) else ""
+            objective_key = re.sub(r"\s+", " ", objective.lower()).strip()
+            if objective_key in seen_objectives:
+                continue
+            seen_objectives.add(objective_key)
+
+            title = self._objective_to_title(objective, len(found_quests))
+            base_title = title
+            duplicate_index = 2
+            while title.lower() in seen_titles:
+                title = f"{base_title} {duplicate_index}"
+                duplicate_index += 1
+            seen_titles.add(title.lower())
+
+            found_quests.append({
+                "id": f"q_{len(found_quests)}",
+                "title": title,
+                "objective": objective,
+                "reward": reward
+            })
+
+            if str(chunk.id) not in citations:
+                citations.append(str(chunk.id))
+
+        if found_quests:
+            content["quests"] = found_quests[:5]
             confidence = "High"
         else:
             warnings.append("No quest chains or reward metrics defined in GDD.")

@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas import DocumentResponse, DocumentDetailResponse
 from app.models.document import Document, DocumentChunk
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.dependencies import get_game_project_id
 import uuid
@@ -12,8 +11,7 @@ from typing import List
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 def get_rag_service():
-    gemini = GeminiService()
-    return RAGService(gemini)
+    return RAGService()
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 

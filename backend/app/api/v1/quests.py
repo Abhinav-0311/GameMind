@@ -12,7 +12,6 @@ from app.schemas import (
     QuestGeneratedResponse
 )
 from app.dependencies import get_game_project_id, get_player_id
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.services.memory_service import MemoryService
 from app.services.dynamic_quest_generator import DynamicQuestGenerator
@@ -246,9 +245,8 @@ def update_quest_progress(
                 NPCProfile.deleted_at.is_(None)
             ).first()
             if npc:
-                gemini = GeminiService()
-                rag = RAGService(gemini)
-                mem_service = MemoryService(gemini, rag)
+                rag = RAGService()
+                mem_service = MemoryService(rag)
                 
                 memory_text = f"Player successfully completed quest: {quest.title}"
                 metadata = {
@@ -416,4 +414,3 @@ def get_generated_quests(
         }
         for q in quests
     ]
-

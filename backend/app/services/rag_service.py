@@ -1,49 +1,67 @@
 import io
 import uuid
 import logging
+import threading
 from sqlalchemy.orm import Session
 from pypdf import PdfReader
 import chromadb
 from app.config import settings
 from app.models.document import Document, DocumentChunk
-from app.services.gemini_service import GeminiService
 
 logger = logging.getLogger(__name__)
 
 class RAGService:
-    def __init__(self, gemini_service: GeminiService):
-        self.gemini_service = gemini_service
+    _chroma_client = None
+    _collection = None
+    _init_lock = threading.Lock()
+
+    def __init__(self):
         self.chroma_client = None
         self.collection = None
+        self.collection_name = "lore_chunks_local"
         self._init_chroma()
 
     def _init_chroma(self):
-        """Initialize ChromaDB client and retrieve/create the lore collection with Cosine distance."""
-        self.collection_name = "lore_chunks" if self.gemini_service.is_available() else "lore_chunks_local"
-        try:
-            # Connect to Chrome running in Docker or local instance
-            self.chroma_client = chromadb.HttpClient(
-                host=settings.CHROMA_HOST, 
-                port=settings.CHROMA_PORT
-            )
-            # Create collection with Cosine distance space
-            self.collection = self.chroma_client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine"}
-            )
-            logger.info(f"Successfully connected to ChromaDB server. Collection: {self.collection_name}")
-        except Exception as e:
-            logger.error(f"Failed to connect to ChromaDB server: {e}. Attempting local persistent client...")
+        """Initialize ChromaDB client and retrieve/create the local lore collection with Cosine distance."""
+        if RAGService._chroma_client is not None and RAGService._collection is not None:
+            self.chroma_client = RAGService._chroma_client
+            self.collection = RAGService._collection
+            return
+
+        with RAGService._init_lock:
+            if RAGService._chroma_client is not None and RAGService._collection is not None:
+                self.chroma_client = RAGService._chroma_client
+                self.collection = RAGService._collection
+                return
+
             try:
-                # Fallback for local dev/testing outside Docker
-                self.chroma_client = chromadb.PersistentClient(path="./chroma_db_local")
-                self.collection = self.chroma_client.get_or_create_collection(
+                chroma_client = chromadb.HttpClient(
+                    host=settings.CHROMA_HOST,
+                    port=settings.CHROMA_PORT
+                )
+                collection = chroma_client.get_or_create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"}
                 )
-                logger.info(f"ChromaDB local persistent fallback initialized. Collection: {self.collection_name}")
-            except Exception as le:
-                logger.critical(f"ChromaDB completely unavailable: {le}")
+                logger.info(f"Successfully connected to ChromaDB server. Collection: {self.collection_name}")
+            except Exception as e:
+                logger.error(f"Failed to connect to ChromaDB server: {e}. Attempting local persistent client...")
+                try:
+                    # Fallback for local dev/testing outside Docker
+                    chroma_client = chromadb.PersistentClient(path="./chroma_db_local")
+                    collection = chroma_client.get_or_create_collection(
+                        name=self.collection_name,
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    logger.info(f"ChromaDB local persistent fallback initialized. Collection: {self.collection_name}")
+                except Exception as le:
+                    logger.critical(f"ChromaDB completely unavailable: {le}")
+                    return
+
+            RAGService._chroma_client = chroma_client
+            RAGService._collection = collection
+            self.chroma_client = chroma_client
+            self.collection = collection
 
 
     def extract_text(self, file_bytes: bytes, file_name: str, content_type: str) -> str:
@@ -167,37 +185,11 @@ class RAGService:
                 "game_project_id": game_project_id
             })
 
-        # 5. Generate embeddings using Gemini API or fallback to local
-        if not self.gemini_service.is_available():
-            # If Gemini is unavailable, insert to local collection without embeddings (using Chroma's server-side generation)
-            if self.collection:
-                try:
-                    self.collection.add(
-                        ids=chroma_ids,
-                        documents=chroma_texts,
-                        metadatas=chroma_metadatas
-                    )
-                except Exception as e:
-                    db.rollback()
-                    logger.error(f"Failed to write to ChromaDB local collection. Transaction rolled back: {e}")
-                    raise e
-            db.commit()
-            db.refresh(db_doc)
-            return db_doc
-
-        try:
-            embeddings = self.gemini_service.generate_batch_embeddings(chroma_texts)
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Failed to generate embeddings. Transaction rolled back: {e}")
-            raise e
-
-        # 6. Save in Vector DB (ChromaDB)
+        # 5. Save in Vector DB using Chroma's local text embedding path.
         if self.collection:
             try:
                 self.collection.add(
                     ids=chroma_ids,
-                    embeddings=embeddings,
                     documents=chroma_texts,
                     metadatas=chroma_metadatas
                 )
@@ -224,19 +216,11 @@ class RAGService:
                     return []
                 n_results = min(limit, int(collection_count))
             
-            if self.gemini_service.is_available():
-                query_embedding = self.gemini_service.generate_embedding(query_text)
-                results = self.collection.query(
-                    query_embeddings=[query_embedding],
-                    n_results=n_results,
-                    where={"game_project_id": game_project_id}
-                )
-            else:
-                results = self.collection.query(
-                    query_texts=[query_text],
-                    n_results=n_results,
-                    where={"game_project_id": game_project_id}
-                )
+            results = self.collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                where={"game_project_id": game_project_id}
+            )
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")
             raise e

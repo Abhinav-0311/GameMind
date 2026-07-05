@@ -180,13 +180,11 @@ class DialogueService:
             continuity_str = "No recent continuity references detected."
 
         # Retrieve matching NPC memories (dynamic episodic experiences)
-        from app.services.gemini_service import GeminiService
         from app.services.rag_service import RAGService
         from app.services.memory_service import MemoryService
         
-        gemini = GeminiService()
-        rag = RAGService(gemini)
-        mem_service = MemoryService(gemini, rag)
+        rag = RAGService()
+        mem_service = MemoryService(rag)
         retrieved_memories = mem_service.retrieve_memories(db, npc.id, player_msg, limit=5, player_id=player_id, game_project_id=game_project_id)
 
         # Retrieve relationship details
@@ -421,4 +419,3 @@ class DialogueService:
             return "Distrusted"
         else:
             return "Neutral"
-

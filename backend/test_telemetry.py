@@ -48,7 +48,7 @@ def test_telemetry_recording_on_chat(db, setup_npc):
     assert conv_res.status_code == 201
     conv_id = conv_res.json()["id"]
 
-    # Mock GeminiProvider response and telemetry
+    # Mock provider response and telemetry
     mock_provider = MagicMock()
     async def mock_resp(*args, **kwargs):
         telemetry = {
@@ -99,9 +99,8 @@ def test_telemetry_recording_on_summarization_and_error(db, setup_npc):
     mock_provider.generate_response.side_effect = mock_resp_err
 
     # Explicitly run summarization background task and check error logging
-    gemini_mock = MagicMock()
     rag_mock = MagicMock()
-    mem_service = MemoryService(gemini_mock, rag_mock)
+    mem_service = MemoryService(rag_mock)
     
     # We populate messages to ensure we have something to summarize
     for i in range(12):
@@ -137,8 +136,8 @@ def test_analytics_endpoints(db, setup_npc):
         conversation_id=None,
         action_type="dialogue",
         npc_slug=setup_npc.slug,
-        model_used="gemini-1.5-flash",
-        llm_provider="gemini",
+        model_used="local-rule-engine",
+        llm_provider="local_mock",
         latency_ms=150,
         input_tokens=100,
         output_tokens=50,
@@ -150,8 +149,8 @@ def test_analytics_endpoints(db, setup_npc):
         conversation_id=None,
         action_type="summarization",
         npc_slug=setup_npc.slug,
-        model_used="gemini-1.5-pro",
-        llm_provider="gemini",
+        model_used="local-rule-engine",
+        llm_provider="local_mock",
         latency_ms=800,
         input_tokens=1000,
         output_tokens=200,

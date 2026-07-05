@@ -93,8 +93,8 @@ Expected local demo mode:
   "status": "healthy",
   "database": "healthy",
   "chromadb": "healthy",
-  "gemini_api": "not_configured",
   "ai_mode": "local_demo",
+  "llm_provider": "mock",
   "embedding_provider": "chroma_default",
   "vector_collection": "lore_chunks_local",
   "vector_dimension": 384
@@ -114,4 +114,4 @@ Expected local demo mode:
 
 Local development runs migrations automatically in the backend container. Production deployments should run `alembic upgrade head` as a separate migration job before application replicas start.
 
-Gemini/cloud model integrations are optional. The main demo path is intentionally provider-agnostic and works without paid API usage.
+The main demo path is intentionally local-first and works without paid API usage. Future hosted model integrations, such as NVIDIA API support, should be added through the provider interface without changing the dashboard workflow.

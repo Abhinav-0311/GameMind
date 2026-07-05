@@ -182,7 +182,7 @@ def test_summarization_failure_resiliency(db):
     # Mock provider to raise exception during background execution
     mock_provider = MagicMock()
     async def mock_fail(*args, **kwargs):
-        raise Exception("Gemini Rate Limit Exceeded")
+        raise Exception("Provider Rate Limit Exceeded")
     mock_provider.generate_response.side_effect = mock_fail
 
     with patch("app.services.llm.factory.get_llm_provider", return_value=mock_provider):
@@ -199,7 +199,7 @@ def test_summarization_failure_resiliency(db):
             
             # The 5th turn triggers the background task which raises the exception.
             # In TestClient, this exception propagates back to the caller.
-            with pytest.raises(Exception, match="Gemini Rate Limit Exceeded"):
+            with pytest.raises(Exception, match="Provider Rate Limit Exceeded"):
                 client.post("/api/v1/dialogue/chat", json={
                     "npc_slug": npc_slug,
                     "player_message": "Mage turn 4",
@@ -260,9 +260,8 @@ def test_archive_only_consolidation(db):
         str(mem3.id): [0.0999] * 768  # Extremely close
     }
 
-    gemini = MagicMock()
     rag = MagicMock()
-    mem_service = MemoryService(gemini, rag)
+    mem_service = MemoryService(rag)
     
     mock_collection = MagicMock()
     mock_collection.get.return_value = {

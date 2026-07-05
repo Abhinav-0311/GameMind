@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from app.services.rag_service import RAGService
-from app.services.gemini_service import GeminiService
 from app.models.document import Document
 from app.models.blueprint import GameBlueprint
 import uuid
@@ -12,8 +11,7 @@ client = TestClient(app)
 @pytest.fixture
 def uploaded_document(db_session):
     """Fixture to upload a sample GDD document for testing."""
-    gemini = GeminiService()
-    rag = RAGService(gemini)
+    rag = RAGService()
     
     file_name = f"gdd_test_{uuid.uuid4().hex[:6]}.txt"
     file_bytes = (
@@ -137,3 +135,33 @@ def test_missing_input_warnings_and_citations(uploaded_document):
     assert data["npc_memory_design"]["confidence"] == "Low"
     assert len(data["npc_memory_design"]["warnings"]) > 0
     assert "No key event memory configurations" in data["npc_memory_design"]["warnings"][0]
+
+def test_blueprint_extracts_only_explicit_npc_profiles(uploaded_document):
+    """NPC extraction must not turn general lore prose into fake NPC records."""
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"}
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    npcs = data["npc_archetypes"]["content"]["npcs"]
+    assert len(npcs) == 1
+    assert npcs[0]["name"] == "Eldrin"
+    assert "wise old librarian archmage" in npcs[0]["dialogue_style"]
+
+def test_blueprint_generates_distinct_quest_titles(uploaded_document):
+    """Quest titles should be derived from objectives instead of duplicate generic names."""
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"}
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    quests = data["quest_hooks"]["content"]["quests"]
+    titles = [quest["title"] for quest in quests]
+    assert titles == ["Reclaim Ash Pass"]
+    assert len(titles) == len(set(titles))

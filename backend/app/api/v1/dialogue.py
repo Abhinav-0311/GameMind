@@ -9,7 +9,7 @@ from app.schemas import (
     DialogueChatResponse
 )
 from app.services.dialogue_service import DialogueService
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_llm_provider, get_provider_name
 from app.config import settings
 from app.dependencies import get_game_project_id, get_player_id
 
@@ -89,7 +89,7 @@ async def chat_dialogue(
         provider = get_llm_provider()
         
         # 3. Determine model to use
-        model_name = request.model_override or settings.GEMINI_MODEL
+        model_name = request.model_override or settings.LOCAL_MODEL_NAME
         
         # 4. Construct the full system context (system prompt, NPC attributes, retrieved context)
         full_system_context = (
@@ -109,7 +109,7 @@ async def chat_dialogue(
         )
         
         # Record LLM call telemetry in database
-        provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+        provider_type = get_provider_name(provider)
         from app.services.telemetry_service import TelemetryService
         TelemetryService.record_log(
             db=db,
@@ -158,13 +158,11 @@ async def chat_dialogue(
             unsummarized_chars = sum(len(msg.content) for msg in unsummarized)
             
             if unsummarized_count >= 10 or unsummarized_chars >= 6000:
-                from app.services.gemini_service import GeminiService
                 from app.services.rag_service import RAGService
                 from app.services.memory_service import MemoryService
                 
-                gemini = GeminiService()
-                rag = RAGService(gemini)
-                mem_service = MemoryService(gemini, rag)
+                rag = RAGService()
+                mem_service = MemoryService(rag)
                 
                 background_tasks.add_task(
                     mem_service.run_summarization_and_promotion,
@@ -177,13 +175,12 @@ async def chat_dialogue(
         if telemetry.get("error"):
             all_warnings.append(f"LLM Provider Error: {telemetry['error']}")
             
-        provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+        provider_type = get_provider_name(provider)
 
         # Resolve animations and emotions via Presentation Service
         from app.services.emotion_engine import EmotionEngine
         from app.services.runtime_presentation_service import RuntimePresentationService
         from app.models.npc import NPCProfile
-        from app.services.gemini_service import GeminiService
         from app.services.rag_service import RAGService
         
         # 1. Fetch current emotional state
@@ -203,8 +200,7 @@ async def chat_dialogue(
         suggested_anim = RuntimePresentationService.resolve_animation(dominant, animation_hints)
         
         # 4. Resolve citations
-        gemini = GeminiService()
-        rag_service = RAGService(gemini)
+        rag_service = RAGService()
         citations = RuntimePresentationService.resolve_citations(
             assembled.retrieved_chunks,
             request.player_message,

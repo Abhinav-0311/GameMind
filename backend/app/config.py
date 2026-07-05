@@ -12,9 +12,8 @@ class Settings(BaseSettings):
     CHROMA_PORT: int = 8000
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    GEMINI_API_KEY: str = ""
     LLM_PROVIDER: str = "mock"
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    LOCAL_MODEL_NAME: str = "local-rule-engine"
 
     model_config = SettingsConfigDict(
         env_file=str(env_path),
@@ -22,4 +21,3 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
-
