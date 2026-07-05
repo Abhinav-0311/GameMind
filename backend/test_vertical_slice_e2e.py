@@ -142,6 +142,38 @@ def test_gate_c_citation_generation(db):
     assert citation["similarity"] >= 0.0
 
 
+def test_dialogue_chat_auto_retrieves_lore_context(db):
+    """Verify chat auto-runs RAG when selected_chunk_ids are omitted."""
+    project_id = f"proj_auto_rag_{uuid.uuid4().hex[:6]}"
+    headers = {"X-Game-Project-ID": project_id}
+
+    npc_slug = "auto-scholar"
+    client.post("/api/v1/npcs", headers=headers, json={
+        "slug": npc_slug,
+        "name": "Auto Scholar",
+        "personality_summary": "A scholar who answers only from grounded lore."
+    })
+
+    upload = client.post("/api/v1/documents/upload", headers=headers, files={
+        "file": (
+            "arven.txt",
+            b"King Arven restored Frostpeak after the Ember Siege and led the Northern resistance.",
+            "text/plain",
+        )
+    })
+    assert upload.status_code == 201
+
+    response = client.post("/api/v1/dialogue/chat", headers=headers, json={
+        "npc_slug": npc_slug,
+        "player_message": "Who is King Arven?"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["citations"]
+    assert "No lore context was provided" not in data["response_text"]
+
+
 def test_gate_d_quest_generation(db):
     """Gate D: Verify dynamic quest generator pipelines contextually grounded quests."""
     project_id = f"proj_quest_{uuid.uuid4().hex[:6]}"

@@ -345,6 +345,14 @@ class BlueprintMaterializerService:
                     Quest.id.in_(quest_uuids),
                     Quest.game_project_id == game_project_id
                 ).all()
+                objectives = db.query(QuestObjective).filter(
+                    QuestObjective.quest_id.in_([quest.id for quest in quests])
+                ).order_by(QuestObjective.objective_index).all()
+                objectives_by_quest = {}
+                for objective in objectives:
+                    objectives_by_quest.setdefault(objective.quest_id, []).append(objective)
+                for quest in quests:
+                    quest.objectives = objectives_by_quest.get(quest.id, [])
 
         memories = []
         if manifest.get("memory_ids"):
