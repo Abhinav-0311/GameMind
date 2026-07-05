@@ -1,11 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+}
+
+interface NavigationItem {
+  name: string;
+  href: string;
+  section: "Build" | "Runtime";
+  icon: React.ReactNode;
 }
 
 interface CommandItem {
@@ -16,286 +23,292 @@ interface CommandItem {
   action: () => void;
 }
 
+const iconClassName = "h-4 w-4";
+
+const IconGrid = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 5.5A1.5 1.5 0 015.5 4h4A1.5 1.5 0 0111 5.5v4A1.5 1.5 0 019.5 11h-4A1.5 1.5 0 014 9.5v-4zM13 5.5A1.5 1.5 0 0114.5 4h4A1.5 1.5 0 0120 5.5v4a1.5 1.5 0 01-1.5 1.5h-4A1.5 1.5 0 0113 9.5v-4zM4 14.5A1.5 1.5 0 015.5 13h4a1.5 1.5 0 011.5 1.5v4A1.5 1.5 0 019.5 20h-4A1.5 1.5 0 014 18.5v-4zM13 14.5a1.5 1.5 0 011.5-1.5h4a1.5 1.5 0 011.5 1.5v4a1.5 1.5 0 01-1.5 1.5h-4a1.5 1.5 0 01-1.5-1.5v-4z" />
+  </svg>
+);
+
+const IconArchive = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 8h16M6 8v10.5A1.5 1.5 0 007.5 20h9a1.5 1.5 0 001.5-1.5V8M8 8V5.5A1.5 1.5 0 019.5 4h5A1.5 1.5 0 0116 5.5V8M10 12h4" />
+  </svg>
+);
+
+const IconBlueprint = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 4h6l4 4v12H7V4zM13 4v4h4M9.5 12h5M9.5 15h5" />
+  </svg>
+);
+
+const IconSearch = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M20 20l-4.5-4.5M17.5 10.75a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
+  </svg>
+);
+
+const IconPeople = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9.5 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM4 20a5.5 5.5 0 0111 0M16 11a3 3 0 100-6M17 15a5 5 0 013 5" />
+  </svg>
+);
+
+const IconPlay = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M10 8.5v7l6-3.5-6-3.5z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const IconHint = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9.3 9a3 3 0 115.1 2.1c-.8.7-1.4 1.1-1.4 2.4M12 17h.01" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const IconChart = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 19V9M12 19V5M19 19v-7" />
+  </svg>
+);
+
+const IconMenu = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+);
+
+const IconClose = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M6 6l12 12M18 6L6 18" />
+  </svg>
+);
+
+const navigationItems: NavigationItem[] = [
+  { name: "Home", href: "/", section: "Build", icon: <IconGrid /> },
+  { name: "Knowledge", href: "/knowledge", section: "Build", icon: <IconArchive /> },
+  { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
+  { name: "Query", href: "/query", section: "Build", icon: <IconSearch /> },
+  { name: "NPCs", href: "/npcs", section: "Runtime", icon: <IconPeople /> },
+  { name: "Simulator", href: "/vertical-slice", section: "Runtime", icon: <IconPlay /> },
+  { name: "Hints", href: "/hints", section: "Runtime", icon: <IconHint /> },
+  { name: "Observability", href: "/analytics", section: "Runtime", icon: <IconChart /> },
+];
+
+const sections: NavigationItem["section"][] = ["Build", "Runtime"];
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  
-  // Command Palette State
+
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const workspaceItems = [
-    { name: "Workspace", href: "/", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-      </svg>
-    )},
-    { name: "Knowledge Base", href: "/knowledge", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-      </svg>
-    )},
-    { name: "Query Studio", href: "/query", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-      </svg>
-    )},
-    { name: "NPC Studio", href: "/npcs", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-      </svg>
-    )},
-    { name: "Observability", href: "/analytics", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    )},
-    { name: "Hint Studio", href: "/hints", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    )},
-    { name: "Blueprint Studio", href: "/blueprints", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )},
-    { name: "Narrative Simulator", href: "/vertical-slice", icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    )},
-  ];
+  const currentPage = useMemo(
+    () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
+    [pathname]
+  );
 
-  const futureItems = [
-    { name: "Quest Studio", label: "R3" },
-    { name: "Settings", label: "R4" },
-  ];
+  const commands: CommandItem[] = useMemo(
+    () =>
+      navigationItems.map((item) => ({
+        id: item.href,
+        name: item.name,
+        category: item.section,
+        shortcut: item.name === "Home" ? "G H" : `G ${item.name[0]}`,
+        action: () => {
+          router.push(item.href);
+          setMobileNavOpen(false);
+        },
+      })),
+    [router]
+  );
 
-  // Command palette actions
-  const commands: CommandItem[] = [
-    { id: "g-workspace", name: "Go to Workspace Overview", category: "Navigation", shortcut: "G W", action: () => router.push("/") },
-    { id: "g-knowledge", name: "Go to Knowledge Base", category: "Navigation", shortcut: "G K", action: () => router.push("/knowledge") },
-    { id: "g-query", name: "Go to Query Studio", category: "Navigation", shortcut: "G Q", action: () => router.push("/query") },
-    { id: "g-npcs", name: "Go to NPC Studio", category: "Navigation", shortcut: "G N", action: () => router.push("/npcs") },
-    { id: "g-observability", name: "Go to Observability Dashboard", category: "Navigation", shortcut: "G O", action: () => router.push("/analytics") },
-    { id: "g-hints", name: "Go to Hint Studio", category: "Navigation", shortcut: "G H", action: () => router.push("/hints") },
-    { id: "g-blueprints", name: "Go to Blueprint Studio", category: "Navigation", shortcut: "G B", action: () => router.push("/blueprints") },
-    { id: "g-simulator", name: "Go to Narrative Simulator", category: "Navigation", shortcut: "G S", action: () => router.push("/vertical-slice") },
-  ];
-
-  const filteredCommands = commands.filter((cmd) =>
-    cmd.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCommands = useMemo(
+    () => commands.filter((cmd) => cmd.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    [commands, searchQuery]
   );
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
         setPaletteOpen((prev) => !prev);
         setSearchQuery("");
         setActiveIndex(0);
-      }
-      
-      if (e.key === "Escape" && paletteOpen) {
-        setPaletteOpen(false);
+        return;
       }
 
-      if (paletteOpen && filteredCommands.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setActiveIndex((prev) => (prev + 1) % filteredCommands.length);
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setActiveIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          if (filteredCommands[activeIndex]) {
-            filteredCommands[activeIndex].action();
-            setPaletteOpen(false);
-          }
-        }
+      if (event.key === "Escape") {
+        setPaletteOpen(false);
+        setMobileNavOpen(false);
+        return;
+      }
+
+      if (!paletteOpen || filteredCommands.length === 0) return;
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((prev) => (prev + 1) % filteredCommands.length);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        filteredCommands[activeIndex]?.action();
+        setPaletteOpen(false);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [paletteOpen, activeIndex, filteredCommands]);
+  }, [activeIndex, filteredCommands, paletteOpen]);
 
   const executeCommand = (index: number) => {
-    if (filteredCommands[index]) {
-      filteredCommands[index].action();
-      setPaletteOpen(false);
-    }
+    filteredCommands[index]?.action();
+    setPaletteOpen(false);
   };
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a] text-[#fafafa] font-sans antialiased overflow-hidden">
-      {/* Sidebar - Linear Style */}
-      <aside className="w-60 border-r border-[#262626] bg-[#111111] flex flex-col justify-between select-none z-25">
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Header branding */}
-          <div className="h-14 border-b border-[#262626] px-4 flex items-center justify-between">
-            <div className="flex flex-col justify-center">
-              <span className="font-bold text-sm text-[#fafafa] tracking-tight leading-none">
-                GameMind
-              </span>
-              <span className="text-[9px] font-mono text-[#a1a1aa] block mt-1 uppercase tracking-wider font-semibold">
-                AI Narrative Platform
-              </span>
-            </div>
-            <span className="text-[10px] font-mono text-slate-500 font-bold border border-[#262626] bg-[#0a0a0a] px-1.5 py-0.5 rounded">
-              v1.0.0
-            </span>
-          </div>
+    <div className="min-h-dvh bg-[#090b0e] text-[#f7f8fa] antialiased">
+      <div className="flex min-h-dvh">
+        <Sidebar pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
 
-          {/* Navigation Links */}
-          <div className="flex-1 overflow-y-auto px-2 py-4 space-y-6">
-            {/* Workspace section */}
-            <div className="space-y-1">
-              <span className="px-3 text-[10px] font-mono font-bold text-[#a1a1aa] tracking-widest uppercase block mb-2">
-                Workspace
-              </span>
-              {workspaceItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition duration-150 ${
-                      isActive
-                        ? "bg-[#171717] text-[#fafafa] font-semibold border border-[#262626]"
-                        : "text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#171717]/50 border border-transparent"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className={isActive ? "text-[#fafafa]" : "text-[#a1a1aa]"}>
-                        {item.icon}
-                      </span>
-                      <span>{item.name}</span>
-                    </div>
-                    {isActive && (
-                      <span className="h-1 w-1 rounded-full bg-[#b9ff66]" />
-                    )}
-                  </Link>
-                );
-              })}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-[#202832] bg-[#0d1116]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="Open navigation"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#25303b] text-[#a5afbd] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] lg:hidden"
+              >
+                <IconMenu />
+              </button>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#f7f8fa]">{currentPage.name}</p>
+                <p className="mt-0.5 hidden text-xs text-[#7c8794] sm:block">
+                  Local-first AI game builder, running at zero model cost.
+                </p>
+              </div>
             </div>
 
-            {/* Studios (Future Releases Placeholder) */}
-            <div className="space-y-1">
-              <span className="px-3 text-[10px] font-mono font-bold text-[#a1a1aa] tracking-widest uppercase block mb-2">
-                Studios
-              </span>
-              {futureItems.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between px-3 py-1.5 rounded-md text-xs text-slate-600 border border-transparent select-none cursor-not-allowed"
-                >
-                  <span>{item.name}</span>
-                  <span className="text-[8px] font-mono bg-[#171717] px-1 rounded border border-[#262626] text-slate-500">
-                    {item.label}
-                  </span>
-                </div>
-              ))}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(true)}
+                className="hidden h-10 w-72 items-center justify-between rounded-md border border-[#25303b] bg-[#0a0e12] px-3 text-left text-xs text-[#8b96a5] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] md:flex"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <IconSearch />
+                  <span className="truncate">Search pages</span>
+                </span>
+                <kbd className="rounded border border-[#25303b] bg-[#111820] px-1.5 py-0.5 text-[10px] font-semibold text-[#c3cad4]">
+                  Ctrl K
+                </kbd>
+              </button>
+              <div className="hidden items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 sm:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                Connected
+              </div>
             </div>
-          </div>
+          </header>
+
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
         </div>
-
-        {/* Flat Bottom Health Status */}
-        <div className="p-3 border-t border-[#262626] space-y-2 bg-[#0d0d0d]">
-          <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-            <span>DATABASE STATE</span>
-            <div className="flex items-center gap-1.5 font-sans">
-              <span className="text-emerald-400 text-[10px]">●</span>
-              <span className="text-[#fafafa] font-mono text-[9px] uppercase tracking-wide">connected</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Viewport */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Command Bar */}
-        <header className="h-14 border-b border-[#262626] bg-[#111111] flex items-center justify-between px-6 z-10 select-none">
-          {/* Vercel/Linear style Command Search Bar */}
-          <button
-            onClick={() => setPaletteOpen(true)}
-            className="flex items-center justify-between w-96 px-3 py-1.5 rounded-md border border-[#262626] bg-[#0a0a0a] hover:border-slate-800 transition text-xs text-[#a1a1aa] font-sans"
-          >
-            <div className="flex items-center gap-2">
-              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <span>Search lore, documents, commands...</span>
-            </div>
-            <kbd className="bg-[#171717] border border-[#262626] rounded px-1.5 py-0.5 text-[9px] font-mono text-[#fafafa] select-none">
-              Ctrl K
-            </kbd>
-          </button>
-          
-          <div className="flex items-center gap-2 text-[10px] font-mono text-[#a1a1aa]">
-            <span className="text-emerald-500">●</span>
-            <span className="text-[#fafafa]">Connected</span>
-          </div>
-        </header>
-
-        {/* Content Panel Scrollable */}
-        <main className="flex-1 overflow-y-auto p-6 bg-[#0a0a0a]">{children}</main>
       </div>
 
-      {/* Raycast-style Command Palette Modal */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation overlay"
+            onClick={() => setMobileNavOpen(false)}
+            className="absolute inset-0 bg-black/70"
+          />
+          <div className="relative h-full w-[min(22rem,88vw)] border-r border-[#202832] bg-[#0d1116] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#202832] px-5 py-4">
+              <Brand />
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close navigation"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#25303b] text-[#a5afbd] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+              >
+                <IconClose />
+              </button>
+            </div>
+            <Navigation pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
+          </div>
+        </div>
+      )}
+
       {paletteOpen && (
-        <div className="fixed inset-0 z-50 bg-[#000000]/70 flex items-start justify-center pt-28 px-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-lg bg-[#171717] border border-[#262626] rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[380px]">
-            {/* Search Input */}
-            <div className="p-3 border-b border-[#262626] flex items-center gap-2">
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 pt-20 backdrop-blur-sm sm:pt-24">
+          <div className="flex max-h-[28rem] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-[#27303a] bg-[#10161d] shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-[#27303a] px-4 py-3">
+              <span className="text-[#7c8794]">
+                <IconSearch />
+              </span>
               <input
                 type="text"
-                placeholder="Search workspaces, documents, or execute actions..."
+                placeholder="Search pages..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
                   setActiveIndex(0);
                 }}
-                className="flex-1 bg-transparent text-sm text-[#fafafa] placeholder-slate-500 outline-none border-none py-1"
+                className="h-10 flex-1 bg-transparent text-sm text-[#f7f8fa] outline-none placeholder:text-[#6f7a87]"
                 autoFocus
               />
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(false)}
+                aria-label="Close command palette"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#7c8794] transition hover:bg-[#18212b] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+              >
+                <IconClose />
+              </button>
             </div>
 
-            {/* List of actions */}
             <div className="flex-1 overflow-y-auto p-2">
               {filteredCommands.length === 0 ? (
-                <div className="py-8 text-center text-slate-500 text-xs font-mono">
-                  No commands matching &quot;{searchQuery}&quot;
+                <div className="py-12 text-center">
+                  <p className="text-sm font-semibold text-[#f7f8fa]">No matching page</p>
+                  <p className="mt-1 text-xs text-[#7c8794]">&quot;{searchQuery}&quot; is not in the workspace.</p>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {filteredCommands.map((cmd, idx) => {
-                    const isActive = idx === activeIndex;
+                  {filteredCommands.map((cmd, index) => {
+                    const isActive = index === activeIndex;
+
                     return (
                       <button
                         key={cmd.id}
-                        onClick={() => executeCommand(idx)}
-                        onMouseEnter={() => setActiveIndex(idx)}
-                        className={`w-full text-left px-3 py-2 rounded-md text-xs transition duration-150 flex items-center justify-between ${
+                        type="button"
+                        onClick={() => executeCommand(index)}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        className={`flex min-h-11 w-full items-center justify-between rounded-md px-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
                           isActive
-                            ? "bg-[#262626] text-[#fafafa]"
-                            : "text-[#a1a1aa] hover:bg-[#262626]/40"
+                            ? "bg-[#1a242e] text-[#f7f8fa]"
+                            : "text-[#a5afbd] hover:bg-[#151d25] hover:text-[#f7f8fa]"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">
-                            {cmd.category}
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="text-[#7c8794]">
+                            {navigationItems.find((item) => item.href === cmd.id)?.icon}
                           </span>
-                          <span>{cmd.name}</span>
-                        </div>
-                        <span className="bg-[#0a0a0a] border border-[#262626] rounded px-1.5 py-0.5 text-[9px] font-mono text-[#a1a1aa]">
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold">{cmd.name}</span>
+                            <span className="block text-xs text-[#6f7a87]">{cmd.category}</span>
+                          </span>
+                        </span>
+                        <span className="rounded border border-[#27303a] bg-[#0b1015] px-1.5 py-0.5 text-[10px] font-semibold text-[#8b96a5]">
                           {cmd.shortcut}
                         </span>
                       </button>
@@ -305,18 +318,97 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               )}
             </div>
 
-            {/* Footer tips */}
-            <div className="p-2.5 bg-[#111111] border-t border-[#262626] flex items-center justify-between text-[9px] font-mono text-slate-500">
-              <div className="flex items-center gap-3">
-                <span>↑↓ to navigate</span>
-                <span>·</span>
-                <span>enter to select</span>
-              </div>
-              <span>esc to close</span>
+            <div className="flex items-center justify-between border-t border-[#27303a] bg-[#0b1015] px-3 py-2 text-[10px] font-medium text-[#7c8794]">
+              <span>Arrow keys to move</span>
+              <span>Esc to close</span>
             </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
+  return (
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r border-[#202832] bg-[#0d1116] lg:flex lg:flex-col">
+      <div className="border-b border-[#202832] px-5 py-5">
+        <Brand />
+      </div>
+      <Navigation pathname={pathname} onNavigate={onNavigate} />
+      <div className="border-t border-[#202832] px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f7a87]">Mode</p>
+        <div className="mt-3 rounded-md border border-[#25303b] bg-[#0a0e12] p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-[#f7f8fa]">Local demo</span>
+            <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">
+              $0
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#7c8794]">Chroma retrieval and deterministic generation.</p>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function Brand() {
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#25303b] bg-[#101820] text-sm font-semibold text-[#f7f8fa]">
+          G
+        </span>
+        <div>
+          <p className="text-sm font-semibold leading-none text-[#f7f8fa]">GameMind</p>
+          <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
+            AI game builder
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
+  return (
+    <nav className="flex-1 overflow-y-auto px-3 py-5">
+      {sections.map((section) => (
+        <div key={section} className="mb-7 last:mb-0">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#647080]">{section}</p>
+          <div className="mt-3 space-y-1">
+            {navigationItems
+              .filter((item) => item.section === section)
+              .map((item) => {
+                const active = isRouteActive(pathname, item.href);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    className={`group flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
+                      active
+                        ? "bg-[#151d25] text-[#f7f8fa]"
+                        : "text-[#8b96a5] hover:bg-[#121922] hover:text-[#f7f8fa]"
+                    }`}
+                  >
+                    <span className={active ? "text-[#8bdff0]" : "text-[#647080] group-hover:text-[#a5afbd]"}>
+                      {item.icon}
+                    </span>
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function isRouteActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

@@ -1,222 +1,389 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, DocumentResponse, HealthResponse } from "@/lib/api";
+import { api, BlueprintResponse, DocumentResponse, HealthResponse } from "@/lib/api";
+
+type FlowState = "complete" | "current" | "waiting";
+
+interface FlowStep {
+  label: string;
+  description: string;
+  href: string;
+  action: string;
+  state: FlowState;
+}
+
+interface NextAction {
+  label: string;
+  description: string;
+  href: string;
+  action: string;
+}
 
 export default function WorkspaceOverview() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
+  const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Mock Recent Query Log (Phase 1 UI - Neutral scoring)
-  const mockQueries = [
-    { query: "Who is King Arven?", citations: 3, similarity: "98.2%", confidence: "High", time: "5 mins ago" },
-    { query: "What caused the Ember Siege?", citations: 2, similarity: "95.4%", confidence: "High", time: "12 mins ago" },
-    { query: "What faction controls Frostpeak ruins?", citations: 5, similarity: "88.1%", confidence: "Medium", time: "1 hour ago" },
-  ];
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    let cancelled = false;
+
+    const fetchWorkspace = async () => {
+      setIsLoading(true);
+      setError(null);
+
       try {
-        const docs = await api.getDocuments();
-        setDocuments(docs);
+        const [docs, healthData, blueprintData] = await Promise.all([
+          api.getDocuments(),
+          api.getHealth(),
+          api.getBlueprints(),
+        ]);
+
+        if (!cancelled) {
+          setDocuments(docs);
+          setHealth(healthData);
+          setBlueprints(blueprintData);
+        }
       } catch (err) {
-        console.error("Failed to fetch documents for dashboard stats:", err);
+        if (!cancelled) {
+          console.error("Failed to load workspace overview:", err);
+          setError("The workspace could not load. Start Docker and refresh this page.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
-      try {
-        const healthData = await api.getHealth();
-        setHealth(healthData);
-      } catch (err) {
-        console.error("Failed to fetch health status:", err);
-      }
-      setIsLoading(false);
     };
-    fetchStats();
+
+    fetchWorkspace();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Helper to estimate token counts based on standard characters mapping
-  const estimateTokens = (count: number) => {
-    return `${((count * 220) / 1000).toFixed(1)}k`;
-  };
+  const totalChunks = useMemo(
+    () => documents.reduce((sum, doc) => sum + (doc.chunks_count || 0), 0),
+    [documents]
+  );
 
-  // Helper to map world name based on lore document titles
-  const getWorldName = (title: string): string => {
-    const t = title.toLowerCase();
-    if (t.includes("siege") || t.includes("arven") || t.includes("kingdom")) return "Frostpeak";
-    if (t.includes("ashen") || t.includes("court")) return "Ashen Court";
-    if (t.includes("vulcana") || t.includes("faction")) return "Vulcana";
-    return "Universal";
-  };
+  const latestDocuments = useMemo(
+    () =>
+      [...documents]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 4),
+    [documents]
+  );
 
-  // Helper to estimate total chunks count
-  const getTotalChunks = () => {
-    return documents.reduce((sum, doc) => sum + (doc.chunks_count || 0), 0);
-  };
+  const hasDocuments = documents.length > 0;
+  const hasBlueprints = blueprints.length > 0;
+  const runtimeReadyCount = blueprints.filter((blueprint) => blueprint.materialization_manifest).length;
+  const hasRuntimeData = runtimeReadyCount > 0;
+  const isHealthy = health?.status === "healthy";
+  const isLocalMode = health?.ai_mode === "local_demo";
 
-  const dbStatusText = health ? (health.database === "healthy" ? "Connected" : "Degraded") : "Connected";
-  const dbStatusColor = health ? (health.database === "healthy" ? "text-emerald-400" : "text-rose-400") : "text-emerald-400";
+  const nextAction: NextAction = useMemo(() => {
+    if (!hasDocuments) {
+      return {
+        label: "Start with the source document",
+        description: "Upload a GDD, lore file, quest sheet, or character brief. Everything else depends on this.",
+        href: "/knowledge",
+        action: "Upload document",
+      };
+    }
 
-  const isLocalDemo = health ? health.ai_mode === "local_demo" : true;
-  const aiModeText = health ? (health.ai_mode === "gemini" ? "Gemini Live" : "Local Demo") : "Local Demo";
-  const aiModeColor = health ? (health.ai_mode === "gemini" ? "text-emerald-400" : "text-amber-400") : "text-amber-400";
-  
-  const vectorEngineText = health ? (health.ai_mode === "gemini" ? "Gemini 768" : "Local Chroma") : "Local Chroma";
-  const vectorDimensionText = health ? `${health.vector_dimension} (Cosine)` : "384 (Cosine)";
+    if (!hasBlueprints) {
+      return {
+        label: "Generate the first game blueprint",
+        description: "Convert the selected document into narrative, NPC, quest, level, memory, and runtime guidance.",
+        href: "/blueprints",
+        action: "Generate blueprint",
+      };
+    }
 
-  const systemMetrics = [
-    { label: "Documents Indexed", value: isLoading ? "..." : String(documents.length), type: "mono" },
-    { label: "Chunks Stored", value: isLoading ? "..." : String(getTotalChunks()), type: "mono" },
-    { label: "Vector Dimension", value: vectorDimensionText, type: "mono" },
-    { label: "Database Status", value: dbStatusText, type: "status", color: dbStatusColor },
-    { label: "AI Mode", value: aiModeText, type: "status", color: aiModeColor },
-    { label: "Vector Engine", value: vectorEngineText, type: "mono" },
-    { label: "API Cost Rate", value: isLocalDemo ? "$0" : "Gemini Standard", type: "mono" },
+    if (!hasRuntimeData) {
+      return {
+        label: "Approve and materialize runtime data",
+        description: "Write the approved blueprint into NPC, quest, memory, and world-state records for Unity.",
+        href: "/blueprints",
+        action: "Materialize blueprint",
+      };
+    }
+
+    return {
+      label: "Test the playable vertical slice",
+      description: "Open the simulator or Unity scene and verify dialogue, quests, memory, and hints together.",
+      href: "/vertical-slice",
+      action: "Test runtime",
+    };
+  }, [hasBlueprints, hasDocuments, hasRuntimeData]);
+
+  const flowSteps: FlowStep[] = [
+    {
+      label: "Upload source",
+      description: "Bring in the GDD or lore document that defines the world.",
+      href: "/knowledge",
+      action: hasDocuments ? "Review sources" : "Upload",
+      state: hasDocuments ? "complete" : "current",
+    },
+    {
+      label: "Generate blueprint",
+      description: "Extract a structured game plan from the uploaded source.",
+      href: "/blueprints",
+      action: hasBlueprints ? "Review blueprint" : "Generate",
+      state: hasBlueprints ? "complete" : hasDocuments ? "current" : "waiting",
+    },
+    {
+      label: "Materialize runtime",
+      description: "Create NPCs, quests, memories, and flags from the approved plan.",
+      href: "/blueprints",
+      action: hasRuntimeData ? "Runtime ready" : "Materialize",
+      state: hasRuntimeData ? "complete" : hasBlueprints ? "current" : "waiting",
+    },
+    {
+      label: "Play test",
+      description: "Validate the flow in the web simulator and Unity scene.",
+      href: "/vertical-slice",
+      action: "Open simulator",
+      state: hasRuntimeData ? "current" : "waiting",
+    },
+  ];
+
+  const readiness = [
+    {
+      label: "Backend",
+      value: health?.status ?? "checking",
+      good: health?.status === "healthy",
+    },
+    {
+      label: "Database",
+      value: health?.database ?? "checking",
+      good: health?.database === "healthy",
+    },
+    {
+      label: "Vector index",
+      value: health?.chromadb ?? "checking",
+      good: health?.chromadb === "healthy",
+    },
+    {
+      label: "AI mode",
+      value: isLocalMode ? "local demo" : health?.ai_mode ?? "checking",
+      good: isLocalMode,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 max-w-7xl mx-auto pb-12 animate-fade-in">
-      
-      {/* Left Column: Data Tables (3 cols wide) */}
-      <div className="lg:col-span-3 space-y-10">
-        
-        {/* Workspace Title Header */}
-        <div className="space-y-1.5 border-b border-[#262626] pb-4">
-          <h2 className="text-base font-bold text-[#fafafa] tracking-tight">
-            Workspace Overview
-          </h2>
-          <p className="text-xs text-[#a1a1aa] font-medium leading-relaxed">
-            Manage narrative source files and query index registers. All game assets are cataloged, vectorized, and compiled for runtime dialogue lookups.
+    <main className="mx-auto max-w-6xl pb-14">
+      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
+        <div className="max-w-3xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">
+            GameMind workspace
+          </p>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+            Build a playable AI narrative slice from one GDD.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
+            Upload a design document, generate a grounded blueprint, materialize runtime records, then test the
+            result in the dashboard and Unity without paid model calls.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href={nextAction.href}
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#f7f8fa] px-5 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#090b0e]"
+            >
+              {nextAction.action}
+            </Link>
+            <Link
+              href="/query"
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-[#27303a] px-5 text-sm font-semibold text-[#f7f8fa] transition hover:border-[#3b4654] hover:bg-[#12161b] focus:outline-none focus:ring-2 focus:ring-[#3b4654] focus:ring-offset-2 focus:ring-offset-[#090b0e]"
+            >
+              Search lore
+            </Link>
+          </div>
+        </div>
+
+        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Next action</p>
+              <h2 className="mt-3 text-lg font-semibold text-[#f7f8fa]">{nextAction.label}</h2>
+            </div>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                isHealthy ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"
+              }`}
+            >
+              {isLoading ? "Checking" : isHealthy ? "Ready" : "Review"}
+            </span>
+          </div>
+          <p className="mt-4 text-sm leading-6 text-[#a5afbd]">{nextAction.description}</p>
+          <Link
+            href={nextAction.href}
+            className="mt-6 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-[#8bdff0] px-4 text-sm font-semibold text-[#061014] transition hover:bg-[#a6edfa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] focus:ring-offset-2 focus:ring-offset-[#101419]"
+          >
+            Continue
+          </Link>
+        </aside>
+      </section>
+
+      {error && (
+        <section className="mb-8 rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          {error}
+        </section>
+      )}
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {readiness.map((item) => (
+          <div key={item.label} className="rounded-lg border border-[#222a33] bg-[#0f1318] p-4">
+            <p className="text-xs text-[#7c8794]">{item.label}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isLoading ? "bg-[#7c8794]" : item.good ? "bg-emerald-300" : "bg-amber-300"
+                }`}
+              />
+              <p className="text-sm font-semibold capitalize text-[#f7f8fa]">
+                {isLoading ? "checking" : item.value}
+              </p>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-8 rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="border-b border-[#222a33] px-5 py-5">
+          <h2 className="text-base font-semibold text-[#f7f8fa]">MVP build flow</h2>
+          <p className="mt-1 text-sm leading-6 text-[#a5afbd]">
+            This is the shortest path from document upload to a demonstrable Unity integration.
           </p>
         </div>
 
-        {/* Section 1: Ingested Game Lore Files */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#fafafa]">World Lore Catalog</span>
-            <Link href="/knowledge" className="text-xs text-[#a1a1aa] hover:text-[#fafafa] hover:underline font-mono text-[11px] transition">
-              MANAGE KNOWLEDGE BASE &rarr;
+        <div className="grid gap-0 md:grid-cols-4">
+          {flowSteps.map((step, index) => (
+            <div key={step.label} className="border-b border-[#222a33] p-5 md:border-b-0 md:border-r last:border-r-0">
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                    step.state === "complete"
+                      ? "bg-emerald-500/12 text-emerald-300"
+                      : step.state === "current"
+                        ? "bg-[#8bdff0] text-[#061014]"
+                        : "bg-[#171d24] text-[#7c8794]"
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                    step.state === "complete"
+                      ? "text-emerald-300"
+                      : step.state === "current"
+                        ? "text-[#8bdff0]"
+                        : "text-[#6f7a87]"
+                  }`}
+                >
+                  {step.state}
+                </span>
+              </div>
+              <h3 className="mt-5 text-sm font-semibold text-[#f7f8fa]">{step.label}</h3>
+              <p className="mt-2 min-h-16 text-sm leading-6 text-[#a5afbd]">{step.description}</p>
+              <Link
+                href={step.href}
+                className={`mt-5 inline-flex min-h-9 items-center rounded-md px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#3b4654] focus:ring-offset-2 focus:ring-offset-[#101419] ${
+                  step.state === "waiting"
+                    ? "border border-[#222a33] text-[#6f7a87]"
+                    : "border border-[#303a46] text-[#f7f8fa] hover:border-[#4a5563] hover:bg-[#151b22]"
+                }`}
+              >
+                {step.action}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+          <div className="flex items-center justify-between border-b border-[#222a33] px-5 py-4">
+            <div>
+              <h2 className="text-base font-semibold text-[#f7f8fa]">Source library</h2>
+              <p className="mt-1 text-xs text-[#7c8794]">Recent documents available to retrieval and blueprinting.</p>
+            </div>
+            <Link
+              href="/knowledge"
+              className="rounded-md px-3 py-2 text-xs font-semibold text-[#a5afbd] transition hover:bg-[#151b22] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#3b4654]"
+            >
+              Manage
             </Link>
           </div>
 
-          {/* Vercel-Style Table */}
-          <div className="border border-[#262626] rounded bg-[#111111]/10 overflow-hidden">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#262626] bg-[#111111] font-mono text-[#a1a1aa] text-[10px] uppercase tracking-wider select-none">
-                  <th className="py-2.5 px-4 font-bold">Document Name</th>
-                  <th className="py-2.5 px-4 font-bold text-center">Chunks</th>
-                  <th className="py-2.5 px-4 font-bold text-center">Tokens</th>
-                  <th className="py-2.5 px-4 font-bold">World</th>
-                  <th className="py-2.5 px-4">Last Indexed</th>
-                  <th className="py-2.5 px-4 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#262626]/80 font-sans">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 font-mono text-xs">
-                      LOADING FILES CATALOG...
-                    </td>
-                  </tr>
-                ) : documents.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 font-mono text-xs">
-                      NO DOCUMENTS INGESTED YET
-                    </td>
-                  </tr>
-                ) : (
-                  documents.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-[#111111]/30 transition duration-150">
-                      <td className="py-2.5 px-4 font-semibold text-[#fafafa] font-mono text-[12px]">{doc.title}</td>
-                      <td className="py-2.5 px-4 font-mono text-[#a1a1aa] text-[12px] text-center">{doc.chunks_count}</td>
-                      <td className="py-2.5 px-4 font-mono text-[#a1a1aa] text-[12px] text-center">{estimateTokens(doc.chunks_count)}</td>
-                      <td className="py-2.5 px-4 text-[#fafafa]">{getWorldName(doc.title)}</td>
-                      <td className="py-2.5 px-4 text-[#a1a1aa]">{new Date(doc.created_at).toLocaleDateString()}</td>
-                      <td className="py-2.5 px-4 text-right flex items-center justify-end gap-1.5 text-[#a1a1aa]">
-                        <span className="text-emerald-400 text-[9px]">●</span>
-                        <span className="font-mono text-[10px] uppercase tracking-wide">Synced</span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Section 2: Recent Queries */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#fafafa]">Recent Retrieval Sandbox Queries</span>
-            <Link href="/query" className="text-xs text-[#a1a1aa] hover:text-[#fafafa] hover:underline font-mono text-[11px] transition">
-              OPEN QUERY STUDIO &rarr;
-            </Link>
-          </div>
-
-          {/* Vercel-Style Table */}
-          <div className="border border-[#262626] rounded bg-[#111111]/10 overflow-hidden">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#262626] bg-[#111111] font-mono text-[#a1a1aa] text-[10px] uppercase tracking-wider select-none">
-                  <th className="py-2.5 px-4 font-bold">Query Expression</th>
-                  <th className="py-2.5 px-4 font-bold text-center">Citations</th>
-                  <th className="py-2.5 px-4 font-bold text-center">Similarity</th>
-                  <th className="py-2.5 px-4 font-bold">Confidence</th>
-                  <th className="py-2.5 px-4 text-right">Executed</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#262626]/80 font-sans">
-                {mockQueries.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-[#111111]/30 transition duration-150">
-                    <td className="py-2.5 px-4 font-semibold text-[#fafafa] truncate max-w-xs">{item.query}</td>
-                    <td className="py-2.5 px-4 font-mono text-[#a1a1aa] text-[12px] text-center">{item.citations} cited</td>
-                    <td className="py-2.5 px-4 font-mono text-[#a1a1aa] text-[12px] text-center font-bold">{item.similarity}</td>
-                    <td className="py-2.5 px-4">
-                      <span className="px-1.5 py-0.5 rounded border border-[#262626] bg-[#111111] font-mono text-[9px] text-[#a1a1aa] uppercase tracking-wider">
-                        {item.confidence}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-right text-[#a1a1aa]">{item.time}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Column: System Overview Panel (1 col wide) */}
-      <div className="space-y-6">
-        <div className="rounded border border-[#262626] bg-[#111111] p-5 h-[calc(100vh-140px)] flex flex-col justify-between">
-          <div className="space-y-4">
-            <span className="text-xs font-semibold text-[#fafafa] border-b border-[#262626] pb-3 block">
-              System Overview
-            </span>
-            
-            <div className="space-y-3 font-mono text-[11px]">
-              {systemMetrics.map((item) => (
-                <div key={item.label} className="flex flex-col gap-1 border-b border-[#262626]/50 pb-2.5">
-                  <span className="text-slate-500 uppercase tracking-wide text-[9px]">{item.label}</span>
-                  {item.type === "status" ? (
-                    <div className="flex items-center gap-1.5 font-sans text-xs">
-                      <span className={`${item.color || "text-emerald-500"} text-[10px]`}>●</span>
-                      <span className="text-[#fafafa] font-mono text-[11px] uppercase tracking-wide">{item.value}</span>
-                    </div>
-                  ) : (
-                    <span className="text-[#fafafa] font-bold text-[12px]">{item.value}</span>
-                  )}
+          {isLoading ? (
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-24 animate-pulse rounded-md bg-[#151b22]" />
+              ))}
+            </div>
+          ) : latestDocuments.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <h3 className="text-sm font-semibold text-[#f7f8fa]">No source documents yet</h3>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#a5afbd]">
+                Upload a GDD or the Frostpeak sample file to start generating grounded outputs.
+              </p>
+              <Link
+                href="/knowledge"
+                className="mt-5 inline-flex min-h-10 items-center justify-center rounded-md bg-[#f7f8fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#101419]"
+              >
+                Upload source
+              </Link>
+            </div>
+          ) : (
+            <div className="divide-y divide-[#222a33]">
+              {latestDocuments.map((doc) => (
+                <div key={doc.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-[#f7f8fa]">{doc.title}</h3>
+                    <p className="mt-1 text-xs text-[#7c8794]">
+                      {doc.chunks_count} chunks indexed on {new Date(doc.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">
+                    Synced
+                  </span>
                 </div>
               ))}
             </div>
-          </div>
-          
-          {/* Quick Help Tip */}
-          <div className="p-3 bg-[#0a0a0a] rounded border border-[#262626]/60 text-[10px] text-slate-500 leading-relaxed font-sans select-none">
-            Use the keyboard shortcut <kbd className="bg-[#171717] px-1 rounded text-[#fafafa] font-mono border border-[#262626]">Ctrl + K</kbd> anywhere to access the workspace index search command utility.
-          </div>
+          )}
         </div>
-      </div>
+
+        <aside className="rounded-lg border border-[#222a33] bg-[#101419] p-5">
+          <h2 className="text-base font-semibold text-[#f7f8fa]">Workspace facts</h2>
+          <div className="mt-5 divide-y divide-[#222a33]">
+            <FactRow label="Documents" value={isLoading ? "--" : String(documents.length)} />
+            <FactRow label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
+            <FactRow label="Blueprints" value={isLoading ? "--" : String(blueprints.length)} />
+            <FactRow label="Runtime ready" value={isLoading ? "--" : String(runtimeReadyCount)} />
+            <FactRow label="LLM cost" value="$0" />
+          </div>
+          <p className="mt-5 rounded-md border border-[#222a33] bg-[#0b0f13] p-3 text-xs leading-5 text-[#a5afbd]">
+            Local mode uses Chroma embeddings and deterministic generation. It is intentionally free, predictable, and
+            suitable for demos.
+          </p>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function FactRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <span className="text-sm text-[#a5afbd]">{label}</span>
+      <span className="text-sm font-semibold text-[#f7f8fa]">{value}</span>
     </div>
   );
 }
