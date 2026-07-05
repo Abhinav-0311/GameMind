@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -16,6 +17,36 @@ from app.dependencies import get_game_project_id, get_player_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dialogue", tags=["dialogue"])
+
+
+def _with_auto_retrieved_chunks(request: DialogueChatRequest, game_project_id: str) -> DialogueChatRequest:
+    if request.selected_chunk_ids:
+        return request
+
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService()
+        results = rag_service.query_lore(
+            query_text=request.player_message,
+            limit=5,
+            game_project_id=game_project_id,
+        )
+        chunk_ids = []
+        for result in results:
+            chunk_id = result.get("chunk_id")
+            if not chunk_id:
+                continue
+            try:
+                chunk_ids.append(UUID(str(chunk_id)))
+            except ValueError:
+                logger.warning("Skipping invalid auto-retrieved chunk id: %s", chunk_id)
+        if not chunk_ids:
+            return request
+        return request.model_copy(update={"selected_chunk_ids": chunk_ids})
+    except Exception as exc:
+        logger.warning("Auto lore retrieval failed for dialogue chat: %s", exc)
+        return request
 
 @router.post("/assemble", response_model=DialogueAssembleResponse)
 def assemble_dialogue(
@@ -54,6 +85,7 @@ async def chat_dialogue(
     try:
         conv = None
         history = None
+        request = _with_auto_retrieved_chunks(request, game_project_id)
         active_player_id = request.player_id or player_id
         if request.conversation_id:
             from app.models.session import Conversation, Message

@@ -243,6 +243,9 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     quests = [q["title"] for q in bundle["quests"]]
     assert "Reclaim Ash Pass Objective" in quests
     assert "Water the plants" not in quests
+    manifest_quest = next(q for q in bundle["quests"] if q["title"] == "Reclaim Ash Pass Objective")
+    assert manifest_quest["objectives"]
+    assert manifest_quest["objectives"][0]["description"] == "Reclaim the Ash Pass outpost."
 
 def test_project_isolation(make_blueprint):
     """Test materialize and bundle block unauthorized cross-project access."""
