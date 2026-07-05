@@ -369,17 +369,12 @@ def test_gate_j_full_regression_compatibility(db):
     assert res_health.json()["status"] == "healthy"
 
 
-# Opt-in Live Gemini Smoke Test
-@pytest.mark.skipif(
-    os.environ.get("GAMEMIND_TEST_LIVE_GEMINI") != "1",
-    reason="GAMEMIND_TEST_LIVE_GEMINI=1 environment variable not set. Skipping live Gemini test."
-)
-def test_live_gemini_smoke(db):
-    """Live Gemini Smoke Test: Verify that live calls execute cleanly."""
-    project_id = "live_smoke_project"
+def test_local_provider_smoke(db):
+    """Verify that the default local provider path executes without external API keys."""
+    project_id = "local_smoke_project"
     headers = {"X-Game-Project-ID": project_id}
 
-    npc_slug = "live-mage"
+    npc_slug = "local-mage"
     client.post("/api/v1/npcs", headers=headers, json={
         "slug": npc_slug,
         "name": "Grand Archmage",
@@ -393,4 +388,5 @@ def test_live_gemini_smoke(db):
     assert res_chat.status_code == 200
     data = res_chat.json()
     assert "response_text" in data
-    assert data["llm_provider"] == "gemini"
+    assert data["llm_provider"] == "local_mock"
+    assert data["telemetry"]["estimated_cost_usd"] == 0.0

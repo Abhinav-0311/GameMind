@@ -1,32 +1,44 @@
 import logging
 import math
 import datetime
+import threading
 from sqlalchemy.orm import Session
 from app.models.memory import NPCMemory
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 import uuid
 
 logger = logging.getLogger(__name__)
 
 class MemoryService:
-    def __init__(self, gemini_service: GeminiService, rag_service: RAGService):
-        self.gemini_service = gemini_service
+    _memory_collection = None
+    _collection_lock = threading.Lock()
+
+    def __init__(self, rag_service: RAGService):
         self.rag_service = rag_service
         self.memory_collection = None
         self._init_memory_collection()
 
     def _init_memory_collection(self):
-        """Get or create the dynamic npc_memories collection inside the Chroma DB."""
+        """Get or create the local dynamic memory collection inside ChromaDB."""
+        if MemoryService._memory_collection is not None:
+            self.memory_collection = MemoryService._memory_collection
+            return
+
         if self.rag_service.chroma_client:
-            try:
-                self.memory_collection = self.rag_service.chroma_client.get_or_create_collection(
-                    name="npc_memories",
-                    metadata={"hnsw:space": "cosine"}
-                )
-                logger.info("ChromaDB npc_memories collection initialized.")
-            except Exception as e:
-                logger.error(f"Failed to create npc_memories Chroma collection: {e}")
+            with MemoryService._collection_lock:
+                if MemoryService._memory_collection is not None:
+                    self.memory_collection = MemoryService._memory_collection
+                    return
+
+                try:
+                    MemoryService._memory_collection = self.rag_service.chroma_client.get_or_create_collection(
+                        name="npc_memories_local",
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    self.memory_collection = MemoryService._memory_collection
+                    logger.info("ChromaDB npc_memories_local collection initialized.")
+                except Exception as e:
+                    logger.error(f"Failed to create npc_memories_local Chroma collection: {e}")
 
     def create_memory(
         self,
@@ -67,16 +79,10 @@ class MemoryService:
         return db_memory
 
     def index_memory_in_chroma(self, db: Session, memory: NPCMemory):
-        """Generates embedding for memory and saves it to Chroma collection."""
-        if not self.gemini_service.is_available():
-            raise ValueError("Gemini Service is unavailable for generating memory embedding.")
+        """Indexes memory text in Chroma using local text embeddings."""
         if not self.memory_collection:
             raise ValueError("Chroma memory collection is unavailable.")
 
-        # 1. Generate embedding
-        vector = self.gemini_service.generate_embedding(memory.memory_text)
-
-        # 2. Add to Chroma vector database
         chroma_metadata = {
             "npc_id": str(memory.npc_id),
             "conversation_id": str(memory.conversation_id) if memory.conversation_id else "",
@@ -90,12 +96,10 @@ class MemoryService:
 
         self.memory_collection.add(
             ids=[str(memory.id)],
-            embeddings=[vector],
             documents=[memory.memory_text],
             metadatas=[chroma_metadata]
         )
 
-        # 3. Update PostgreSQL status to True
         memory.chroma_indexed = True
         db.commit()
 
@@ -134,8 +138,8 @@ class MemoryService:
         from app.services.graph_traversal import graph_traversal_service
         from app.services.telemetry import telemetry_service
 
-        if not self.gemini_service.is_available() or not self.memory_collection:
-            logger.warning("Gemini Service or Chroma memory collection unavailable. Skipping memory retrieval.")
+        if not self.memory_collection:
+            logger.warning("Chroma memory collection unavailable. Skipping memory retrieval.")
             return "No relevant memories."
 
         # Fetch NPC slug to query its world graph context
@@ -152,14 +156,6 @@ class MemoryService:
             except Exception as ex:
                 logger.error(f"Failed to fetch subgraph for memory boosting: {ex}")
 
-        # 1. Generate query embedding
-        try:
-            query_vector = self.gemini_service.generate_embedding(query_text)
-        except Exception as e:
-            logger.error(f"Failed to generate query embedding for memory retrieval: {e}")
-            return "No relevant memories."
-
-        # 2. Query Chroma collection
         try:
             collection_count = self.memory_collection.count()
             n_results = limit * 2
@@ -169,7 +165,7 @@ class MemoryService:
                 n_results = min(limit * 2, int(collection_count))
             
             results = self.memory_collection.query(
-                query_embeddings=[query_vector],
+                query_texts=[query_text],
                 where={"$and": [{"npc_id": str(npc_id)}, {"game_project_id": game_project_id}]},
                 n_results=n_results
             )
@@ -283,7 +279,7 @@ class MemoryService:
 
     def consolidate_memories(self, db: Session, npc_slug: str, game_project_id: str = "default_project") -> dict:
         """
-        Algorithmic, archive-only duplicate memory consolidation without Gemini.
+        Algorithmic, archive-only duplicate memory consolidation without external LLM calls.
         Groups memories by similarity (distance <= 0.15) and archives duplicates.
         """
         from app.models.npc import NPCProfile
@@ -397,7 +393,7 @@ class MemoryService:
         import json
         import datetime
         from app.models.session import Conversation, Message
-        from app.services.llm.factory import get_llm_provider
+        from app.services.llm.factory import get_llm_provider, get_provider_name
         
         conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
         if not conv:
@@ -456,7 +452,7 @@ class MemoryService:
                 max_output_tokens=1000,
                 model_name="mock-model"
             )
-            provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+            provider_type = get_provider_name(provider)
             from app.services.telemetry_service import TelemetryService
             TelemetryService.record_log(
                 db=db,
@@ -475,7 +471,7 @@ class MemoryService:
             )
         except Exception as e:
             logger.error(f"LLM response generation failed during summarization: {e}")
-            provider_type = "gemini" if provider.__class__.__name__ == "GeminiProvider" else "mock"
+            provider_type = get_provider_name(provider)
             from app.services.telemetry_service import TelemetryService
             try:
                 TelemetryService.record_log(

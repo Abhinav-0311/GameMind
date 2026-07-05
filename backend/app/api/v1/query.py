@@ -1,7 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.schemas import QueryRequest, QueryResponse
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.dependencies import get_game_project_id
 
@@ -10,8 +9,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/query", tags=["query"])
 
 def get_rag_service():
-    gemini = GeminiService()
-    return RAGService(gemini)
+    return RAGService()
 
 @router.post("/", response_model=QueryResponse)
 def query_lore(
@@ -37,8 +35,8 @@ def query_lore(
         message = None
         if not results:
             message = "No matching lore fragments found. Ensure documents are uploaded."
-        elif not rag_service.gemini_service.is_available():
-            message = "Retrieved matches using Local Demo mode (Chroma local embeddings)."
+        else:
+            message = "Retrieved matches using local Chroma embeddings."
 
         return {
             "query": request.query,

@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.npc import NPCProfile
 from app.schemas import NPCMemoryCreate, NPCMemoryResponse, MemoryConsolidateRequest, MemoryConsolidateResponse
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 from app.services.memory_service import MemoryService
 from app.dependencies import get_game_project_id
@@ -13,9 +12,8 @@ from typing import List, Optional
 router = APIRouter(prefix="/memories", tags=["memories"])
 
 def get_memory_service():
-    gemini = GeminiService()
-    rag = RAGService(gemini)
-    return MemoryService(gemini, rag)
+    rag = RAGService()
+    return MemoryService(rag)
 
 @router.post("", response_model=NPCMemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_npc_memory(

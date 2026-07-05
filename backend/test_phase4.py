@@ -10,7 +10,6 @@ from app.repositories.graph_repository import graph_repo
 from app.services.graph_validation import GraphValidationService, ValidationError
 from app.services.contradiction_engine import contradiction_engine
 from app.services.memory_service import MemoryService
-from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
 
 @pytest.fixture(scope="function")
@@ -176,12 +175,9 @@ def test_graph_aware_memory_boosting_unit(db):
     # Graph: NPC --(allied_with)--> Friend
     graph_repo.create_relationship(db, npc_slug, friend_slug, "allied_with")
     
-    # 2. Mock MemoryService and GeminiService
-    gemini = GeminiService()
-    gemini.is_available = lambda: True
-    gemini.generate_embedding = lambda text: [0.1] * 768
-    rag = RAGService(gemini)
-    mem_service = MemoryService(gemini, rag)
+    # 2. Mock MemoryService vector retrieval through Chroma's collection boundary
+    rag = RAGService()
+    mem_service = MemoryService(rag)
     
     # Seed memories in Postgres (leaving chroma_indexed=False since we mock Chroma)
     m1 = NPCMemory(
@@ -206,7 +202,7 @@ def test_graph_aware_memory_boosting_unit(db):
     class MockCollection:
         def count(self):
             return 2
-        def query(self, query_embeddings, where, n_results):
+        def query(self, query_texts, where, n_results):
             # Return m1 first, then m2, to verify that score boosting re-ranks m2 above m1
             return {
                 "ids": [[str(m1.id), str(m2.id)]],
@@ -236,12 +232,8 @@ def test_graph_aware_memory_boosting_integration(db):
     db.add(npc_profile)
     db.commit()
     
-    gemini = GeminiService()
-    # Ensure mocked embedding provider works if Gemini key is unconfigured
-    gemini.is_available = lambda: True
-    gemini.generate_embedding = lambda text: [0.1] * 768
-    rag = RAGService(gemini)
-    mem_service = MemoryService(gemini, rag)
+    rag = RAGService()
+    mem_service = MemoryService(rag)
     
     # Create isolated collection name for this test run
     unique_col_name = f"npc_memories_test_{uuid.uuid4().hex[:8]}"

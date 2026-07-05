@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
 from main import app
 from app.services.rag_service import RAGService
-from app.services.gemini_service import GeminiService
 import uuid
 
 client = TestClient(app)
@@ -14,12 +13,14 @@ def test_health_endpoint():
     assert "status" in data
     assert "database" in data
     assert "chromadb" in data
-    assert "gemini_api" in data
+    assert data["ai_mode"] == "local_demo"
+    assert data["embedding_provider"] == "chroma_default"
+    assert data["vector_collection"] == "lore_chunks_local"
+    assert "llm_provider" in data
 
 def test_chunker_logic():
     """Verify that chunking divides text within bounds and handles overlap correctly."""
-    gemini = GeminiService()
-    rag = RAGService(gemini)
+    rag = RAGService()
     text = "This is a sentence. And here is another sentence that is longer. " * 20
     chunks = rag.chunk_text(text, chunk_size=100, chunk_overlap=20)
     
@@ -110,4 +111,3 @@ def test_npc_lifecycle():
     # 9. Verify deleted NPC returns 404 on GET by ID
     response = client.get(f"/api/v1/npcs/{npc_id}")
     assert response.status_code == 404
-

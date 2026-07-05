@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base
 from app.api.v1.documents import router as documents_router
 from app.api.v1.query import router as query_router
 from app.api.v1.npcs import router as npcs_router
@@ -38,16 +37,13 @@ async def lifespan(app: FastAPI):
     # Run backfill/reindex for existing DocumentChunk rows into local collection
     try:
         from app.database import SessionLocal
-        from app.services.gemini_service import GeminiService
         from app.services.rag_service import RAGService
         
-        gemini = GeminiService()
-        if not gemini.is_available():
-            logger.info("Gemini API key is not configured. Running startup local collection backfill...")
-            db = SessionLocal()
-            rag = RAGService(gemini)
-            rag.backfill_local_collection(db)
-            db.close()
+        logger.info("Running startup local collection backfill...")
+        db = SessionLocal()
+        rag = RAGService()
+        rag.backfill_local_collection(db)
+        db.close()
     except Exception as be:
         logger.error(f"Startup vector database backfill failed: {be}")
 
@@ -99,7 +95,7 @@ app.include_router(blueprints_router, prefix="/api/v1")
 
 @app.get("/health")
 def health_check():
-    """Verify backend, database connection, ChromaDB connection, and Gemini API setup."""
+    """Verify backend, database connection, ChromaDB connection, and local AI mode."""
     db_status = "unhealthy"
     try:
         from sqlalchemy import text
@@ -113,10 +109,8 @@ def health_check():
 
     chroma_status = "unhealthy"
     try:
-        from app.services.gemini_service import GeminiService
         from app.services.rag_service import RAGService
-        gemini = GeminiService()
-        rag = RAGService(gemini)
+        rag = RAGService()
         if rag.chroma_client:
             # Try to list or get collections to verify active connection
             if rag.collection is not None:
@@ -124,24 +118,13 @@ def health_check():
     except Exception as e:
         logger.error(f"ChromaDB connection verification failed: {e}")
 
-    gemini_status = "not_configured"
-    is_gemini_active = False
-    if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "your_gemini_api_key_here":
-        gemini_status = "configured"
-        is_gemini_active = True
-
-    ai_mode = "gemini" if is_gemini_active else "local_demo"
-    embedding_provider = "gemini_api" if is_gemini_active else "chroma_default"
-    vector_collection = "lore_chunks" if is_gemini_active else "lore_chunks_local"
-    vector_dimension = 768 if is_gemini_active else 384
-
     return {
         "status": "healthy" if db_status == "healthy" and chroma_status == "healthy" else "degraded",
         "database": db_status,
         "chromadb": chroma_status,
-        "gemini_api": gemini_status,
-        "ai_mode": ai_mode,
-        "embedding_provider": embedding_provider,
-        "vector_collection": vector_collection,
-        "vector_dimension": vector_dimension
+        "ai_mode": "local_demo",
+        "llm_provider": settings.LLM_PROVIDER,
+        "embedding_provider": "chroma_default",
+        "vector_collection": "lore_chunks_local",
+        "vector_dimension": 384
     }

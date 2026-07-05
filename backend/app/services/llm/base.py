@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 
 class LLMProvider(ABC):
+    provider_name = "local"
+
     @abstractmethod
     async def generate_response(
         self, 
