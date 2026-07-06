@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -14,6 +15,8 @@ def get_rag_service():
     return RAGService()
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+DEMO_FROSTPEAK_FILE_NAME = "sample_gdd_frostpeak.md"
+DEMO_FROSTPEAK_PATH = Path(__file__).resolve().parents[3] / "docs" / "demo" / DEMO_FROSTPEAK_FILE_NAME
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 def upload_document(
@@ -56,6 +59,42 @@ def upload_document(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"An error occurred during document processing: {e}"
+        )
+
+@router.post("/demo/frostpeak", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+def load_frostpeak_demo_document(
+    db: Session = Depends(get_db),
+    rag_service: RAGService = Depends(get_rag_service),
+    game_project_id: str = Depends(get_game_project_id)
+):
+    """Load the bundled Frostpeak sample GDD for the local zero-cost demo path."""
+    existing_doc = db.query(Document).filter(
+        Document.title == DEMO_FROSTPEAK_FILE_NAME,
+        Document.game_project_id == game_project_id
+    ).first()
+    if existing_doc:
+        return existing_doc
+
+    if not DEMO_FROSTPEAK_PATH.exists():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bundled Frostpeak demo document is missing from the backend."
+        )
+
+    try:
+        return rag_service.process_document(
+            db=db,
+            file_name=DEMO_FROSTPEAK_FILE_NAME,
+            file_bytes=DEMO_FROSTPEAK_PATH.read_bytes(),
+            content_type="text/markdown",
+            game_project_id=game_project_id
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while loading the Frostpeak demo: {e}"
         )
 
 @router.get("/", response_model=List[DocumentResponse])

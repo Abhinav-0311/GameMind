@@ -124,11 +124,11 @@ export default function HintStudioPage() {
   const canRequest = Boolean(activeQuestId) && cooldownSeconds === 0 && !isGenerating && !isLoadingQuests;
 
   return (
-    <main className="mx-auto max-w-6xl pb-14">
+    <main className="page-shell">
       <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
         <div className="max-w-3xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">Hint Studio</p>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+          <p className="page-kicker">Hint Studio</p>
+          <h1 className="display-title mt-5 text-[2.65rem] leading-tight sm:text-6xl">
             Test help that respects progression.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
@@ -156,8 +156,8 @@ export default function HintStudioPage() {
           </div>
         </div>
 
-        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Player state</p>
+        <aside className="panel self-start rounded-xl p-5">
+          <p className="mono-label text-[#7c8794]">Player state</p>
           <div className="mt-5 divide-y divide-[#222a33]">
             <FactRow label="Current level" value={`${currentLevel} / 3`} />
             <FactRow label="Cooldown" value={cooldownSeconds > 0 ? formatCooldown(cooldownSeconds) : "Ready"} />
@@ -174,9 +174,9 @@ export default function HintStudioPage() {
       {notice && <Alert tone="notice" message={notice} onDismiss={() => setNotice(null)} />}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="panel overflow-hidden rounded-xl">
           <div className="border-b border-[#222a33] px-5 py-4">
-            <h2 className="text-base font-semibold text-[#f7f8fa]">Hint request</h2>
+            <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Hint request</h2>
             <p className="mt-1 text-sm leading-6 text-[#a5afbd]">
               Select the player and quest, then request the next useful level of help.
             </p>
@@ -294,9 +294,9 @@ export default function HintStudioPage() {
         </div>
 
         <aside className="space-y-6">
-          <section className="rounded-lg border border-[#222a33] bg-[#101419]">
+          <section className="panel overflow-hidden rounded-xl">
             <div className="border-b border-[#222a33] px-5 py-4">
-              <h2 className="text-base font-semibold text-[#f7f8fa]">Generated hint</h2>
+              <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Generated hint</h2>
               <p className="mt-1 text-xs text-[#7c8794]">The player-facing text returned by the hint engine.</p>
             </div>
             <div className="p-5">
@@ -325,8 +325,8 @@ export default function HintStudioPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-[#222a33] bg-[#101419] p-5">
-            <h2 className="text-base font-semibold text-[#f7f8fa]">Selected quest</h2>
+          <section className="panel rounded-xl p-5">
+            <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Selected quest</h2>
             {selectedQuest && !useCustomQuestId ? (
               <div className="mt-4 space-y-3">
                 <p className="text-sm font-semibold text-[#f7f8fa]">{selectedQuest.title}</p>

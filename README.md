@@ -103,12 +103,12 @@ Expected local demo mode:
 
 ## Demo Flow
 
-1. Upload `docs/demo/sample_gdd_frostpeak.md` through the Knowledge Base.
+1. Open Knowledge Base and click **Load Frostpeak demo**. You can also manually upload `docs/demo/sample_gdd_frostpeak.md`.
 2. Open Blueprint Studio.
 3. Generate a blueprint from the uploaded GDD.
 4. Review all generated sections with citations, confidence, and warnings.
-5. Approve and export the Unity runtime JSON.
-6. Use the Unity scripts as the runtime integration base for NPC dialogue, quest, and hint flows.
+5. Approve and materialize the blueprint into runtime records.
+6. Use the simulator or Unity scripts to test NPC dialogue, quests, and hint flows.
 
 ## Production Notes
 

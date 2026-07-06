@@ -27,6 +27,7 @@ export default function KnowledgeBasePage() {
   const [uploading, setUploading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -144,19 +145,37 @@ export default function KnowledgeBasePage() {
     }
   };
 
+  const handleLoadDemo = async () => {
+    setLoadingDemo(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const demoDoc = await api.loadFrostpeakDemoDocument();
+      setSuccessMsg("Frostpeak demo GDD is ready. Generate a blueprint from it next.");
+      await fetchDocuments();
+      await handleViewDetails(demoDoc.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Could not load the Frostpeak demo document.");
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+    <div className="page-shell space-y-10">
       <section className="space-y-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl space-y-4">
-            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#7f8b9a]">
+            <div className="page-kicker">
               Knowledge Base
             </div>
             <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-[#f5f7fa]">
+              <h1 className="display-title text-[2.65rem] leading-tight sm:text-6xl">
                 Start with the game documents.
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
+              <p className="max-w-2xl text-base leading-7 text-[#9aa5b4]">
                 Upload a GDD, lore brief, NPC sheet, quest outline, or level notes. GameMind chunks and indexes the
                 source so Blueprint Studio and Query Studio can use it without paid API calls.
               </p>
@@ -193,7 +212,7 @@ export default function KnowledgeBasePage() {
           className={`rounded-md border p-6 transition ${
             dragOver
               ? "border-[#8bdff0] bg-[#111922]"
-              : "border-[#242a32] bg-[#0f1216]"
+              : "panel"
           }`}
         >
           <div className="grid gap-6 lg:grid-cols-[1fr_280px] lg:items-center">
@@ -202,7 +221,7 @@ export default function KnowledgeBasePage() {
                 GDD
               </div>
               <div className="space-y-2">
-                <h2 className="text-xl font-semibold tracking-tight text-[#f5f7fa]">
+                <h2 className="font-display text-3xl font-semibold text-[#f5f7fa]">
                   {uploading ? "Indexing source material" : "Drop your game design document here"}
                 </h2>
                 <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
@@ -212,6 +231,14 @@ export default function KnowledgeBasePage() {
             </div>
 
             <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleLoadDemo}
+                disabled={loadingDemo || uploading}
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-[#8bdff0]/40 bg-[#8bdff0]/10 text-sm font-semibold text-[#b7eef7] transition hover:border-[#8bdff0] hover:bg-[#8bdff0]/15 focus:outline-none focus:ring-2 focus:ring-[#8bdff0] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingDemo ? "Loading Frostpeak" : "Load Frostpeak demo"}
+              </button>
               <label
                 className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-md text-sm font-semibold transition focus-within:ring-2 focus-within:ring-[#f5f7fa] focus-within:ring-offset-2 focus-within:ring-offset-[#090b0e] ${
                   uploading
@@ -219,7 +246,7 @@ export default function KnowledgeBasePage() {
                     : "bg-[#f5f7fa] text-[#090b0e] hover:bg-white"
                 }`}
               >
-                {uploading ? "Uploading" : "Choose file"}
+                {uploading ? "Uploading" : "Choose your own file"}
                 <input
                   type="file"
                   className="sr-only"
@@ -229,7 +256,7 @@ export default function KnowledgeBasePage() {
                 />
               </label>
               <p className="text-center text-xs leading-5 text-[#7f8b9a]">
-                Files are stored locally in your project backend.
+                Start with the bundled sample, or upload your own GDD.
               </p>
             </div>
           </div>
@@ -241,8 +268,8 @@ export default function KnowledgeBasePage() {
             ["Searchable chunks", loadingList ? "--" : String(totalChunks)],
             ["AI cost", "$0 local"],
           ].map(([label, value]) => (
-            <div key={label} className="rounded-md border border-[#242a32] bg-[#0f1216] p-4">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#7f8b9a]">{label}</div>
+            <div key={label} className="panel-muted rounded-xl p-4">
+              <div className="mono-label text-[#7f8b9a]">{label}</div>
               <div className="mt-3 text-2xl font-semibold tracking-tight text-[#f5f7fa]">{value}</div>
             </div>
           ))}
@@ -253,7 +280,7 @@ export default function KnowledgeBasePage() {
         <main className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-[#f5f7fa]">Source library</h2>
+              <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Source library</h2>
               <p className="mt-1 text-sm leading-6 text-[#9aa5b4]">
                 These documents can power lore search and blueprint generation.
               </p>
@@ -267,7 +294,7 @@ export default function KnowledgeBasePage() {
             </button>
           </div>
 
-          <div className="rounded-md border border-[#242a32] bg-[#0f1216]">
+          <div className="panel overflow-hidden rounded-xl">
             {loadingList ? (
               <div className="space-y-3 p-4">
                 {[1, 2, 3].map((item) => (
@@ -276,11 +303,19 @@ export default function KnowledgeBasePage() {
               </div>
             ) : latestDocuments.length === 0 ? (
               <div className="px-6 py-14 text-center">
-                <h3 className="text-lg font-semibold text-[#f5f7fa]">No sources uploaded</h3>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#9aa5b4]">
-                  Upload the Frostpeak sample GDD or your own notes to begin the full GameMind flow.
-                </p>
-              </div>
+              <h3 className="text-lg font-semibold text-[#f5f7fa]">No sources uploaded</h3>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#9aa5b4]">
+                Upload the Frostpeak sample GDD or your own notes to begin the full GameMind flow.
+              </p>
+              <button
+                type="button"
+                onClick={handleLoadDemo}
+                disabled={loadingDemo}
+                className="mt-5 inline-flex min-h-10 items-center justify-center rounded-md bg-[#f5f7fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#101419] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingDemo ? "Loading demo" : "Load Frostpeak demo"}
+              </button>
+            </div>
             ) : (
               <div className="divide-y divide-[#20262e]">
                 {latestDocuments.map((doc) => {
@@ -326,9 +361,9 @@ export default function KnowledgeBasePage() {
           </div>
         </main>
 
-        <aside className="rounded-md border border-[#242a32] bg-[#0f1216]">
+        <aside className="panel overflow-hidden rounded-xl">
           <div className="border-b border-[#242a32] p-5">
-            <h2 className="text-sm font-semibold text-[#f5f7fa]">Chunk preview</h2>
+            <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Chunk preview</h2>
             <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
               Inspect the fragments available for local retrieval and blueprint citations.
             </p>
@@ -350,8 +385,8 @@ export default function KnowledgeBasePage() {
 
                 <div className="space-y-3">
                   {selectedDoc.chunks.slice(0, 6).map((chunk) => (
-                    <div key={chunk.id} className="rounded-md border border-[#242a32] bg-[#090b0e] p-4">
-                      <div className="mb-3 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.16em] text-[#7f8b9a]">
+                    <div key={chunk.id} className="panel-muted rounded-xl p-4">
+                      <div className="mono-label mb-3 flex items-center justify-between text-[#7f8b9a]">
                         <span>Chunk {chunk.chunk_index + 1}</span>
                         <span>{chunk.content.length} chars</span>
                       </div>

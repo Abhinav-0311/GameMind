@@ -133,7 +133,10 @@ namespace GameMind
 
         public IEnumerator GetRuntimeBundle(string blueprintId, Action<BlueprintRuntimeBundleResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
-            string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/blueprints/{blueprintId}/runtime-bundle";
+            bool useLatestBundle = string.IsNullOrWhiteSpace(blueprintId) || blueprintId == "00000000-0000-0000-0000-000000000000";
+            string url = useLatestBundle
+                ? $"{GameMindConfig.ApiBaseUrl}/api/v1/blueprints/runtime/latest-bundle"
+                : $"{GameMindConfig.ApiBaseUrl}/api/v1/blueprints/{blueprintId}/runtime-bundle";
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {

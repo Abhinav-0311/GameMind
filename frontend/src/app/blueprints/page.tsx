@@ -313,18 +313,18 @@ export default function BlueprintsDashboard() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+    <div className="page-shell space-y-10">
       <section className="space-y-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl space-y-4">
-            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#7f8b9a]">
+            <div className="page-kicker">
               Blueprint Studio
             </div>
             <div className="space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-[#f5f7fa]">
+              <h1 className="display-title text-[2.65rem] leading-tight sm:text-6xl">
                 Turn a GDD into runtime-ready game systems.
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
+              <p className="max-w-2xl text-base leading-7 text-[#9aa5b4]">
                 Generate a structured plan for narrative, art direction, NPCs, memory, quests, level ideas, and Unity
                 runtime data. Review it, approve it, then materialize it.
               </p>
@@ -363,9 +363,9 @@ export default function BlueprintsDashboard() {
 
         <div className="grid gap-3 md:grid-cols-4">
           {workflowSteps.map((step, index) => (
-            <div key={step.label} className="rounded-md border border-[#242a32] bg-[#0f1216] p-4">
+            <div key={step.label} className="panel-muted rounded-xl p-4">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#7f8b9a]">
+                <span className="mono-label text-[#7f8b9a]">
                   {index + 1}. {step.label}
                 </span>
                 <span
@@ -393,8 +393,8 @@ export default function BlueprintsDashboard() {
 
       <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-5">
-          <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-5">
-            <h2 className="text-sm font-semibold text-[#f5f7fa]">Create from source</h2>
+          <section className="panel rounded-xl p-5">
+            <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Create from source</h2>
             <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
               Choose the GDD or lore document that best represents this game idea.
             </p>
@@ -453,9 +453,9 @@ export default function BlueprintsDashboard() {
             </div>
           </section>
 
-          <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+          <section className="panel overflow-hidden rounded-xl">
             <div className="border-b border-[#242a32] p-5">
-              <h2 className="text-sm font-semibold text-[#f5f7fa]">Recent blueprints</h2>
+              <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Recent blueprints</h2>
               <p className="mt-1 text-sm text-[#9aa5b4]">Select a plan to review or ship.</p>
             </div>
 
@@ -505,20 +505,20 @@ export default function BlueprintsDashboard() {
 
         <main className="space-y-6">
           {!activeBlueprint ? (
-            <section className="rounded-md border border-[#242a32] bg-[#0f1216] px-6 py-16 text-center">
-              <h2 className="text-xl font-semibold text-[#f5f7fa]">Generate your first blueprint</h2>
+            <section className="panel rounded-xl px-6 py-16 text-center">
+              <h2 className="font-display text-3xl font-semibold text-[#f5f7fa]">Generate your first blueprint</h2>
               <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#9aa5b4]">
                 Pick a source document and GameMind will extract a structured game plan ready for review.
               </p>
             </section>
           ) : (
             <>
-              <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+              <section className="panel overflow-hidden rounded-xl">
                 <div className="border-b border-[#242a32] px-6 py-5">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-2xl font-semibold tracking-tight text-[#f5f7fa]">
+                        <h2 className="truncate font-display text-3xl font-semibold text-[#f5f7fa]">
                           {activeBlueprint.title}
                         </h2>
                         <span className="rounded-full border border-[#2f3742] bg-[#15191f] px-3 py-1 text-xs font-medium text-[#dbe2ea]">
@@ -579,7 +579,7 @@ export default function BlueprintsDashboard() {
                     <article className="space-y-6 p-6">
                       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                         <div className="space-y-2">
-                          <h3 className="text-xl font-semibold text-[#f5f7fa]">{activeSection.title}</h3>
+                          <h3 className="font-display text-3xl font-semibold text-[#f5f7fa]">{activeSection.title}</h3>
                           <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">{activeSection.description}</p>
                         </div>
                         <div className="flex shrink-0 gap-2">
@@ -605,11 +605,11 @@ export default function BlueprintsDashboard() {
 
                       <div className="grid gap-3">
                         {sectionPreview(activeSection.section).map(([key, value]) => (
-                          <div key={key} className="rounded-md border border-[#242a32] bg-[#090b0e] p-5">
-                            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#7f8b9a]">
+                          <div key={key} className="panel-muted rounded-xl p-5">
+                            <div className="mono-label text-[#7f8b9a]">
                               {key.replaceAll("_", " ")}
                             </div>
-                            <p className="mt-3 text-sm leading-7 text-[#f5f7fa]">{readableValue(value)}</p>
+                            <p className="mt-3 text-base leading-8 text-[#f5f7fa]">{readableValue(value)}</p>
                           </div>
                         ))}
                       </div>
@@ -628,10 +628,10 @@ export default function BlueprintsDashboard() {
               </section>
 
               {materializeReport && (
-                <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-6">
+                <section className="panel rounded-xl p-6">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold text-[#f5f7fa]">Materialization complete</h2>
+                      <h2 className="font-display text-3xl font-semibold text-[#f5f7fa]">Materialization complete</h2>
                       <p className="mt-2 text-sm leading-6 text-[#9aa5b4]">
                         Runtime records created, updated, or safely skipped from this blueprint.
                       </p>
@@ -648,7 +648,7 @@ export default function BlueprintsDashboard() {
                       ["Memories", materializeReport.memories],
                       ["World flags", materializeReport.flags],
                     ].map(([label, report]) => (
-                      <div key={label as string} className="rounded-md border border-[#242a32] bg-[#090b0e] p-4">
+                      <div key={label as string} className="panel-muted rounded-xl p-4">
                         <div className="text-sm font-semibold text-[#f5f7fa]">{label as string}</div>
                         <div className="mt-2 text-2xl font-semibold text-[#f5f7fa]">
                           {reportCount(report as MaterializationReportResponse["npcs"])}
@@ -661,10 +661,10 @@ export default function BlueprintsDashboard() {
               )}
 
               {payload && (
-                <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+                <section className="panel overflow-hidden rounded-xl">
                   <div className="flex flex-col gap-4 border-b border-[#242a32] p-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h2 className="text-sm font-semibold text-[#f5f7fa]">
+                      <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">
                         {runtimeBundle ? "Runtime bundle" : "Export payload"}
                       </h2>
                       <p className="mt-1 text-sm text-[#9aa5b4]">Use this only when inspecting the Unity contract.</p>

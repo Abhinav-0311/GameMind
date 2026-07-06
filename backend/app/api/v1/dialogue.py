@@ -18,9 +18,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dialogue", tags=["dialogue"])
 
+_LORE_TRIGGER_TERMS = {
+    "who", "what", "where", "when", "why", "how", "tell", "explain", "describe",
+    "king", "queen", "faction", "lore", "history", "quest", "objective", "place",
+    "location", "world", "war", "siege", "npc", "character", "enemy", "ally",
+    "remember", "memory", "frostpeak", "arven", "ember", "cinder", "vanguard",
+}
+
+_GREETING_ONLY_MESSAGES = {
+    "hi", "hello", "hey", "hello there", "hi there", "hey there", "greetings",
+    "good morning", "good afternoon", "good evening",
+}
+
+
+def _should_auto_retrieve_lore(message: str) -> bool:
+    normalized = " ".join(message.lower().strip().split())
+    if not normalized:
+        return False
+    if normalized in _GREETING_ONLY_MESSAGES:
+        return False
+
+    tokens = {
+        token.strip(".,!?;:()[]{}\"'")
+        for token in normalized.split()
+        if token.strip(".,!?;:()[]{}\"'")
+    }
+    if len(tokens) <= 2 and not tokens.intersection(_LORE_TRIGGER_TERMS):
+        return False
+    return bool(tokens.intersection(_LORE_TRIGGER_TERMS) or "?" in normalized)
+
 
 def _with_auto_retrieved_chunks(request: DialogueChatRequest, game_project_id: str) -> DialogueChatRequest:
     if request.selected_chunk_ids:
+        return request
+    if not _should_auto_retrieve_lore(request.player_message):
         return request
 
     try:

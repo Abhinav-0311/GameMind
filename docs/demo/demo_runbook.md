@@ -60,11 +60,17 @@ Point out:
 - Backend, database, and vector index readiness.
 - Recommended path.
 
-### 2. Upload The GDD
+### 2. Load The GDD
 
 Go to `Knowledge Base`.
 
-Upload:
+Recommended path:
+
+```text
+Click "Load Frostpeak demo"
+```
+
+Alternative manual path:
 
 ```text
 docs/demo/sample_gdd_frostpeak.md

@@ -11,6 +11,8 @@ from app.models.quest import Quest, QuestObjective, QuestProgress
 from app.models.graph import WorldEntity, WorldEntityVersion
 from app.services.runtime_presentation_service import RuntimePresentationService
 from app.schemas import DialogueChatResponse, QuestGeneratedResponse, ErrorEnvelope
+from app.api.v1.dialogue import _should_auto_retrieve_lore
+from app.services.dialogue_service import should_retrieve_dynamic_memories
 
 client = TestClient(app)
 
@@ -172,6 +174,14 @@ def test_dialogue_chat_auto_retrieves_lore_context(db):
     data = response.json()
     assert data["citations"]
     assert "No lore context was provided" not in data["response_text"]
+
+
+def test_dialogue_auto_retrieval_skips_generic_greetings():
+    """Verify generic greetings do not hit the vector index during high-volume chat."""
+    assert _should_auto_retrieve_lore("Hello there") is False
+    assert _should_auto_retrieve_lore("hi") is False
+    assert _should_auto_retrieve_lore("Who is King Arven?") is True
+    assert _should_auto_retrieve_lore("Tell me about Frostpeak") is True
 
 
 def test_gate_d_quest_generation(db):
@@ -422,3 +432,15 @@ def test_local_provider_smoke(db):
     assert "response_text" in data
     assert data["llm_provider"] == "local_mock"
     assert data["telemetry"]["estimated_cost_usd"] == 0.0
+
+
+def test_dialogue_retrieval_gates_skip_lightweight_messages():
+    assert _should_auto_retrieve_lore("Hello there") is False
+    assert _should_auto_retrieve_lore("hi") is False
+    assert _should_auto_retrieve_lore("Who is King Arven?") is True
+    assert _should_auto_retrieve_lore("Tell me about Frostpeak") is True
+
+    assert should_retrieve_dynamic_memories("Hello there") is False
+    assert should_retrieve_dynamic_memories("ok") is False
+    assert should_retrieve_dynamic_memories("Do you remember me?") is True
+    assert should_retrieve_dynamic_memories("Hello there", has_history=True) is True

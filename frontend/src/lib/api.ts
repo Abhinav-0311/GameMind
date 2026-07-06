@@ -69,6 +69,17 @@ export const api = {
     return res.json();
   },
 
+  async loadFrostpeakDemoDocument(): Promise<DocumentResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/documents/demo/frostpeak`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to load Frostpeak demo document");
+    }
+    return res.json();
+  },
+
   async getDocuments(): Promise<DocumentResponse[]> {
     const res = await fetch(`${API_BASE_URL}/api/v1/documents`);
     if (!res.ok) throw new Error("Failed to fetch documents");
