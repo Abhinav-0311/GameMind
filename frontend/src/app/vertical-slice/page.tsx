@@ -380,13 +380,13 @@ export default function VerticalSliceSimulator() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl pb-14">
+    <main className="page-shell">
       <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
         <div className="max-w-3xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">
+          <p className="page-kicker">
             Narrative Simulator
           </p>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+          <h1 className="display-title mt-5 text-[2.65rem] leading-tight sm:text-6xl">
             Play through the AI narrative loop.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
@@ -395,11 +395,11 @@ export default function VerticalSliceSimulator() {
           </p>
         </div>
 
-        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+        <aside className="panel self-start rounded-xl p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Current run</p>
-              <h2 className="mt-3 text-lg font-semibold text-[#f7f8fa]">{runState}</h2>
+              <p className="mono-label text-[#7c8794]">Current run</p>
+              <h2 className="mt-3 font-display text-3xl font-semibold text-[#f7f8fa]">{runState}</h2>
             </div>
             <StatusPill ready={setupReady && !isLoadingSetup} label={setupReady ? "Ready" : "Setup"} />
           </div>
@@ -432,7 +432,7 @@ export default function VerticalSliceSimulator() {
         </div>
       )}
 
-      <section className="rounded-lg border border-[#222a33] bg-[#101419]">
+      <section className="panel overflow-hidden rounded-xl">
         <div className="grid gap-0 lg:grid-cols-2">
           <SetupSelect
             label="Lore source"
@@ -473,10 +473,10 @@ export default function VerticalSliceSimulator() {
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex min-h-[36rem] flex-col rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="panel flex min-h-[36rem] flex-col overflow-hidden rounded-xl">
           <div className="flex items-center justify-between border-b border-[#222a33] px-5 py-4">
             <div>
-              <h2 className="text-base font-semibold text-[#f7f8fa]">Dialogue playtest</h2>
+              <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Dialogue playtest</h2>
               <p className="mt-1 text-xs text-[#7c8794]">
                 Ask the selected NPC about the world, quest, faction, or current objective.
               </p>
@@ -552,7 +552,7 @@ export default function VerticalSliceSimulator() {
             onRequest={requestHint}
           />
 
-          <details className="rounded-lg border border-[#222a33] bg-[#101419]">
+          <details className="panel overflow-hidden rounded-xl">
             <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[#f7f8fa] transition hover:bg-[#121922]">
               Structured payload
             </summary>
@@ -595,7 +595,7 @@ function SetupSelect({
 }) {
   return (
     <div className="border-b border-[#222a33] p-5 lg:border-b-0 lg:border-r last:border-r-0">
-      <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7c8794]">{label}</label>
+      <label className="mono-label text-[#7c8794]">{label}</label>
       {options.length === 0 ? (
         <div className="mt-3 rounded-md border border-[#222a33] bg-[#0b0f13] p-4">
           <p className="text-sm leading-6 text-[#a5afbd]">{emptyText}</p>
@@ -683,7 +683,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
               {message.citations && message.citations.length > 0 && (
                 <div className="space-y-2">
                   {message.citations.map((citation) => (
-                    <div key={citation.chunk_id} className="rounded-md border border-[#222a33] bg-[#090d11] p-3">
+                    <div key={citation.chunk_id} className="panel-muted rounded-xl p-3">
                       <div className="flex justify-between gap-3 text-xs">
                         <span className="font-semibold text-[#f7f8fa]">{citation.title}</span>
                         <span className="text-[#8bdff0]">{Math.round(citation.similarity * 100)}%</span>
@@ -717,9 +717,9 @@ function QuestPanel({
   onAccept: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-[#222a33] bg-[#101419]">
+    <section className="panel overflow-hidden rounded-xl">
       <div className="border-b border-[#222a33] px-5 py-4">
-        <h2 className="text-base font-semibold text-[#f7f8fa]">Quest</h2>
+        <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Quest</h2>
         <p className="mt-1 text-xs text-[#7c8794]">Generate a contextual objective and register it for the player.</p>
       </div>
       <div className="p-5">
@@ -740,7 +740,7 @@ function QuestPanel({
         ) : (
           <div>
             <div className="flex items-start justify-between gap-3">
-              <h3 className="text-sm font-semibold leading-6 text-[#f7f8fa]">{quest.title}</h3>
+              <h3 className="font-display text-2xl font-semibold leading-7 text-[#f7f8fa]">{quest.title}</h3>
               <span className="rounded-full border border-[#27303a] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8bdff0]">
                 {quest.difficulty}
               </span>
@@ -748,7 +748,7 @@ function QuestPanel({
             <p className="mt-3 text-sm leading-6 text-[#a5afbd]">{quest.description}</p>
             <div className="mt-4 space-y-2">
               {quest.objectives.map((objective) => (
-                <div key={`${objective.objective_index}-${objective.description}`} className="rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
+                <div key={`${objective.objective_index}-${objective.description}`} className="panel-muted rounded-xl p-3">
                   <p className="text-sm leading-6 text-[#f7f8fa]">{objective.description}</p>
                 </div>
               ))}
@@ -798,9 +798,9 @@ function HintPanel({
   onRequest: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-[#222a33] bg-[#101419]">
+    <section className="panel overflow-hidden rounded-xl">
       <div className="border-b border-[#222a33] px-5 py-4">
-        <h2 className="text-base font-semibold text-[#f7f8fa]">Progressive hints</h2>
+        <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Progressive hints</h2>
         <p className="mt-1 text-xs text-[#7c8794]">Escalate from subtle guidance to direct help.</p>
       </div>
       <div className="p-5">
@@ -837,8 +837,8 @@ function HintPanel({
               <FactTile label="Cooldown" value={cooldownRemaining > 0 ? `${cooldownRemaining}s` : "Ready"} />
             </div>
             {hintText && (
-              <div className="mt-4 rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7c8794]">Hint</p>
+              <div className="panel-muted mt-4 rounded-xl p-3">
+                <p className="mono-label text-[#7c8794]">Hint</p>
                 <p className="mt-2 text-sm leading-6 text-[#f7f8fa]">{hintText}</p>
               </div>
             )}
@@ -872,8 +872,8 @@ function FactRow({ label, value }: { label: string; value: string }) {
 
 function FactTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
-      <p className="text-xs text-[#7c8794]">{label}</p>
+    <div className="panel-muted rounded-xl p-3">
+      <p className="mono-label text-[#7c8794]">{label}</p>
       <p className="mt-1 text-sm font-semibold text-[#f7f8fa]">{value}</p>
     </div>
   );

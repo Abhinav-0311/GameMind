@@ -2,6 +2,7 @@ import pytest
 import time
 import uuid
 import threading
+import gc
 from fastapi.testclient import TestClient
 from main import app
 from app.database import SessionLocal, get_db
@@ -28,10 +29,15 @@ def setup_isolated_db():
 
 
 def get_memory_usage_bytes() -> int:
-    """Return process RSS memory usage in bytes, falling back to /proc/self/status if psutil is absent."""
+    """Return private process memory usage in bytes, falling back to RSS if psutil is absent."""
     try:
         import psutil
-        return psutil.Process().memory_info().rss
+        process = psutil.Process()
+        if hasattr(process, "memory_full_info"):
+            full_info = process.memory_full_info()
+            if hasattr(full_info, "uss"):
+                return full_info.uss
+        return process.memory_info().rss
     except ImportError:
         try:
             with open("/proc/self/status", "r") as f:
@@ -122,7 +128,8 @@ def run_concurrent_workloads(concurrency: int) -> dict:
         except Exception as e:
             errors.append(str(e))
 
-    # Measure memory before
+    # Measure retained process memory after one-time warmups and garbage collection.
+    gc.collect()
     mem_before = get_memory_usage_bytes()
 
     threads = []
@@ -136,6 +143,7 @@ def run_concurrent_workloads(concurrency: int) -> dict:
         t.join()
 
     duration = time.time() - start_time
+    gc.collect()
     mem_after = get_memory_usage_bytes()
     mem_growth = mem_after - mem_before
 

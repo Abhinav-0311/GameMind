@@ -103,6 +103,35 @@ def export_blueprint(
         "runtime_data": blueprint.unity_runtime_preview.get("content", {})
     }
 
+@router.get("/runtime/latest-bundle", response_model=BlueprintRuntimeBundleResponse)
+def get_latest_runtime_bundle(
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    materializer_service: BlueprintMaterializerService = Depends(get_materializer_service)
+):
+    """Returns the newest materialized blueprint bundle for Unity demo scenes."""
+    candidate_blueprints = db.query(GameBlueprint).filter(
+        GameBlueprint.game_project_id == game_project_id
+    ).order_by(GameBlueprint.updated_at.desc()).all()
+
+    blueprint = next(
+        (
+            candidate
+            for candidate in candidate_blueprints
+            if isinstance(candidate.materialization_manifest, dict)
+            and candidate.materialization_manifest.get("last_materialized_at")
+        ),
+        None
+    )
+
+    if not blueprint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No materialized blueprint found for this project."
+        )
+
+    return materializer_service.get_runtime_bundle(db, blueprint.id, game_project_id)
+
 @router.post("/{blueprint_id}/materialize", response_model=MaterializationReportResponse)
 def materialize_blueprint(
     blueprint_id: UUID,

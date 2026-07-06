@@ -175,12 +175,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="min-h-dvh bg-[#090b0e] text-[#f7f8fa] antialiased">
+    <div className="min-h-dvh text-[#f7f8fa] antialiased">
       <div className="flex min-h-dvh">
         <Sidebar pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-[#202832] bg-[#0d1116]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-white/[0.07] bg-[#0b0d10]/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
@@ -191,8 +191,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <IconMenu />
               </button>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[#f7f8fa]">{currentPage.name}</p>
-                <p className="mt-0.5 hidden text-xs text-[#7c8794] sm:block">
+                <p className="truncate font-display text-lg font-semibold leading-none text-[#f7f8fa]">{currentPage.name}</p>
+                <p className="mt-1 hidden text-xs text-[#7c8794] sm:block">
                   Local-first AI game builder, running at zero model cost.
                 </p>
               </div>
@@ -219,7 +219,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+          <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">{children}</main>
         </div>
       </div>
 
@@ -331,12 +331,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
 function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r border-[#202832] bg-[#0d1116] lg:flex lg:flex-col">
-      <div className="border-b border-[#202832] px-5 py-5">
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r border-white/[0.07] bg-[#0b0d10]/96 lg:flex lg:flex-col">
+      <div className="border-b border-white/[0.07] px-5 py-5">
         <Brand />
       </div>
       <Navigation pathname={pathname} onNavigate={onNavigate} />
-      <div className="border-t border-[#202832] px-5 py-4">
+      <div className="border-t border-white/[0.07] px-5 py-4">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f7a87]">Mode</p>
         <div className="mt-3 rounded-md border border-[#25303b] bg-[#0a0e12] p-3">
           <div className="flex items-center justify-between gap-3">
@@ -356,12 +356,12 @@ function Brand() {
   return (
     <div>
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#25303b] bg-[#101820] text-sm font-semibold text-[#f7f8fa]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#25303b] bg-[#101820] font-display text-lg font-semibold text-[#f7f8fa]">
           G
         </span>
         <div>
-          <p className="text-sm font-semibold leading-none text-[#f7f8fa]">GameMind</p>
-          <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
+          <p className="font-display text-lg font-semibold leading-none text-[#f7f8fa]">GameMind</p>
+          <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
             AI game builder
           </p>
         </div>
@@ -375,7 +375,7 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate: ()
     <nav className="flex-1 overflow-y-auto px-3 py-5">
       {sections.map((section) => (
         <div key={section} className="mb-7 last:mb-0">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#647080]">{section}</p>
+          <p className="px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[#647080]">{section}</p>
           <div className="mt-3 space-y-1">
             {navigationItems
               .filter((item) => item.section === section)

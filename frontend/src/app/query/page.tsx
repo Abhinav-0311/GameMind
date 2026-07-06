@@ -76,18 +76,18 @@ export default function QueryStudioPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+    <div className="page-shell space-y-10">
       <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="space-y-8">
           <div className="space-y-4">
-            <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-[#7f8b9a]">
+            <div className="page-kicker">
               Query Studio
             </div>
             <div className="max-w-3xl space-y-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-[#f5f7fa]">
+              <h1 className="display-title text-[2.65rem] leading-tight sm:text-6xl">
                 Ask your lore base a direct question.
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-[#9aa5b4]">
+              <p className="max-w-2xl text-base leading-7 text-[#9aa5b4]">
                 Search uploaded GDDs and lore files using local Chroma embeddings. GameMind returns the best grounded
                 match first, with citations kept close for inspection.
               </p>
@@ -96,7 +96,7 @@ export default function QueryStudioPage() {
 
           <form
             onSubmit={onSubmit}
-            className="rounded-md border border-[#242a32] bg-[#0f1216] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.24)]"
+            className="panel rounded-xl p-3"
           >
             <div className="flex flex-col gap-3 sm:flex-row">
               <label className="sr-only" htmlFor="lore-query">
@@ -108,7 +108,7 @@ export default function QueryStudioPage() {
                 placeholder="Ask about characters, factions, locations, quests..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="min-h-11 flex-1 rounded-md border border-[#252b34] bg-[#090b0e] px-4 text-sm text-[#f5f7fa] outline-none transition placeholder:text-[#66717f] hover:border-[#38414d] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/15"
+                className="min-h-12 flex-1 rounded-lg border border-[#252b34] bg-[#090b0e] px-4 text-base text-[#f5f7fa] outline-none transition placeholder:text-[#66717f] hover:border-[#38414d] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/15"
               />
 
               <label className="sr-only" htmlFor="match-limit">
@@ -118,7 +118,7 @@ export default function QueryStudioPage() {
                 id="match-limit"
                 value={limit}
                 onChange={(event) => setLimit(Number(event.target.value))}
-                className="min-h-11 rounded-md border border-[#252b34] bg-[#090b0e] px-3 text-sm text-[#dbe2ea] outline-none transition hover:border-[#38414d] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/15 sm:w-32"
+                className="min-h-12 rounded-lg border border-[#252b34] bg-[#090b0e] px-3 text-sm text-[#dbe2ea] outline-none transition hover:border-[#38414d] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/15 sm:w-36"
               >
                 {[3, 5, 8, 10].map((value) => (
                   <option key={value} value={value}>
@@ -130,7 +130,7 @@ export default function QueryStudioPage() {
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
-                className="min-h-11 rounded-md bg-[#f5f7fa] px-5 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:bg-[#252b34] disabled:text-[#66717f]"
+                className="min-h-12 rounded-lg bg-[#f5f7fa] px-6 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f5f7fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:bg-[#252b34] disabled:text-[#66717f]"
               >
                 {loading ? "Searching" : "Search lore"}
               </button>
@@ -153,14 +153,14 @@ export default function QueryStudioPage() {
             </div>
           ) : bestMatch ? (
             <div className="space-y-6">
-              <section className="rounded-md border border-[#242a32] bg-[#0f1216]">
+              <section className="panel overflow-hidden rounded-xl">
                 <div className="border-b border-[#242a32] px-6 py-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-2">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#7f8b9a]">
+                      <div className="mono-label text-[#7f8b9a]">
                         Best grounded match
                       </div>
-                      <h2 className="text-xl font-semibold tracking-tight text-[#f5f7fa]">
+                      <h2 className="font-display text-3xl font-semibold text-[#f5f7fa]">
                         {bestMatch.title}
                       </h2>
                     </div>
@@ -178,7 +178,7 @@ export default function QueryStudioPage() {
                 </div>
 
                 <div className="space-y-5 px-6 py-6">
-                  <p className="max-w-3xl text-base leading-8 text-[#f5f7fa]">
+                  <p className="max-w-3xl text-lg leading-8 text-[#f5f7fa]">
                     {bestMatch.content}
                   </p>
 
@@ -208,7 +208,7 @@ export default function QueryStudioPage() {
                   {results.map((result, index) => (
                     <article
                       key={result.chunk_id}
-                      className="rounded-md border border-[#242a32] bg-[#0f1216] px-5 py-4 transition hover:border-[#38414d]"
+                      className="panel-muted rounded-xl px-5 py-4 transition hover:border-[#38414d]"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0 space-y-1">
@@ -278,8 +278,8 @@ export default function QueryStudioPage() {
         </div>
 
         <aside className="space-y-5">
-          <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-5">
-            <h2 className="text-sm font-semibold text-[#f5f7fa]">Local retrieval</h2>
+          <section className="panel rounded-xl p-5">
+            <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Local retrieval</h2>
             <div className="mt-4 space-y-4 text-sm leading-6 text-[#9aa5b4]">
               <p>
                 Query Studio searches local Chroma embeddings. It is zero-cost and citation-first, so results show
@@ -287,11 +287,11 @@ export default function QueryStudioPage() {
               </p>
               <div className="grid grid-cols-2 gap-3 border-t border-[#242a32] pt-4">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#7f8b9a]">Mode</div>
+                  <div className="mono-label text-[#7f8b9a]">Mode</div>
                   <div className="mt-1 font-medium text-[#f5f7fa]">Local demo</div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#7f8b9a]">Cost</div>
+                  <div className="mono-label text-[#7f8b9a]">Cost</div>
                   <div className="mt-1 font-medium text-[#f5f7fa]">$0</div>
                 </div>
               </div>
@@ -299,8 +299,8 @@ export default function QueryStudioPage() {
           </section>
 
           {groupedSources.length > 0 && (
-            <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-5">
-              <h2 className="text-sm font-semibold text-[#f5f7fa]">Sources used</h2>
+            <section className="panel rounded-xl p-5">
+              <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Sources used</h2>
               <div className="mt-4 space-y-3">
                 {groupedSources.map((source) => (
                   <div key={source.title} className="flex items-center justify-between gap-3 text-sm">
@@ -314,8 +314,8 @@ export default function QueryStudioPage() {
             </section>
           )}
 
-          <section className="rounded-md border border-[#242a32] bg-[#0f1216] p-5">
-            <h2 className="text-sm font-semibold text-[#f5f7fa]">Recent questions</h2>
+          <section className="panel rounded-xl p-5">
+            <h2 className="font-display text-2xl font-semibold text-[#f5f7fa]">Recent questions</h2>
             <div className="mt-4 space-y-2">
               {history.map((item) => (
                 <button

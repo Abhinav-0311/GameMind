@@ -177,16 +177,16 @@ export default function WorkspaceOverview() {
   ];
 
   return (
-    <main className="mx-auto max-w-6xl pb-14">
-      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
+    <main className="page-shell">
+      <section className="grid gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-14">
         <div className="max-w-3xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">
+          <p className="page-kicker">
             GameMind workspace
           </p>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+          <h1 className="display-title mt-5 text-[2.65rem] leading-[1.02] sm:text-6xl sm:leading-[0.98]">
             Build a playable AI narrative slice from one GDD.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
+          <p className="mt-6 max-w-2xl text-[1.05rem] leading-8 text-[#a5afbd]">
             Upload a design document, generate a grounded blueprint, materialize runtime records, then test the
             result in the dashboard and Unity without paid model calls.
           </p>
@@ -207,11 +207,11 @@ export default function WorkspaceOverview() {
           </div>
         </div>
 
-        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
+        <aside className="panel self-start rounded-xl p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Next action</p>
-              <h2 className="mt-3 text-lg font-semibold text-[#f7f8fa]">{nextAction.label}</h2>
+              <p className="mono-label text-[#7c8794]">Next action</p>
+              <h2 className="mt-3 font-display text-2xl font-semibold text-[#f7f8fa]">{nextAction.label}</h2>
             </div>
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
@@ -239,8 +239,8 @@ export default function WorkspaceOverview() {
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {readiness.map((item) => (
-          <div key={item.label} className="rounded-lg border border-[#222a33] bg-[#0f1318] p-4">
-            <p className="text-xs text-[#7c8794]">{item.label}</p>
+          <div key={item.label} className="panel-muted rounded-xl p-4">
+            <p className="mono-label text-[#7c8794]">{item.label}</p>
             <div className="mt-3 flex items-center gap-2">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
@@ -255,9 +255,9 @@ export default function WorkspaceOverview() {
         ))}
       </section>
 
-      <section className="mt-8 rounded-lg border border-[#222a33] bg-[#101419]">
+      <section className="panel mt-8 overflow-hidden rounded-xl">
         <div className="border-b border-[#222a33] px-5 py-5">
-          <h2 className="text-base font-semibold text-[#f7f8fa]">MVP build flow</h2>
+          <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">MVP build flow</h2>
           <p className="mt-1 text-sm leading-6 text-[#a5afbd]">
             This is the shortest path from document upload to a demonstrable Unity integration.
           </p>
@@ -290,7 +290,7 @@ export default function WorkspaceOverview() {
                   {step.state}
                 </span>
               </div>
-              <h3 className="mt-5 text-sm font-semibold text-[#f7f8fa]">{step.label}</h3>
+              <h3 className="mt-5 font-display text-xl font-semibold text-[#f7f8fa]">{step.label}</h3>
               <p className="mt-2 min-h-16 text-sm leading-6 text-[#a5afbd]">{step.description}</p>
               <Link
                 href={step.href}
@@ -308,10 +308,10 @@ export default function WorkspaceOverview() {
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="panel overflow-hidden rounded-xl">
           <div className="flex items-center justify-between border-b border-[#222a33] px-5 py-4">
             <div>
-              <h2 className="text-base font-semibold text-[#f7f8fa]">Source library</h2>
+              <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Source library</h2>
               <p className="mt-1 text-xs text-[#7c8794]">Recent documents available to retrieval and blueprinting.</p>
             </div>
             <Link
@@ -360,8 +360,8 @@ export default function WorkspaceOverview() {
           )}
         </div>
 
-        <aside className="rounded-lg border border-[#222a33] bg-[#101419] p-5">
-          <h2 className="text-base font-semibold text-[#f7f8fa]">Workspace facts</h2>
+        <aside className="panel rounded-xl p-5">
+          <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Workspace facts</h2>
           <div className="mt-5 divide-y divide-[#222a33]">
             <FactRow label="Documents" value={isLoading ? "--" : String(documents.length)} />
             <FactRow label="Chunks" value={isLoading ? "--" : String(totalChunks)} />

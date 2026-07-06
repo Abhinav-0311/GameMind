@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from main import app
+from app.models.document import Document
 from app.services.rag_service import RAGService
 import uuid
 
@@ -110,3 +111,31 @@ def test_chroma_default_embedding_path():
     assert health_data["vector_collection"] == "lore_chunks_local"
     # Assert vector_dimension from health metadata directly
     assert "vector_dimension" in health_data
+
+def test_frostpeak_demo_document_loader_is_idempotent(db_session):
+    """Verify the bundled demo GDD can be loaded once for the golden path."""
+    project_id = "demo_seed_proj"
+    rag = RAGService()
+    try:
+        rag.collection.delete(where={"game_project_id": project_id})
+    except Exception:
+        pass
+
+    headers = {"X-Game-Project-ID": project_id}
+    first = client.post("/api/v1/documents/demo/frostpeak", headers=headers)
+    second = client.post("/api/v1/documents/demo/frostpeak", headers=headers)
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    first_doc = first.json()
+    second_doc = second.json()
+    assert first_doc["id"] == second_doc["id"]
+    assert first_doc["title"] == "sample_gdd_frostpeak.md"
+    assert first_doc["chunks_count"] > 0
+
+    matching_docs = db_session.query(Document).filter(
+        Document.title == "sample_gdd_frostpeak.md",
+        Document.game_project_id == project_id
+    ).all()
+    assert len(matching_docs) == 1

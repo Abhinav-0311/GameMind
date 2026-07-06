@@ -7,6 +7,41 @@ from app.schemas import DialogueAssembleRequest, DialogueAssembleResponse, Retri
 
 logger = logging.getLogger(__name__)
 
+_MEMORY_TRIGGER_TERMS = {
+    "remember", "memory", "recall", "again", "before", "previous", "earlier",
+    "who", "what", "where", "when", "why", "how", "tell", "explain", "describe",
+    "quest", "promise", "help", "trust", "friend", "enemy", "faction", "king",
+    "queen", "war", "siege", "frostpeak", "arven", "ember", "cinder", "vanguard",
+}
+
+_LIGHTWEIGHT_DIALOGUE_MESSAGES = {
+    "hi", "hello", "hey", "hello there", "hi there", "hey there", "greetings",
+    "good morning", "good afternoon", "good evening", "thanks", "thank you",
+    "ok", "okay", "yes", "no",
+}
+
+
+def should_retrieve_dynamic_memories(message: str, has_history: bool = False) -> bool:
+    """Return true when the player message has enough intent to justify vector memory lookup."""
+    if has_history:
+        return True
+
+    normalized = " ".join(message.lower().strip().split())
+    if not normalized:
+        return False
+    if normalized in _LIGHTWEIGHT_DIALOGUE_MESSAGES:
+        return False
+
+    tokens = {
+        token.strip(".,!?;:()[]{}\"'")
+        for token in normalized.split()
+        if token.strip(".,!?;:()[]{}\"'")
+    }
+    if len(tokens) <= 2 and not tokens.intersection(_MEMORY_TRIGGER_TERMS):
+        return False
+    return bool(tokens.intersection(_MEMORY_TRIGGER_TERMS) or "?" in normalized)
+
+
 class DialogueService:
     @staticmethod
     def assemble_prompt(db: Session, request: DialogueAssembleRequest, history: Optional[List] = None, game_project_id: str = "default_project") -> DialogueAssembleResponse:
@@ -179,13 +214,24 @@ class DialogueService:
         else:
             continuity_str = "No recent continuity references detected."
 
-        # Retrieve matching NPC memories (dynamic episodic experiences)
-        from app.services.rag_service import RAGService
-        from app.services.memory_service import MemoryService
-        
-        rag = RAGService()
-        mem_service = MemoryService(rag)
-        retrieved_memories = mem_service.retrieve_memories(db, npc.id, player_msg, limit=5, player_id=player_id, game_project_id=game_project_id)
+        # Retrieve matching NPC memories only when the message has retrieval intent.
+        # Lightweight greetings stay fast and avoid initializing the vector memory index.
+        if should_retrieve_dynamic_memories(player_msg, has_history=bool(history)):
+            from app.services.rag_service import RAGService
+            from app.services.memory_service import MemoryService
+
+            rag = RAGService()
+            mem_service = MemoryService(rag)
+            retrieved_memories = mem_service.retrieve_memories(
+                db,
+                npc.id,
+                player_msg,
+                limit=5,
+                player_id=player_id,
+                game_project_id=game_project_id
+            )
+        else:
+            retrieved_memories = "No relevant memories."
 
         # Retrieve relationship details
         from app.models.relationship import NPCRelationship

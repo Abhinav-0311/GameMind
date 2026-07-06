@@ -20,6 +20,8 @@ namespace GameMind
         private static readonly Color Success = new Color(0.45f, 0.95f, 0.68f, 1f);
         private static readonly Color Warning = new Color(0.95f, 0.78f, 0.38f, 1f);
         private static readonly Color Danger = new Color(0.95f, 0.38f, 0.43f, 1f);
+        private static readonly Color StageFloor = new Color(0.12f, 0.13f, 0.13f, 1f);
+        private static readonly Color StageAccent = new Color(0.18f, 0.34f, 0.38f, 1f);
 
         private readonly List<NpcProfileDto> materializedNpcs = new List<NpcProfileDto>();
         private readonly List<QuestDto> materializedQuests = new List<QuestDto>();
@@ -30,9 +32,12 @@ namespace GameMind
         private GameObject emptyStatePanel;
         private Text emptyTitleText;
         private Text emptyBodyText;
+        private Button retryButton;
+        private Text retryButtonText;
 
         private Text statusText;
         private Image statusDot;
+        private Text keyboardHintText;
 
         private Button interactButton;
         private Text interactButtonText;
@@ -60,18 +65,52 @@ namespace GameMind
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
+            PrepareScenePresentation();
             eldrinController = FindFirstObjectByType<NpcInteractionController>();
 
             CreateCanvasUI();
             StartCoroutine(ConnectToBackend());
         }
 
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Escape) && dialoguePanel != null && dialoguePanel.activeSelf)
+            {
+                CloseDialogue();
+            }
+
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                StartCoroutine(ConnectToBackend());
+            }
+
+            if (Input.GetKeyDown(KeyCode.T) && interactButton != null && interactButton.gameObject.activeInHierarchy && interactButton.interactable)
+            {
+                InteractWithEldrin();
+            }
+
+            if (Input.GetKeyDown(KeyCode.A) && acceptQuestButton != null && acceptQuestButton.gameObject.activeInHierarchy && acceptQuestButton.interactable)
+            {
+                AcceptQuest();
+            }
+
+            if (Input.GetKeyDown(KeyCode.H) && requestHintButton != null && requestHintButton.gameObject.activeInHierarchy && requestHintButton.interactable)
+            {
+                RequestHint();
+            }
+        }
+
         private IEnumerator ConnectToBackend()
         {
             SetStatus("Connecting", Warning);
+            if (retryButton != null)
+            {
+                retryButton.interactable = false;
+                retryButtonText.text = "Checking...";
+            }
             ShowEmptyState(
                 "Loading runtime bundle",
-                "GameMind is checking the approved blueprint and materialized gameplay data for this scene."
+                "Checking the latest materialized blueprint for this project. Press R to retry at any time."
             );
 
             yield return null;
@@ -109,20 +148,22 @@ namespace GameMind
                 SetStatus("No runtime data", Warning);
                 ShowEmptyState(
                     "No materialized blueprint found",
-                    "Approve and materialize a blueprint in the dashboard, then paste that blueprint ID into Target Blueprint Id."
+                    "In the dashboard: load the Frostpeak demo, generate a blueprint, approve it, then materialize it. This scene will auto-load the latest materialized bundle."
                 );
                 interactButton.gameObject.SetActive(false);
                 questPanel.SetActive(false);
                 hintPanel.SetActive(false);
+                SetRetryEnabled(true);
                 return;
             }
 
             SetStatus("Runtime ready", Success);
             emptyStatePanel.SetActive(false);
+            SetRetryEnabled(true);
 
             interactButton.gameObject.SetActive(materializedNpcs.Count > 0);
             interactButton.interactable = materializedNpcs.Count > 0;
-            interactButtonText.text = materializedNpcs.Count > 0 ? "Talk to Eldrin" : "No NPCs loaded";
+            interactButtonText.text = materializedNpcs.Count > 0 ? "Talk to Eldrin  T" : "No NPCs loaded";
 
             if (materializedQuests.Count > 0)
             {
@@ -149,6 +190,7 @@ namespace GameMind
 
             SetStatus("Connection error", Danger);
             ShowEmptyState("Could not load runtime", message);
+            SetRetryEnabled(true);
             Debug.LogError($"[GameMind UI] Connection failed: {message}");
         }
 
@@ -182,7 +224,7 @@ namespace GameMind
                 {
                     SetStatus("Runtime ready", Success);
                     interactButton.interactable = true;
-                    interactButtonText.text = "Talk to Eldrin";
+                    interactButtonText.text = "Talk to Eldrin  T";
 
                     dialogueSpeakerText.text = response.npc_slug;
                     dialogueText.text = response.response_text;
@@ -196,7 +238,7 @@ namespace GameMind
                 error =>
                 {
                     interactButton.interactable = true;
-                    interactButtonText.text = "Talk to Eldrin";
+                    interactButtonText.text = "Talk to Eldrin  T";
                     OnBundleError(error);
                 }
             ));
@@ -221,7 +263,7 @@ namespace GameMind
                     SetStatus("Quest accepted", Success);
                     acceptQuestButton.gameObject.SetActive(false);
                     hintPanel.SetActive(true);
-                    hintText.text = "Quest accepted. Request a hint when the player needs guidance.";
+                    hintText.text = "Quest accepted. Ask for progressive guidance when the player needs help.";
                 },
                 error =>
                 {
@@ -272,7 +314,7 @@ namespace GameMind
             }
 
             requestHintButton.interactable = true;
-            requestHintButtonText.text = "Request hint";
+            requestHintButtonText.text = "Request hint  H";
         }
 
         private void CloseDialogue()
@@ -302,6 +344,7 @@ namespace GameMind
             CreateQuestPanel(canvasObj.transform);
             CreateHintPanel(canvasObj.transform);
             CreateDialoguePanel(canvasObj.transform);
+            CreateKeyboardHint(canvasObj.transform);
         }
 
         private void CreateStatusBadge(Transform parent)
@@ -342,7 +385,7 @@ namespace GameMind
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(520f, 230f);
+            rect.sizeDelta = new Vector2(560f, 300f);
 
             Text eyebrow = CreateText("Eyebrow", emptyStatePanel.transform, "GAMEMIND RUNTIME", 11, Accent, TextAnchor.UpperLeft);
             RectTransform eyebrowRect = eyebrow.GetComponent<RectTransform>();
@@ -364,19 +407,32 @@ namespace GameMind
             RectTransform bodyRect = emptyBodyText.GetComponent<RectTransform>();
             bodyRect.anchorMin = new Vector2(0f, 0f);
             bodyRect.anchorMax = new Vector2(1f, 1f);
-            bodyRect.offsetMin = new Vector2(34f, 36f);
+            bodyRect.offsetMin = new Vector2(34f, 86f);
             bodyRect.offsetMax = new Vector2(-34f, -118f);
+
+            retryButton = CreateButton("RetryButton", emptyStatePanel.transform, "Retry runtime load  R", Accent, new Color(0.03f, 0.05f, 0.06f, 1f), out retryButtonText);
+            RectTransform retryRect = retryButton.GetComponent<RectTransform>();
+            retryRect.anchorMin = new Vector2(0f, 0f);
+            retryRect.anchorMax = new Vector2(1f, 0f);
+            retryRect.pivot = new Vector2(0.5f, 0f);
+            retryRect.offsetMin = new Vector2(34f, 30f);
+            retryRect.offsetMax = new Vector2(-34f, 78f);
+            retryButton.onClick.AddListener(() =>
+            {
+                Debug.Log("[GameMind UI] Retry runtime load clicked.");
+                StartCoroutine(ConnectToBackend());
+            });
         }
 
         private void CreateInteractButton(Transform parent)
         {
-            interactButton = CreateButton("InteractButton", parent, "Talk to Eldrin", Accent, new Color(0.03f, 0.05f, 0.06f, 1f), out interactButtonText);
+            interactButton = CreateButton("InteractButton", parent, "Talk to Eldrin  T", Accent, new Color(0.03f, 0.05f, 0.06f, 1f), out interactButtonText);
             RectTransform rect = interactButton.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0.5f, 0f);
             rect.anchorMax = new Vector2(0.5f, 0f);
             rect.pivot = new Vector2(0.5f, 0f);
             rect.anchoredPosition = new Vector2(0f, 36f);
-            rect.sizeDelta = new Vector2(220f, 52f);
+            rect.sizeDelta = new Vector2(240f, 56f);
             interactButton.onClick.AddListener(() =>
             {
                 Debug.Log("[GameMind UI] Talk button clicked.");
@@ -408,7 +464,7 @@ namespace GameMind
             descRect.offsetMin = new Vector2(24f, 82f);
             descRect.offsetMax = new Vector2(-24f, -112f);
 
-            acceptQuestButton = CreateButton("AcceptQuestButton", questPanel.transform, "Accept quest", Success, new Color(0.03f, 0.08f, 0.05f, 1f), out acceptQuestButtonText);
+            acceptQuestButton = CreateButton("AcceptQuestButton", questPanel.transform, "Accept quest  A", Success, new Color(0.03f, 0.08f, 0.05f, 1f), out acceptQuestButtonText);
             RectTransform buttonRect = acceptQuestButton.GetComponent<RectTransform>();
             buttonRect.anchorMin = new Vector2(0f, 0f);
             buttonRect.anchorMax = new Vector2(1f, 0f);
@@ -444,7 +500,7 @@ namespace GameMind
             hintRect.offsetMin = new Vector2(24f, 56f);
             hintRect.offsetMax = new Vector2(-24f, -54f);
 
-            requestHintButton = CreateButton("RequestHintButton", hintPanel.transform, "Request hint", Accent, new Color(0.03f, 0.06f, 0.08f, 1f), out requestHintButtonText);
+            requestHintButton = CreateButton("RequestHintButton", hintPanel.transform, "Request hint  H", Accent, new Color(0.03f, 0.06f, 0.08f, 1f), out requestHintButtonText);
             RectTransform buttonRect = requestHintButton.GetComponent<RectTransform>();
             buttonRect.anchorMin = new Vector2(0f, 0f);
             buttonRect.anchorMax = new Vector2(1f, 0f);
@@ -496,6 +552,24 @@ namespace GameMind
             dialoguePanel.SetActive(false);
         }
 
+        private void CreateKeyboardHint(Transform parent)
+        {
+            GameObject panel = CreatePanel("KeyboardHint", parent, new Color(0.03f, 0.035f, 0.04f, 0.68f), false);
+            RectTransform rect = panel.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 0f);
+            rect.pivot = new Vector2(0f, 0f);
+            rect.anchoredPosition = new Vector2(28f, 28f);
+            rect.sizeDelta = new Vector2(460f, 38f);
+
+            keyboardHintText = CreateText("KeyboardHintText", panel.transform, "T Talk   A Accept quest   H Hint   R Reload   Esc Close", 12, TextSecondary, TextAnchor.MiddleLeft);
+            RectTransform textRect = keyboardHintText.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(16f, 0f);
+            textRect.offsetMax = new Vector2(-16f, 0f);
+        }
+
         private Button CreateButton(string name, Transform parent, string label, Color background, Color textColor, out Text labelText)
         {
             GameObject obj = new GameObject(name);
@@ -511,6 +585,7 @@ namespace GameMind
             button.colors = CreateButtonColors(background);
 
             labelText = CreateText("Label", obj.transform, label, 14, textColor, TextAnchor.MiddleCenter);
+            labelText.fontStyle = FontStyle.Bold;
             RectTransform labelRect = labelText.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
@@ -553,6 +628,7 @@ namespace GameMind
             text.fontSize = size;
             text.color = color;
             text.alignment = alignment;
+            text.lineSpacing = 1.08f;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Truncate;
             text.raycastTarget = false;
@@ -583,6 +659,59 @@ namespace GameMind
             emptyTitleText.text = title;
             emptyBodyText.text = body;
             emptyStatePanel.SetActive(true);
+        }
+
+        private void SetRetryEnabled(bool enabled)
+        {
+            if (retryButton == null || retryButtonText == null) return;
+            retryButton.interactable = enabled;
+            retryButtonText.text = enabled ? "Retry runtime load  R" : "Checking...";
+        }
+
+        private void PrepareScenePresentation()
+        {
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                mainCamera.transform.position = new Vector3(0f, 2.7f, -6.5f);
+                mainCamera.transform.rotation = Quaternion.Euler(14f, 0f, 0f);
+                mainCamera.clearFlags = CameraClearFlags.SolidColor;
+                mainCamera.backgroundColor = new Color(0.08f, 0.095f, 0.11f, 1f);
+                mainCamera.fieldOfView = 42f;
+            }
+
+            if (GameObject.Find("GameMindDemoFloor") == null)
+            {
+                GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                floor.name = "GameMindDemoFloor";
+                floor.transform.position = Vector3.zero;
+                floor.transform.localScale = new Vector3(4.8f, 1f, 4.8f);
+                Renderer floorRenderer = floor.GetComponent<Renderer>();
+                floorRenderer.material = new Material(Shader.Find("Standard"));
+                floorRenderer.material.color = StageFloor;
+            }
+
+            if (FindFirstObjectByType<NpcInteractionController>() == null)
+            {
+                GameObject npc = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                npc.name = "Runtime Eldrin Proxy";
+                npc.transform.position = new Vector3(0f, 1f, 0f);
+                npc.transform.localScale = new Vector3(0.9f, 1.1f, 0.9f);
+                Renderer npcRenderer = npc.GetComponent<Renderer>();
+                npcRenderer.material = new Material(Shader.Find("Standard"));
+                npcRenderer.material.color = StageAccent;
+                npc.AddComponent<Animator>();
+                npc.AddComponent<NpcInteractionController>();
+            }
+
+            if (FindFirstObjectByType<Light>() == null)
+            {
+                GameObject lightObj = new GameObject("GameMindKeyLight");
+                Light light = lightObj.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.intensity = 1.2f;
+                light.transform.rotation = Quaternion.Euler(48f, -28f, 0f);
+            }
         }
 
         private void EnsureEventSystem()

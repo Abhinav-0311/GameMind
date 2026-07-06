@@ -226,11 +226,11 @@ export default function NPCStudioPage() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl pb-14">
+    <main className="page-shell">
       <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
         <div className="max-w-3xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7c8794]">NPC Studio</p>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[#f7f8fa] sm:text-5xl">
+          <p className="page-kicker">NPC Studio</p>
+          <h1 className="display-title mt-5 text-[2.65rem] leading-tight sm:text-6xl">
             Shape characters the runtime can actually use.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
@@ -258,8 +258,8 @@ export default function NPCStudioPage() {
           </div>
         </div>
 
-        <aside className="self-start rounded-lg border border-[#222a33] bg-[#101419] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.22)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">Roster health</p>
+        <aside className="panel self-start rounded-xl p-5">
+          <p className="mono-label text-[#7c8794]">Roster health</p>
           <div className="mt-5 divide-y divide-[#222a33]">
             <FactRow label="Active NPCs" value={isLoading ? "--" : String(npcs.length)} />
             <FactRow label="Factions" value={isLoading ? "--" : String(factions.length)} />
@@ -277,7 +277,7 @@ export default function NPCStudioPage() {
       {success && <Alert tone="success" message={success} />}
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="panel overflow-hidden rounded-xl">
           <div className="border-b border-[#222a33] p-4">
             <label className="sr-only" htmlFor="npc-search">
               Search NPCs
@@ -362,15 +362,15 @@ export default function NPCStudioPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-[#222a33] bg-[#101419]">
+        <div className="panel overflow-hidden rounded-xl">
           {selectedNpc ? (
             <div>
               <div className="flex flex-col gap-4 border-b border-[#222a33] p-5 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
+                  <p className="mono-label text-[#7c8794]">
                     {selectedNpc.slug}
                   </p>
-                  <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#f7f8fa]">{selectedNpc.name}</h2>
+                  <h2 className="mt-3 font-display text-4xl font-semibold text-[#f7f8fa]">{selectedNpc.name}</h2>
                   <p className="mt-2 text-sm text-[#a5afbd]">{selectedNpc.title || "Untitled character"}</p>
                 </div>
                 <div className="flex gap-2">
@@ -413,7 +413,7 @@ export default function NPCStudioPage() {
                     <ReadinessItem label="Memory settings" ready={Boolean(selectedNpc.memory_settings)} />
                   </div>
                   <div className="mt-6 rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7c8794]">Faction</p>
+                    <p className="mono-label text-[#7c8794]">Faction</p>
                     <p className="mt-2 text-sm font-semibold text-[#f7f8fa]">
                       {selectedNpc.faction_alignment || "Unaligned"}
                     </p>
@@ -436,13 +436,13 @@ export default function NPCStudioPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-10 backdrop-blur-sm">
           <form
             onSubmit={saveNpc}
-            className="w-full max-w-2xl rounded-xl border border-[#27303a] bg-[#10161d] shadow-2xl"
+            className="panel w-full max-w-2xl rounded-xl"
           >
             <div className="border-b border-[#27303a] px-5 py-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
+              <p className="mono-label text-[#7c8794]">
                 {formMode === "create" ? "Create character" : "Edit character"}
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-[#f7f8fa]">
+              <h2 className="mt-2 font-display text-3xl font-semibold text-[#f7f8fa]">
                 {formMode === "create" ? "Add an NPC to the runtime roster." : "Refine this NPC profile."}
               </h2>
             </div>
@@ -519,8 +519,8 @@ export default function NPCStudioPage() {
 
       {deletingNpc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-xl border border-[#27303a] bg-[#10161d] p-5 shadow-2xl">
-            <h2 className="text-lg font-semibold text-[#f7f8fa]">Delete {deletingNpc.name}?</h2>
+          <div className="panel w-full max-w-md rounded-xl p-5">
+            <h2 className="font-display text-3xl font-semibold text-[#f7f8fa]">Delete {deletingNpc.name}?</h2>
             <p className="mt-3 text-sm leading-6 text-[#a5afbd]">
               This removes the character from the active roster. Use this only when the NPC should no longer appear in
               runtime testing.
@@ -569,8 +569,8 @@ function FactRow({ label, value }: { label: string; value: string }) {
 function ProfileSection({ title, body }: { title: string; body: string }) {
   return (
     <section>
-      <h3 className="text-sm font-semibold text-[#f7f8fa]">{title}</h3>
-      <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-7 text-[#a5afbd]">{body}</p>
+      <h3 className="font-display text-2xl font-semibold text-[#f7f8fa]">{title}</h3>
+      <p className="mt-3 max-w-3xl whitespace-pre-wrap text-base leading-8 text-[#a5afbd]">{body}</p>
     </section>
   );
 }

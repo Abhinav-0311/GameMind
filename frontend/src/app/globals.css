@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0a;
+  --background: #08090b;
   --foreground: #fafafa;
   --surface: #111111;
   --card: #171717;
   --border: #262626;
   --text-secondary: #a1a1aa;
   --accent: #8bdff0;
+  --font-serif-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --font-inter: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-geist-mono: "Geist Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
@@ -21,17 +22,64 @@
   --color-text-secondary: var(--text-secondary);
   --color-accent: var(--accent);
   
+  --font-display: var(--font-serif-display);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 50% -10%, rgba(139, 223, 240, 0.08), transparent 34rem),
+    linear-gradient(180deg, #0b0d10 0%, var(--background) 34rem);
   color: var(--foreground);
   font-family: var(--font-sans), sans-serif;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+  .page-shell {
+    width: 100%;
+    max-width: 78rem;
+    margin-inline: auto;
+    padding-bottom: 4rem;
+  }
+
+  .page-kicker {
+    font-family: var(--font-geist-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #7f8b9a;
+  }
+
+  .display-title {
+    font-family: var(--font-serif-display);
+    font-weight: 600;
+    letter-spacing: 0;
+    color: #fbfcfd;
+  }
+
+  .panel {
+    border: 1px solid rgba(55, 65, 81, 0.72);
+    background: linear-gradient(180deg, rgba(18, 23, 29, 0.92), rgba(12, 15, 19, 0.96));
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.24);
+  }
+
+  .panel-muted {
+    border: 1px solid rgba(47, 55, 66, 0.74);
+    background: rgba(11, 14, 18, 0.72);
+  }
+
+  .mono-label {
+    font-family: var(--font-geist-mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
 }
 
 /* Scrollbar styling - clean, thin, matching the dark flat aesthetics */

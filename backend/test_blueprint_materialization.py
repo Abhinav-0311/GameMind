@@ -247,6 +247,38 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     assert manifest_quest["objectives"]
     assert manifest_quest["objectives"][0]["description"] == "Reclaim the Ash Pass outpost."
 
+def test_latest_runtime_bundle_returns_newest_materialized_blueprint(make_blueprint):
+    """Unity can auto-load the newest materialized bundle without a pasted blueprint ID."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "approved")
+
+    materialize_response = client.post(
+        f"/api/v1/blueprints/{bp.id}/materialize",
+        headers={"X-Game-Project-ID": project_id}
+    )
+    assert materialize_response.status_code == 200
+
+    response = client.get(
+        "/api/v1/blueprints/runtime/latest-bundle",
+        headers={"X-Game-Project-ID": project_id}
+    )
+    assert response.status_code == 200
+    bundle = response.json()
+    assert bundle["blueprint_id"] == str(bp.id)
+    assert bundle["game_project_id"] == project_id
+    assert [npc["slug"] for npc in bundle["npcs"]] == ["npc-eldrin"]
+
+def test_latest_runtime_bundle_requires_materialized_blueprint(make_blueprint):
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    make_blueprint(project_id, "approved")
+
+    response = client.get(
+        "/api/v1/blueprints/runtime/latest-bundle",
+        headers={"X-Game-Project-ID": project_id}
+    )
+    assert response.status_code == 404
+    assert "No materialized blueprint" in response.json()["detail"]
+
 def test_project_isolation(make_blueprint):
     """Test materialize and bundle block unauthorized cross-project access."""
     project_id = f"project_{uuid.uuid4().hex[:6]}"
