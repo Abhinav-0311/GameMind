@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     LLM_PROVIDER: str = "mock"
     LOCAL_MODEL_NAME: str = "local-rule-engine"
+    NVIDIA_API_KEY: str | None = None
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+    NVIDIA_MODEL_NAME: str = "meta/llama-3.1-8b-instruct"
 
     model_config = SettingsConfigDict(
         env_file=str(env_path),
