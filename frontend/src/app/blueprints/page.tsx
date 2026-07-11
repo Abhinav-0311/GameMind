@@ -132,7 +132,7 @@ function SectionBrief({ section }: { section: ReviewSection }) {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <p className="mono-label text-[var(--text-tertiary)]">Section brief</p>
-          <h3 className="text-2xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">{section.title}</h3>
+          <h3 className="text-2xl font-semibold tracking-normal text-[var(--foreground)]">{section.title}</h3>
           <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{section.description}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -221,7 +221,7 @@ function ReportStat({ label, value, warn = false }: { label: string; value: numb
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-2">
       <div className={`text-sm font-semibold ${warn ? "text-amber-800" : "text-[var(--foreground)]"}`}>{value}</div>
-      <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">{label}</div>
+      <div className="mt-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--text-tertiary)]">{label}</div>
     </div>
   );
 }
@@ -510,7 +510,7 @@ export default function BlueprintsDashboard() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="mono-label text-[var(--text-tertiary)]">1 / Source</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Generate blueprint</h2>
+                <h2 className="mt-2 text-xl font-semibold tracking-normal text-[var(--foreground)]">Generate blueprint</h2>
               </div>
               <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent)]">
                 $0 local
@@ -577,7 +577,7 @@ export default function BlueprintsDashboard() {
           <section className="panel min-w-0 overflow-hidden rounded-2xl">
             <div className="border-b border-[var(--border)] p-5">
               <p className="mono-label text-[var(--text-tertiary)]">2 / Select</p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Blueprints</h2>
+              <h2 className="mt-2 text-xl font-semibold tracking-normal text-[var(--foreground)]">Blueprints</h2>
             </div>
 
             {isLoading ? (
@@ -640,7 +640,7 @@ export default function BlueprintsDashboard() {
                     <div className="min-w-0 space-y-3">
                       <p className="mono-label text-[var(--text-tertiary)]">3 / Review</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-2xl font-semibold tracking-[-0.015em] text-[var(--foreground)] sm:text-3xl">
+                        <h2 className="truncate text-2xl font-semibold tracking-normal text-[var(--foreground)] sm:text-3xl">
                           {activeBlueprint.title}
                         </h2>
                         <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-muted)] px-3 py-1 text-xs font-medium text-[var(--foreground)]">

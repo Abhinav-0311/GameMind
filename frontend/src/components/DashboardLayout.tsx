@@ -381,8 +381,8 @@ function Brand() {
         className="h-10 w-10 rounded-[0.7rem]"
       />
         <div>
-          <p className="text-[1.05rem] font-semibold leading-none tracking-[-0.01em] text-[var(--foreground)] transition">GameMind</p>
-          <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
+          <p className="text-[1.05rem] font-semibold leading-none tracking-normal text-[var(--foreground)] transition">GameMind</p>
+          <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-normal text-[var(--text-secondary)]">
             Guided game builder
           </p>
         </div>
@@ -395,7 +395,7 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate: ()
     <nav className="flex-1 overflow-y-auto px-3 py-5">
       {sections.map((section) => (
         <div key={section} className="mb-7 last:mb-0">
-          <p className="px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">{section}</p>
+          <p className="px-3 font-mono text-[10px] font-semibold uppercase tracking-normal text-[var(--text-tertiary)]">{section}</p>
           <div className="mt-3 space-y-1">
             {navigationItems
               .filter((item) => item.section === section)

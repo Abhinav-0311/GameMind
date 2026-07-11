@@ -276,7 +276,7 @@ export default function QueryStudioPage() {
 
         <aside className="space-y-5">
           <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Why this matters</h2>
+            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Why this matters</h2>
             <div className="mt-4 space-y-4 text-sm leading-6 text-[var(--text-secondary)]">
               <p>
                 Lore Search is the trust check. If citations are weak, the generated blueprint will also be weak.
@@ -296,7 +296,7 @@ export default function QueryStudioPage() {
 
           {groupedSources.length > 0 && (
             <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Sources used</h2>
+            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Sources used</h2>
               <div className="mt-4 space-y-3">
                 {groupedSources.map((source) => (
                   <div key={source.title} className="flex items-center justify-between gap-3 text-sm">
@@ -311,7 +311,7 @@ export default function QueryStudioPage() {
           )}
 
           <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Recent questions</h2>
+            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Recent questions</h2>
             <div className="mt-4 space-y-2">
               {history.map((item) => (
                 <button
