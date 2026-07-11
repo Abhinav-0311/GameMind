@@ -1,0 +1,10 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">GameMind icon</title>
+  <desc id="desc">A minimal monogram mark combining a game world node with an AI memory path.</desc>
+  <rect width="128" height="128" rx="28" fill="#FFFDF8" stroke="#D8DEE6" stroke-width="2"/>
+  <path d="M36 40.5L64 24L92 40.5V73.5L64 90L36 73.5V40.5Z" stroke="#111827" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M64 44V65.5L81.5 75.5" stroke="#0E7490" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="64" cy="44" r="6" fill="#0E7490"/>
+  <circle cx="81.5" cy="75.5" r="6" fill="#0E7490"/>
+  <path d="M43 100H85" stroke="#111827" stroke-width="7" stroke-linecap="round"/>
+</svg>
