@@ -16,6 +16,56 @@ from app.models.world_state import WorldStateFlag
 logger = logging.getLogger(__name__)
 
 class BlueprintMaterializerService:
+    INVALID_NPC_NAME_PREFIXES = (
+        "the story",
+        "story ",
+        "section ",
+        "project ",
+        "version ",
+        "quest ",
+        "objective ",
+        "players ",
+        "visual ",
+        "level ",
+        "game ",
+        "faction ",
+        "memory ",
+        "narrative ",
+        "art style",
+        "unity ",
+    )
+
+    def _clean_runtime_text(self, value: Any, fallback: str = "") -> str:
+        if not isinstance(value, str):
+            return fallback
+        value = value.strip()
+        value = re.sub(r"\*\*(.*?)\*\*", r"\1", value)
+        value = re.sub(r"^#+\s*", "", value)
+        value = re.sub(r"^\s*[-*]\s*", "", value)
+        return re.sub(r"\s+", " ", value).strip()
+
+    def _normalize_npc_name(self, value: Any) -> Optional[str]:
+        name = self._clean_runtime_text(value)
+        name = re.sub(r"^NPC\s+", "", name, flags=re.IGNORECASE).strip()
+        name = re.sub(r"[^A-Za-z0-9\s'-]", "", name)
+        name = re.sub(r"\s+", " ", name).strip()
+
+        lowered = name.lower()
+        if not name or len(name) < 2 or len(name) > 60:
+            return None
+        if lowered.startswith(self.INVALID_NPC_NAME_PREFIXES):
+            return None
+        if len(name.split()) > 4:
+            return None
+        if not re.search(r"[A-Za-z]", name):
+            return None
+        return name
+
+    def _slugify_runtime_id(self, value: str) -> str:
+        slug = re.sub(r"[^a-z0-9_-]", "", value.lower().replace(" ", "-"))
+        slug = re.sub(r"-{2,}", "-", slug).strip("-_")
+        return slug[:100]
+
     def materialize_blueprint(self, db: Session, blueprint_id: UUID, game_project_id: str) -> Dict[str, Any]:
         # 1. Fetch blueprint scoped by project
         blueprint = db.query(GameBlueprint).filter(
@@ -46,6 +96,8 @@ class BlueprintMaterializerService:
                 "last_materialized_at": None,
                 "warnings": []
             }
+        for key in ["npcs", "quest_ids", "memory_ids", "flag_keys", "warnings"]:
+            manifest.setdefault(key, [])
 
         # Staged lists/report details
         report = {
@@ -65,12 +117,20 @@ class BlueprintMaterializerService:
         materialized_npc_slugs = [] # slugs we successfully write/own
 
         for npc in npc_data:
-            name = npc.get("name", "Unnamed NPC")
-            archetype = npc.get("archetype", "Default Archetype")
-            dialogue_style = npc.get("dialogue_style", "Normal speech.")
+            raw_name = npc.get("name", "")
+            name = self._normalize_npc_name(raw_name)
+            if not name:
+                warn_msg = f"Skipped malformed NPC entry '{self._clean_runtime_text(raw_name, 'unknown')[:80]}'."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["npcs"]["skipped"].append(self._clean_runtime_text(raw_name, "unknown")[:80])
+                continue
+
+            archetype = self._clean_runtime_text(npc.get("archetype"), "Character profile")
+            dialogue_style = self._clean_runtime_text(npc.get("dialogue_style"), "Normal speech.")
             
             # Generate stable slug
-            slug = re.sub(r"[^a-z0-9_-]", "", name.lower().replace(" ", "-"))
+            slug = self._slugify_runtime_id(name)
             if not slug:
                 slug = f"npc-{uuid.uuid4().hex[:6]}"
 
@@ -122,10 +182,20 @@ class BlueprintMaterializerService:
             any_npc = db.query(NPCProfile).filter(NPCProfile.game_project_id == game_project_id).first()
             if any_npc:
                 default_npc_slug = any_npc.slug
+            else:
+                default_npc_slug = ""
 
         for q in quest_data:
-            title = q.get("title", "Unnamed Quest")
-            objective = q.get("objective", "Complete objective.")
+            if not default_npc_slug:
+                warn_msg = "Quest materialization skipped because no valid NPC quest giver exists."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                for skipped_quest in quest_data:
+                    report["quests"]["skipped"].append(self._clean_runtime_text(skipped_quest.get("title"), "Unnamed Quest"))
+                break
+
+            title = self._clean_runtime_text(q.get("title"), "Unnamed Quest")
+            objective = self._clean_runtime_text(q.get("objective"), "Complete objective.")
             
             # Title match (service-level uniqueness check)
             existing_quest = db.query(Quest).filter(
@@ -254,7 +324,7 @@ class BlueprintMaterializerService:
 
         for element in flag_data:
             # Key cleanup
-            flag_key = re.sub(r"[^a-z0-9_-]", "", element.lower().replace(" ", "-"))
+            flag_key = self._slugify_runtime_id(str(element))
             if not flag_key:
                 continue
 
