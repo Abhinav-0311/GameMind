@@ -180,6 +180,7 @@ Expected local demo mode:
 6. Use the simulator or Unity scripts to test NPC dialogue, quests, and hint flows.
 
 For a presenter-friendly walkthrough, use [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
+For a short recording script, use [docs/demo/demo_script.md](docs/demo/demo_script.md).
 For release readiness, use [docs/demo/mvp_acceptance_checklist.md](docs/demo/mvp_acceptance_checklist.md).
 
 ## Current MVP Status

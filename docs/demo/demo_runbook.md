@@ -2,6 +2,8 @@
 
 This runbook is the controlled golden path for demonstrating GameMind as a zero-cost local game design co-pilot and Unity runtime assistant.
 
+For a shorter narration-first version, use [demo_script.md](demo_script.md).
+
 ## Goal
 
 Show that a developer can start from a GDD, generate a structured game blueprint, materialize runtime data, and test that data through the dashboard and Unity scene.
