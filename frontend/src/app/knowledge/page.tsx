@@ -250,7 +250,7 @@ export default function KnowledgeBasePage() {
                 GDD
               </div>
               <div className="space-y-2">
-                <h2 className="font-display text-[1.65rem] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+                <h2 className="font-display text-[1.65rem] font-semibold tracking-normal text-[var(--foreground)]">
                   {uploading ? "Indexing source material" : "Drop your game document here"}
                 </h2>
                 <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
@@ -297,7 +297,7 @@ export default function KnowledgeBasePage() {
         <main className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Uploaded sources</h2>
+              <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Uploaded sources</h2>
               <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                 Repeated uploads are grouped by title. Use the latest copy for generation, or delete it if it was a test.
               </p>
@@ -387,7 +387,7 @@ export default function KnowledgeBasePage() {
 
         <aside className="panel overflow-hidden rounded-xl">
           <div className="border-b border-[var(--border)] p-5">
-            <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Source preview</h2>
+            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Source preview</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
               These are the source fragments GameMind can cite while generating plans and runtime behavior.
             </p>

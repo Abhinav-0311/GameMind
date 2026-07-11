@@ -130,7 +130,7 @@ export default function AnalyticsDashboard() {
               <h2 className="mt-3 font-display text-3xl font-semibold text-[var(--foreground)]">{isLoading ? "Checking" : healthLabel}</h2>
             </div>
             <span
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal ${
                 issueCount === 0 ? "bg-emerald-500/10 text-emerald-800" : "bg-amber-500/10 text-amber-800"
               }`}
             >
@@ -383,11 +383,11 @@ function TraceRow({ log }: { log: TelemetryLog }) {
       </div>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+          <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--accent)]">
             {humanizeAction(log.action_type)}
           </span>
           <span
-            className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-normal ${
               hasIssue ? "bg-amber-500/10 text-amber-800" : "bg-emerald-500/10 text-emerald-800"
             }`}
           >

@@ -7,19 +7,20 @@
   --card: #ffffff;
   --card-muted: #f8f9fd;
   --sidebar: #ffffff;
-  --border: #e4e8eb;
-  --border-strong: #dce2ec;
-  --text-secondary: #7c8592;
-  --text-tertiary: #98a0ac;
-  --accent: #6254ff;
-  --accent-hover: #524fdf;
-  --accent-soft: #eeeeff;
-  --pink: #fa5ba8;
-  --green: #2de3a6;
+  --border: #dddde8;
+  --border-strong: #cfd9e0;
+  --text-secondary: #788b9a;
+  --text-tertiary: #9aa8b2;
+  --text-disabled: #cfd9e0;
+  --accent: #3a36db;
+  --accent-hover: #312ec2;
+  --accent-soft: #ececff;
+  --pink: #ff69b4;
+  --green: #03a89e;
   --warning: #ffb84d;
   --shadow-soft: 0 24px 60px rgba(34, 42, 68, 0.08);
-  --font-serif-display: "Aptos Display", "Nunito Sans", "Manrope", "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
-  --font-inter: "Aptos", "Nunito Sans", "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif-display: "DM Sans", "Aptos Display", "Nunito Sans", "Manrope", "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
+  --font-inter: "DM Sans", "Aptos", "Nunito Sans", "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-geist-mono: "Cascadia Code", "JetBrains Mono", "Geist Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
 }
 
@@ -30,15 +31,16 @@
   --card: #39394b;
   --card-muted: #2d2d3e;
   --sidebar: #39394b;
-  --border: rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.13);
-  --text-secondary: #c8c7cb;
+  --border: #454a56;
+  --border-strong: rgba(171, 173, 191, 0.34);
+  --text-secondary: #abadbf;
   --text-tertiary: #909098;
+  --text-disabled: #33315f;
   --accent: #6254ff;
-  --accent-hover: #7a70ff;
+  --accent-hover: #605cff;
   --accent-soft: #4a467d;
-  --pink: #ff68ad;
-  --green: #2de3a6;
+  --pink: #ff69b4;
+  --green: #2fe5a7;
   --warning: #ffc15a;
   --shadow-soft: 0 28px 70px rgba(0, 0, 0, 0.18);
 }
@@ -84,7 +86,7 @@ body {
     font-family: var(--font-geist-mono);
     font-size: 0.625rem;
     font-weight: 650;
-    letter-spacing: 0.24em;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--text-tertiary);
   }
@@ -92,7 +94,7 @@ body {
   .display-title {
     font-family: var(--font-serif-display);
     font-weight: 640;
-    letter-spacing: -0.018em;
+    letter-spacing: 0;
     text-wrap: balance;
     color: var(--foreground);
   }
@@ -112,7 +114,7 @@ body {
     font-family: var(--font-geist-mono);
     font-size: 0.625rem;
     font-weight: 650;
-    letter-spacing: 0.18em;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 

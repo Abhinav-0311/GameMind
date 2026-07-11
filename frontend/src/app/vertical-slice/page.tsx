@@ -455,7 +455,7 @@ export default function VerticalSliceSimulator() {
 
       <section className="panel overflow-hidden rounded-2xl">
         <div className="border-b border-[var(--border)] px-5 py-4">
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-[var(--foreground)]">Playtest setup</h2>
+          <h2 className="text-lg font-semibold tracking-normal text-[var(--foreground)]">Playtest setup</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Choose the exact source and NPC this runtime session should use.
           </p>
@@ -503,7 +503,7 @@ export default function VerticalSliceSimulator() {
         <div className="panel flex min-h-[36rem] flex-col overflow-hidden rounded-2xl">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
             <div>
-              <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Dialogue playtest</h2>
+              <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Dialogue playtest</h2>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Ask the selected NPC about the world, quest, faction, or current objective.
               </p>
@@ -677,7 +677,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+        <div className="mb-2 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-normal text-[var(--text-secondary)]">
           <span>{isPlayer ? "Player" : "NPC"}</span>
           <span>{message.timestamp}</span>
         </div>
@@ -746,7 +746,7 @@ function QuestPanel({
   return (
     <section className="panel overflow-hidden rounded-2xl">
       <div className="border-b border-[var(--border)] px-5 py-4">
-        <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Quest</h2>
+        <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Quest</h2>
         <p className="mt-1 text-xs text-[var(--text-secondary)]">Generate a contextual objective and register it for the player.</p>
       </div>
       <div className="p-5">
@@ -767,8 +767,8 @@ function QuestPanel({
         ) : (
           <div>
             <div className="flex items-start justify-between gap-3">
-              <h3 className="font-display text-xl font-semibold leading-7 tracking-[-0.01em] text-[var(--foreground)]">{quest.title}</h3>
-              <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+              <h3 className="font-display text-xl font-semibold leading-7 tracking-normal text-[var(--foreground)]">{quest.title}</h3>
+              <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--accent)]">
                 {quest.difficulty}
               </span>
             </div>
@@ -827,7 +827,7 @@ function HintPanel({
   return (
     <section className="panel overflow-hidden rounded-2xl">
       <div className="border-b border-[var(--border)] px-5 py-4">
-        <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Progressive hints</h2>
+        <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Progressive hints</h2>
         <p className="mt-1 text-xs text-[var(--text-secondary)]">Escalate from subtle guidance to direct help.</p>
       </div>
       <div className="p-5">
@@ -879,7 +879,7 @@ function HintPanel({
 function StatusPill({ ready, label }: { ready: boolean; label: string }) {
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal ${
         ready ? "bg-emerald-500/10 text-emerald-800" : "bg-[var(--card-muted)] text-[var(--text-secondary)]"
       }`}
     >

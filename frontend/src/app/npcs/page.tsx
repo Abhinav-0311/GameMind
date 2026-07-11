@@ -357,7 +357,7 @@ export default function NPCStudioPage() {
                 aria-pressed={showReviewItems}
               >
                 <span>{showReviewItems ? "Hide review items" : "Show review items"}</span>
-                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--accent)]">
+                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-1 text-[10px] uppercase tracking-normal text-[var(--accent)]">
                   {reviewNpcs.length}
                 </span>
               </button>
@@ -407,7 +407,7 @@ export default function NPCStudioPage() {
                           <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">{npc.name}</h3>
                           <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">{npc.title || npc.slug}</p>
                         </div>
-                        <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+                        <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--accent)]">
                           {needsReview ? "Review" : npc.faction_alignment || "Solo"}
                         </span>
                       </div>
@@ -638,7 +638,7 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
     <div className="flex items-center justify-between gap-4 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2">
       <span className="text-sm text-[var(--text-secondary)]">{label}</span>
       <span
-        className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+        className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-normal ${
           ready ? "bg-emerald-500/10 text-emerald-800" : "bg-[#e5edf3] text-[var(--text-secondary)]"
         }`}
       >

@@ -288,7 +288,7 @@ export default function HintStudioPage() {
                         : "border-[var(--border-strong)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)] hover:bg-[var(--card-muted)]"
                     }`}
                   >
-                    <span className="text-xs font-semibold uppercase tracking-[0.16em]">Level {item.level}</span>
+                    <span className="text-xs font-semibold uppercase tracking-normal">Level {item.level}</span>
                     <span className="mt-3 block text-lg font-semibold">{item.title}</span>
                     <span className={`mt-2 block text-sm leading-6 ${hintLevel === item.level ? "text-white/85" : "text-[var(--text-secondary)]"}`}>
                       {item.description}
@@ -310,10 +310,10 @@ export default function HintStudioPage() {
               {generatedHint ? (
                 <div>
                   <div className="mb-4 flex items-center gap-2">
-                    <span className="rounded-full bg-[var(--accent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--card)]">
+                    <span className="rounded-full bg-[var(--accent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--card)]">
                       Level {generatedHint.hint_level}
                     </span>
-                    <span className="rounded-full border border-[var(--border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                    <span className="rounded-full border border-[var(--border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal text-[var(--text-secondary)]">
                       {generatedHint.spoiler_level}
                     </span>
                   </div>
@@ -389,7 +389,7 @@ function ProgressDots({ currentLevel }: { currentLevel: number }) {
       {[0, 1, 2, 3].map((level) => (
         <div
           key={level}
-          className={`rounded-md border px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] ${
+          className={`rounded-md border px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-normal ${
             level === currentLevel
               ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--card)]"
               : level < currentLevel

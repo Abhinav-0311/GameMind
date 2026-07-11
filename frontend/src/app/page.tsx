@@ -219,7 +219,7 @@ export default function WorkspaceOverview() {
           </div>
           <div className="p-5">
             <p className="page-kicker">Current step</p>
-            <h2 className="mt-3 text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+            <h2 className="mt-3 text-xl font-semibold tracking-normal text-[var(--foreground)]">
               {nextAction.label}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{nextAction.description}</p>
@@ -271,7 +271,7 @@ export default function WorkspaceOverview() {
                   <p className="mono-label mt-0 text-[var(--text-tertiary)] sm:mt-3">{step.eyebrow.split(" / ")[1]}</p>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold tracking-[-0.01em] text-[var(--foreground)]">{step.title}</h3>
+                  <h3 className="text-lg font-semibold tracking-normal text-[var(--foreground)]">{step.title}</h3>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{step.body}</p>
                 </div>
                 <div className="flex items-center">
@@ -286,7 +286,7 @@ export default function WorkspaceOverview() {
 
         <aside className="space-y-5">
           <section className="panel rounded-3xl p-5">
-            <h2 className="font-display text-[1.45rem] font-semibold tracking-[-0.01em] text-[var(--foreground)]">Project snapshot</h2>
+            <h2 className="font-display text-[1.45rem] font-semibold tracking-normal text-[var(--foreground)]">Project snapshot</h2>
             <div className="mt-5 divide-y divide-[var(--border)]">
               <FactRow label="Documents" value={isLoading ? "--" : String(documents.length)} />
               <FactRow label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
