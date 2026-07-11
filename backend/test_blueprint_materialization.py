@@ -102,7 +102,7 @@ def test_materialize_first_run_creates_records(db_session, make_blueprint):
     
     # Check creation counts
     assert len(report["npcs"]["created"]) == 1
-    assert "npc-eldrin" in report["npcs"]["created"]
+    assert "eldrin" in report["npcs"]["created"]
     assert len(report["quests"]["created"]) == 1
     assert len(report["memories"]["created"]) == 1
     assert len(report["flags"]["created"]) == 2
@@ -111,7 +111,7 @@ def test_materialize_first_run_creates_records(db_session, make_blueprint):
     db_session.refresh(bp)
     manifest = bp.materialization_manifest
     assert manifest is not None
-    assert "npc-eldrin" in manifest["npcs"]
+    assert "eldrin" in manifest["npcs"]
     assert len(manifest["quest_ids"]) == 1
     assert len(manifest["memory_ids"]) == 1
     assert "checkpoint-vent-alpha" in manifest["flag_keys"]
@@ -148,15 +148,54 @@ def test_materialize_second_run_idempotent(db_session, make_blueprint):
     assert len(report["memories"]["updated"]) == 1
     assert len(report["flags"]["updated"]) == 2
 
+def test_materialize_skips_malformed_npc_fragments(db_session, make_blueprint):
+    """Blueprint prose fragments must not become runtime NPC profiles."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "approved")
+    bp.npc_archetypes = {
+        "content": {
+            "npcs": [
+                {
+                    "name": "The story centers ar",
+                    "archetype": "Extracted prose fragment",
+                    "dialogue_style": "Invalid generated fragment."
+                },
+                {
+                    "name": "**NPC Eldrin**",
+                    "archetype": "Mentoring wizard",
+                    "dialogue_style": "Slow and formal."
+                },
+            ]
+        },
+        "citations": [],
+        "confidence": "High",
+        "warnings": []
+    }
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/blueprints/{bp.id}/materialize",
+        headers={"X-Game-Project-ID": project_id}
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert "The story centers ar" in report["npcs"]["skipped"]
+    assert "eldrin" in report["npcs"]["created"]
+    assert any("Skipped malformed NPC entry" in warning for warning in report["warnings"])
+
+    slugs = [npc.slug for npc in db_session.query(NPCProfile).filter(NPCProfile.game_project_id == project_id).all()]
+    assert slugs == ["eldrin"]
+
 def test_materialize_skips_user_created_data(db_session, make_blueprint):
     """Test user-created records are skipped and warn, never overwritten."""
     project_id = f"project_{uuid.uuid4().hex[:6]}"
     bp = make_blueprint(project_id, "approved")
 
-    # Pre-create a manual user NPC with slug npc-eldrin
+    # Pre-create a manual user NPC with slug eldrin
     user_npc = NPCProfile(
         id=uuid.uuid4(),
-        slug="npc-eldrin",
+        slug="eldrin",
         name="User Custom Eldrin",
         personality_summary="User defined text.",
         game_project_id=project_id
@@ -168,7 +207,7 @@ def test_materialize_skips_user_created_data(db_session, make_blueprint):
         id=uuid.uuid4(),
         title="Reclaim Ash Pass Objective",
         description="User defined quest desc.",
-        npc_slug="npc-eldrin",
+        npc_slug="eldrin",
         game_project_id=project_id
     )
     db_session.add(user_quest)
@@ -183,7 +222,7 @@ def test_materialize_skips_user_created_data(db_session, make_blueprint):
     report = response.json()
     
     # NPC and Quest must be reported as skipped
-    assert "npc-eldrin" in report["npcs"]["skipped"]
+    assert "eldrin" in report["npcs"]["skipped"]
     assert "Reclaim Ash Pass Objective" in report["quests"]["skipped"]
     assert len(report["warnings"]) >= 2
     assert "already exists in database and is not owned by this blueprint" in report["warnings"][0]
@@ -237,7 +276,7 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     
     # Confirm it returns exactly the manifest-linked items only (no gardener)
     npcs = [npc["slug"] for npc in bundle["npcs"]]
-    assert "npc-eldrin" in npcs
+    assert "eldrin" in npcs
     assert "npc-gardener" not in npcs
     
     quests = [q["title"] for q in bundle["quests"]]
@@ -266,7 +305,7 @@ def test_latest_runtime_bundle_returns_newest_materialized_blueprint(make_bluepr
     bundle = response.json()
     assert bundle["blueprint_id"] == str(bp.id)
     assert bundle["game_project_id"] == project_id
-    assert [npc["slug"] for npc in bundle["npcs"]] == ["npc-eldrin"]
+    assert [npc["slug"] for npc in bundle["npcs"]] == ["eldrin"]
 
 def test_latest_runtime_bundle_requires_materialized_blueprint(make_blueprint):
     project_id = f"project_{uuid.uuid4().hex[:6]}"
