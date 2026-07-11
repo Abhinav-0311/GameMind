@@ -9,6 +9,7 @@ namespace GameMind
 {
     public class GameMindUiController : MonoBehaviour
     {
+        [SerializeField] private bool useLatestRuntimeBundle = true;
         [SerializeField] private string targetBlueprintId = "00000000-0000-0000-0000-000000000000";
 
         private static readonly Color Surface = new Color(0.035f, 0.04f, 0.045f, 0.94f);
@@ -126,7 +127,7 @@ namespace GameMind
             }
 
             yield return GameMindApiClient.Instance.GetRuntimeBundle(
-                targetBlueprintId,
+                useLatestRuntimeBundle ? "" : targetBlueprintId,
                 OnBundleLoaded,
                 OnBundleError
             );
@@ -148,7 +149,7 @@ namespace GameMind
                 SetStatus("No runtime data", Warning);
                 ShowEmptyState(
                     "No materialized blueprint found",
-                    "In the dashboard: load the Frostpeak demo, generate a blueprint, approve it, then materialize it. This scene will auto-load the latest materialized bundle."
+                    "In the dashboard: open Sources, load the Frostpeak demo, open Blueprints, generate, approve, and materialize. Then press R here to reload the latest runtime bundle."
                 );
                 interactButton.gameObject.SetActive(false);
                 questPanel.SetActive(false);
@@ -163,7 +164,7 @@ namespace GameMind
 
             interactButton.gameObject.SetActive(materializedNpcs.Count > 0);
             interactButton.interactable = materializedNpcs.Count > 0;
-            interactButtonText.text = materializedNpcs.Count > 0 ? "Talk to Eldrin  T" : "No NPCs loaded";
+            interactButtonText.text = materializedNpcs.Count > 0 ? $"Talk to {GetPreferredNpcName()}  T" : "No NPCs loaded";
 
             if (materializedQuests.Count > 0)
             {
@@ -203,16 +204,18 @@ namespace GameMind
             }
 
             string npcSlug = materializedNpcs[0].slug;
+            string npcName = string.IsNullOrEmpty(materializedNpcs[0].name) ? "Eldrin" : materializedNpcs[0].name;
             foreach (NpcProfileDto npc in materializedNpcs)
             {
                 if (!string.IsNullOrEmpty(npc.slug) && npc.slug.ToLower().Contains("eldrin"))
                 {
                     npcSlug = npc.slug;
+                    npcName = string.IsNullOrEmpty(npc.name) ? "Eldrin" : npc.name;
                     break;
                 }
             }
 
-            SetStatus("Asking Eldrin", Warning);
+            SetStatus($"Asking {npcName}", Warning);
             interactButton.interactable = false;
             interactButtonText.text = "Listening...";
 
@@ -224,9 +227,9 @@ namespace GameMind
                 {
                     SetStatus("Runtime ready", Success);
                     interactButton.interactable = true;
-                    interactButtonText.text = "Talk to Eldrin  T";
+                    interactButtonText.text = $"Talk to {npcName}  T";
 
-                    dialogueSpeakerText.text = response.npc_slug;
+                    dialogueSpeakerText.text = npcName;
                     dialogueText.text = response.response_text;
                     dialoguePanel.SetActive(true);
 
@@ -238,7 +241,7 @@ namespace GameMind
                 error =>
                 {
                     interactButton.interactable = true;
-                    interactButtonText.text = "Talk to Eldrin  T";
+                    interactButtonText.text = $"Talk to {npcName}  T";
                     OnBundleError(error);
                 }
             ));
@@ -320,6 +323,21 @@ namespace GameMind
         private void CloseDialogue()
         {
             dialoguePanel.SetActive(false);
+        }
+
+        private string GetPreferredNpcName()
+        {
+            if (materializedNpcs.Count == 0) return "NPC";
+
+            foreach (NpcProfileDto npc in materializedNpcs)
+            {
+                if (!string.IsNullOrEmpty(npc.slug) && npc.slug.ToLower().Contains("eldrin"))
+                {
+                    return string.IsNullOrEmpty(npc.name) ? "Eldrin" : npc.name;
+                }
+            }
+
+            return string.IsNullOrEmpty(materializedNpcs[0].name) ? "NPC" : materializedNpcs[0].name;
         }
 
         private void CreateCanvasUI()
