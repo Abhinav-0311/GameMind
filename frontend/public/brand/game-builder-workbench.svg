@@ -1,0 +1,44 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">GameMind workbench flow</title>
+  <desc id="desc">A quiet visual map showing a game document becoming a blueprint and then runtime game systems.</desc>
+  <rect width="960" height="720" rx="36" fill="#FFFDF8"/>
+  <rect x="44" y="44" width="872" height="632" rx="28" fill="#F7F3EB" stroke="#E4DACB"/>
+  <path d="M96 573C180 524 249 541 325 503C402 465 426 386 504 363C581 339 643 383 721 348C792 316 827 248 870 210" stroke="#D8CDBB" stroke-width="2" stroke-linecap="round" stroke-dasharray="7 11"/>
+  <g filter="url(#softShadow)">
+    <rect x="96" y="110" width="236" height="184" rx="22" fill="#FFFFFF" stroke="#D8DEE6"/>
+    <rect x="120" y="136" width="78" height="20" rx="10" fill="#D9EEF2"/>
+    <rect x="120" y="182" width="164" height="12" rx="6" fill="#111827"/>
+    <rect x="120" y="212" width="176" height="10" rx="5" fill="#CBD5E1"/>
+    <rect x="120" y="236" width="132" height="10" rx="5" fill="#CBD5E1"/>
+    <text x="120" y="267" fill="#556274" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700">Source GDD</text>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="362" y="250" width="236" height="184" rx="22" fill="#FFFFFF" stroke="#D8DEE6"/>
+    <circle cx="402" cy="294" r="18" fill="#0E7490"/>
+    <path d="M394 294H410M402 286V302" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+    <rect x="430" y="286" width="118" height="14" rx="7" fill="#111827"/>
+    <rect x="390" y="332" width="176" height="10" rx="5" fill="#CBD5E1"/>
+    <rect x="390" y="356" width="144" height="10" rx="5" fill="#CBD5E1"/>
+    <rect x="390" y="380" width="94" height="10" rx="5" fill="#CBD5E1"/>
+    <text x="390" y="407" fill="#556274" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700">Game blueprint</text>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="628" y="426" width="236" height="184" rx="22" fill="#FFFFFF" stroke="#D8DEE6"/>
+    <rect x="654" y="454" width="50" height="50" rx="14" fill="#ECFDF3" stroke="#A7F3D0"/>
+    <rect x="722" y="454" width="50" height="50" rx="14" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <rect x="790" y="454" width="50" height="50" rx="14" fill="#FFF7ED" stroke="#FED7AA"/>
+    <rect x="654" y="532" width="164" height="10" rx="5" fill="#CBD5E1"/>
+    <rect x="654" y="556" width="124" height="10" rx="5" fill="#CBD5E1"/>
+    <text x="654" y="585" fill="#556274" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700">Runtime systems</text>
+  </g>
+  <circle cx="348" cy="215" r="5" fill="#0E7490"/>
+  <circle cx="612" cy="424" r="5" fill="#0E7490"/>
+  <path d="M337 204C372 211 391 230 409 258" stroke="#0E7490" stroke-width="3" stroke-linecap="round"/>
+  <path d="M604 430C639 441 658 455 676 484" stroke="#0E7490" stroke-width="3" stroke-linecap="round"/>
+  <text x="96" y="640" fill="#111827" font-family="Georgia, 'Times New Roman', serif" font-size="36" font-weight="700">Grounded output, ready to playtest.</text>
+  <defs>
+    <filter id="softShadow" x="76" y="90" width="808" height="540" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#475467" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+</svg>

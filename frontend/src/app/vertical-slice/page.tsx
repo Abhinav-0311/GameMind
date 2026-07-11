@@ -151,6 +151,12 @@ export default function VerticalSliceSimulator() {
   const setupReady = Boolean(selectedDocument && selectedNpc);
   const hasDialogue = chatHistory.some((message) => message.sender === "npc");
   const runState = acceptedQuestId ? "Quest active" : generatedQuest ? "Quest generated" : hasDialogue ? "Dialogue ready" : "Setup";
+  const playtestSteps = [
+    { label: "Setup", complete: setupReady },
+    { label: "Dialogue", complete: hasDialogue },
+    { label: "Quest", complete: Boolean(generatedQuest) },
+    { label: "Hint", complete: Boolean(hintText) },
+  ];
 
   const resetSession = () => {
     setConversationId(null);
@@ -381,29 +387,44 @@ export default function VerticalSliceSimulator() {
 
   return (
     <main className="page-shell">
-      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
+      <section className="grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:py-10">
         <div className="max-w-3xl">
           <p className="page-kicker">
-            Narrative Simulator
+            Runtime Test
           </p>
-          <h1 className="display-title mt-5 text-[2.65rem] leading-tight sm:text-6xl">
-            Play through the AI narrative loop.
+          <h1 className="display-title mt-5 text-[2.05rem] leading-tight sm:text-[2.85rem]">
+            Playtest the generated game loop.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
-            Test the exact MVP path a Unity scene needs: grounded NPC dialogue, quest generation, quest acceptance,
-            and progressive hints.
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+            Run the same path Unity needs: talk to an NPC, generate a quest, accept it, then request progressive
+            help from the hint system.
           </p>
+
+          <div className="mt-7 grid gap-3 sm:grid-cols-4">
+            {playtestSteps.map((step, index) => (
+              <div key={step.label} className="panel-muted rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="mono-label text-[var(--text-tertiary)]">0{index + 1}</span>
+                  <span
+                    className={`h-2 w-2 rounded-full ${step.complete ? "bg-[var(--green)]" : "bg-[var(--border-strong)]"}`}
+                    aria-hidden="true"
+                  />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-[var(--foreground)]">{step.label}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <aside className="panel self-start rounded-xl p-5">
+        <aside className="panel self-start rounded-2xl p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="mono-label text-[#7c8794]">Current run</p>
-              <h2 className="mt-3 font-display text-3xl font-semibold text-[#f7f8fa]">{runState}</h2>
+              <p className="mono-label text-[var(--text-secondary)]">Current run</p>
+              <h2 className="mt-3 font-display text-3xl font-semibold text-[var(--foreground)]">{runState}</h2>
             </div>
             <StatusPill ready={setupReady && !isLoadingSetup} label={setupReady ? "Ready" : "Setup"} />
           </div>
-          <div className="mt-5 divide-y divide-[#222a33]">
+          <div className="mt-5 divide-y divide-[var(--border)]">
             <FactRow label="Document" value={selectedDocument?.title ?? "Missing"} />
             <FactRow label="NPC" value={selectedNpc?.name ?? "Missing"} />
             <FactRow label="Messages" value={String(chatHistory.length)} />
@@ -412,7 +433,7 @@ export default function VerticalSliceSimulator() {
           <button
             type="button"
             onClick={resetSession}
-            className="mt-5 inline-flex min-h-10 w-full items-center justify-center rounded-md border border-[#303a46] px-4 text-sm font-semibold text-[#f7f8fa] transition hover:border-[#4a5563] hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+            className="btn-secondary mt-5 w-full"
           >
             Reset session
           </button>
@@ -420,19 +441,25 @@ export default function VerticalSliceSimulator() {
       </section>
 
       {error && (
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+        <div className="mb-6 flex items-center justify-between gap-4 rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="rounded px-2 py-1 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-300"
+            className="rounded px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      <section className="panel overflow-hidden rounded-xl">
+      <section className="panel overflow-hidden rounded-2xl">
+        <div className="border-b border-[var(--border)] px-5 py-4">
+          <h2 className="text-lg font-semibold tracking-[-0.01em] text-[var(--foreground)]">Playtest setup</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            Choose the exact source and NPC this runtime session should use.
+          </p>
+        </div>
         <div className="grid gap-0 lg:grid-cols-2">
           <SetupSelect
             label="Lore source"
@@ -461,8 +488,8 @@ export default function VerticalSliceSimulator() {
             }))}
           />
         </div>
-        <details className="border-t border-[#222a33] px-5 py-4">
-          <summary className="cursor-pointer text-sm font-semibold text-[#a5afbd] transition hover:text-[#f7f8fa]">
+        <details className="border-t border-[var(--border)] px-5 py-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
             Project and player scope
           </summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -473,11 +500,11 @@ export default function VerticalSliceSimulator() {
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="panel flex min-h-[36rem] flex-col overflow-hidden rounded-xl">
-          <div className="flex items-center justify-between border-b border-[#222a33] px-5 py-4">
+        <div className="panel flex min-h-[36rem] flex-col overflow-hidden rounded-2xl">
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
             <div>
-              <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Dialogue playtest</h2>
-              <p className="mt-1 text-xs text-[#7c8794]">
+              <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Dialogue playtest</h2>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Ask the selected NPC about the world, quest, faction, or current objective.
               </p>
             </div>
@@ -488,8 +515,8 @@ export default function VerticalSliceSimulator() {
             {chatHistory.length === 0 ? (
               <div className="flex h-full min-h-80 items-center justify-center text-center">
                 <div className="max-w-sm">
-                  <h3 className="text-sm font-semibold text-[#f7f8fa]">Start the conversation</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#a5afbd]">
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Start the conversation</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                     Try asking who the NPC is, what the player should do next, or what danger exists nearby.
                   </p>
                 </div>
@@ -500,13 +527,13 @@ export default function VerticalSliceSimulator() {
               ))
             )}
             {isSending && (
-              <div className="mr-auto max-w-[82%] rounded-lg border border-[#222a33] bg-[#0b0f13] px-4 py-3 text-sm text-[#a5afbd]">
+              <div className="mr-auto max-w-[82%] rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--text-secondary)]">
                 {selectedNpc?.name ?? "NPC"} is responding...
               </div>
             )}
           </div>
 
-          <form onSubmit={sendMessage} className="border-t border-[#222a33] p-4">
+          <form onSubmit={sendMessage} className="border-t border-[var(--border)] p-4">
             <label className="sr-only" htmlFor="dialogue-message">
               Message to NPC
             </label>
@@ -518,12 +545,12 @@ export default function VerticalSliceSimulator() {
                 onChange={(event) => setMessageInput(event.target.value)}
                 placeholder={setupReady ? `Ask ${selectedNpc?.name ?? "the NPC"} something...` : "Complete setup first"}
                 disabled={isSending || !setupReady}
-                className="min-h-11 flex-1 rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition placeholder:text-[#6f7a87] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-55"
+                className="min-h-11 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-55"
               />
               <button
                 type="submit"
                 disabled={isSending || !messageInput.trim() || !setupReady}
-                className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#f7f8fa] px-5 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#101419] disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSending ? "Sending..." : "Send"}
               </button>
@@ -552,18 +579,18 @@ export default function VerticalSliceSimulator() {
             onRequest={requestHint}
           />
 
-          <details className="panel overflow-hidden rounded-xl">
-            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[#f7f8fa] transition hover:bg-[#121922]">
-              Structured payload
+          <details className="panel overflow-hidden rounded-2xl">
+            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]">
+              Unity contract
             </summary>
-            <div className="max-h-80 overflow-y-auto border-t border-[#222a33] bg-[#0b0f13] p-4">
+            <div className="max-h-80 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)] p-4">
               {rawPayload ? (
-                <pre className="whitespace-pre-wrap text-xs leading-5 text-[#a5afbd]">
+                <pre className="whitespace-pre-wrap text-xs leading-5 text-[var(--text-secondary)]">
                   {JSON.stringify(rawPayload, null, 2)}
                 </pre>
               ) : (
-                <p className="text-sm leading-6 text-[#7c8794]">
-                  Send dialogue, generate a quest, or request a hint to inspect the runtime JSON.
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">
+                  Send dialogue, generate a quest, or request a hint to inspect the data Unity receives.
                 </p>
               )}
             </div>
@@ -594,14 +621,14 @@ function SetupSelect({
   disabled: boolean;
 }) {
   return (
-    <div className="border-b border-[#222a33] p-5 lg:border-b-0 lg:border-r last:border-r-0">
-      <label className="mono-label text-[#7c8794]">{label}</label>
+    <div className="border-b border-[var(--border)] p-5 lg:border-b-0 lg:border-r last:border-r-0">
+      <label className="mono-label text-[var(--text-secondary)]">{label}</label>
       {options.length === 0 ? (
-        <div className="mt-3 rounded-md border border-[#222a33] bg-[#0b0f13] p-4">
-          <p className="text-sm leading-6 text-[#a5afbd]">{emptyText}</p>
+        <div className="mt-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">{emptyText}</p>
           <Link
             href={emptyHref}
-            className="mt-3 inline-flex min-h-9 items-center rounded-md border border-[#303a46] px-3 text-xs font-semibold text-[#f7f8fa] transition hover:border-[#4a5563] hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+            className="mt-3 inline-flex min-h-9 items-center rounded-md border border-[var(--border-strong)] px-3 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
           >
             {emptyAction}
           </Link>
@@ -611,7 +638,7 @@ function SetupSelect({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
-          className="mt-3 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-55"
+          className="mt-3 min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-55"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -627,12 +654,12 @@ function SetupSelect({
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-[#a5afbd]">{label}</span>
+      <span className="text-xs font-semibold text-[var(--text-secondary)]">{label}</span>
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20"
+        className="mt-2 min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
       />
     </label>
   );
@@ -646,20 +673,20 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       <div
         className={`max-w-[86%] rounded-lg border px-4 py-3 ${
           isPlayer
-            ? "border-[#34505b] bg-[#10212a] text-[#f7f8fa]"
-            : "border-[#222a33] bg-[#0b0f13] text-[#f7f8fa]"
+            ? "border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[var(--accent-soft)] text-[var(--foreground)]"
+            : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7c8794]">
+        <div className="mb-2 flex items-center justify-between gap-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
           <span>{isPlayer ? "Player" : "NPC"}</span>
           <span>{message.timestamp}</span>
         </div>
         <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
 
         {!isPlayer && (message.suggested_animation || message.emotions || message.citations?.length) && (
-          <details className="mt-3 border-t border-[#222a33] pt-3">
-            <summary className="cursor-pointer text-xs font-semibold text-[#8bdff0] transition hover:text-[#a6edfa]">
-              Runtime metadata
+          <details className="mt-3 border-t border-[var(--border)] pt-3">
+            <summary className="cursor-pointer text-xs font-semibold text-[var(--accent)] transition hover:text-[var(--accent-hover)]">
+              Unity details
             </summary>
             <div className="mt-3 space-y-3">
               {message.suggested_animation && (
@@ -669,12 +696,12 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                 <div className="space-y-2">
                   {Object.entries(message.emotions).map(([emotion, value]) => (
                     <div key={emotion}>
-                      <div className="flex justify-between text-xs text-[#a5afbd]">
+                      <div className="flex justify-between text-xs text-[var(--text-secondary)]">
                         <span className="capitalize">{emotion}</span>
                         <span>{Math.round(value * 100)}%</span>
                       </div>
-                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#1a212a]">
-                        <div className="h-full rounded-full bg-[#8bdff0]" style={{ width: `${value * 100}%` }} />
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--border)]">
+                        <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${value * 100}%` }} />
                       </div>
                     </div>
                   ))}
@@ -685,10 +712,10 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                   {message.citations.map((citation) => (
                     <div key={citation.chunk_id} className="panel-muted rounded-xl p-3">
                       <div className="flex justify-between gap-3 text-xs">
-                        <span className="font-semibold text-[#f7f8fa]">{citation.title}</span>
-                        <span className="text-[#8bdff0]">{Math.round(citation.similarity * 100)}%</span>
+                        <span className="font-semibold text-[var(--foreground)]">{citation.title}</span>
+                        <span className="text-[var(--accent)]">{Math.round(citation.similarity * 100)}%</span>
                       </div>
-                      <p className="mt-2 break-all text-[10px] leading-4 text-[#7c8794]">Chunk: {citation.chunk_id}</p>
+                      <p className="mt-2 break-all text-[10px] leading-4 text-[var(--text-secondary)]">Chunk: {citation.chunk_id}</p>
                     </div>
                   ))}
                 </div>
@@ -717,22 +744,22 @@ function QuestPanel({
   onAccept: () => void;
 }) {
   return (
-    <section className="panel overflow-hidden rounded-xl">
-      <div className="border-b border-[#222a33] px-5 py-4">
-        <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Quest</h2>
-        <p className="mt-1 text-xs text-[#7c8794]">Generate a contextual objective and register it for the player.</p>
+    <section className="panel overflow-hidden rounded-2xl">
+      <div className="border-b border-[var(--border)] px-5 py-4">
+        <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Quest</h2>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">Generate a contextual objective and register it for the player.</p>
       </div>
       <div className="p-5">
         {!quest ? (
           <div>
-            <p className="text-sm leading-6 text-[#a5afbd]">
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">
               No quest is active. Generate one after selecting the NPC and source document.
             </p>
             <button
               type="button"
               onClick={onGenerate}
               disabled={loading || disabled}
-              className="mt-5 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-[#8bdff0] px-4 text-sm font-semibold text-[#061014] transition hover:bg-[#a6edfa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] focus:ring-offset-2 focus:ring-offset-[#101419] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Generating..." : "Generate quest"}
             </button>
@@ -740,16 +767,16 @@ function QuestPanel({
         ) : (
           <div>
             <div className="flex items-start justify-between gap-3">
-              <h3 className="font-display text-2xl font-semibold leading-7 text-[#f7f8fa]">{quest.title}</h3>
-              <span className="rounded-full border border-[#27303a] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8bdff0]">
+              <h3 className="font-display text-xl font-semibold leading-7 tracking-[-0.01em] text-[var(--foreground)]">{quest.title}</h3>
+              <span className="rounded-full border border-[var(--border-strong)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
                 {quest.difficulty}
               </span>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[#a5afbd]">{quest.description}</p>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{quest.description}</p>
             <div className="mt-4 space-y-2">
               {quest.objectives.map((objective) => (
                 <div key={`${objective.objective_index}-${objective.description}`} className="panel-muted rounded-xl p-3">
-                  <p className="text-sm leading-6 text-[#f7f8fa]">{objective.description}</p>
+                  <p className="text-sm leading-6 text-[var(--foreground)]">{objective.description}</p>
                 </div>
               ))}
             </div>
@@ -758,7 +785,7 @@ function QuestPanel({
               <FactTile label="XP" value={String(quest.rewards.xp)} />
             </div>
             {acceptedQuestId ? (
-              <div className="mt-5 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-200">
+              <div className="mt-5 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-800">
                 Quest accepted
               </div>
             ) : (
@@ -766,7 +793,7 @@ function QuestPanel({
                 type="button"
                 onClick={onAccept}
                 disabled={loading}
-                className="mt-5 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-[#f7f8fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#101419] disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-primary mt-5 w-full disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? "Accepting..." : "Accept quest"}
               </button>
@@ -798,14 +825,14 @@ function HintPanel({
   onRequest: () => void;
 }) {
   return (
-    <section className="panel overflow-hidden rounded-xl">
-      <div className="border-b border-[#222a33] px-5 py-4">
-        <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Progressive hints</h2>
-        <p className="mt-1 text-xs text-[#7c8794]">Escalate from subtle guidance to direct help.</p>
+    <section className="panel overflow-hidden rounded-2xl">
+      <div className="border-b border-[var(--border)] px-5 py-4">
+        <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">Progressive hints</h2>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">Escalate from subtle guidance to direct help.</p>
       </div>
       <div className="p-5">
         {!acceptedQuestId ? (
-          <p className="text-sm leading-6 text-[#a5afbd]">Accept a quest before requesting hints.</p>
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">Accept a quest before requesting hints.</p>
         ) : (
           <div>
             <div className="grid grid-cols-3 gap-2">
@@ -814,10 +841,10 @@ function HintPanel({
                   key={level}
                   type="button"
                   onClick={() => setHintLevel(level)}
-                  className={`min-h-10 rounded-md border text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
+                  className={`min-h-10 rounded-md border text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                     hintLevel === level
-                      ? "border-[#8bdff0] bg-[#8bdff0] text-[#061014]"
-                      : "border-[#27303a] text-[#a5afbd] hover:border-[#4a5563] hover:bg-[#151b22]"
+                      ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--card)]"
+                      : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:bg-[var(--card-muted)]"
                   }`}
                 >
                   {level}
@@ -828,7 +855,7 @@ function HintPanel({
               type="button"
               onClick={onRequest}
               disabled={loading || cooldownRemaining > 0}
-              className="mt-4 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-[#f7f8fa] px-4 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#101419] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50"
             >
               {cooldownRemaining > 0 ? `Cooldown ${cooldownRemaining}s` : loading ? "Requesting..." : "Request hint"}
             </button>
@@ -838,8 +865,8 @@ function HintPanel({
             </div>
             {hintText && (
               <div className="panel-muted mt-4 rounded-xl p-3">
-                <p className="mono-label text-[#7c8794]">Hint</p>
-                <p className="mt-2 text-sm leading-6 text-[#f7f8fa]">{hintText}</p>
+                <p className="mono-label text-[var(--text-secondary)]">Hint</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--foreground)]">{hintText}</p>
               </div>
             )}
           </div>
@@ -853,7 +880,7 @@ function StatusPill({ ready, label }: { ready: boolean; label: string }) {
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-        ready ? "bg-emerald-500/10 text-emerald-300" : "bg-[#1a212a] text-[#7c8794]"
+        ready ? "bg-emerald-500/10 text-emerald-800" : "bg-[var(--card-muted)] text-[var(--text-secondary)]"
       }`}
     >
       {label}
@@ -864,8 +891,8 @@ function StatusPill({ ready, label }: { ready: boolean; label: string }) {
 function FactRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-      <span className="text-sm text-[#a5afbd]">{label}</span>
-      <span className="max-w-40 truncate text-right text-sm font-semibold text-[#f7f8fa]">{value}</span>
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <span className="max-w-40 truncate text-right text-sm font-semibold text-[var(--foreground)]">{value}</span>
     </div>
   );
 }
@@ -873,8 +900,8 @@ function FactRow({ label, value }: { label: string; value: string }) {
 function FactTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="panel-muted rounded-xl p-3">
-      <p className="mono-label text-[#7c8794]">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-[#f7f8fa]">{value}</p>
+      <p className="mono-label text-[var(--text-secondary)]">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }

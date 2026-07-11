@@ -5,6 +5,10 @@ import DashboardLayout from "@/components/DashboardLayout";
 export const metadata: Metadata = {
   title: "GameMind Workspace",
   description: "Game design co-pilot for GDD analysis, blueprint generation, and Unity runtime testing.",
+  icons: {
+    icon: "/brand/gamemind-icon.svg",
+    apple: "/brand/gamemind-icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -17,7 +21,7 @@ export default function RootLayout({
       lang="en"
       className="h-full antialiased"
     >
-      <body className="min-h-full flex flex-col bg-[#0a0a0a] text-[#fafafa]">
+      <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <DashboardLayout>{children}</DashboardLayout>
       </body>
     </html>
