@@ -9,6 +9,36 @@ namespace GameMind
 {
     public class GameMindApiClient : MonoBehaviour
     {
+        [Serializable]
+        private class ChatDialogueRequest
+        {
+            public string npc_slug;
+            public string player_message;
+            public string conversation_id;
+        }
+
+        [Serializable]
+        private class GenerateQuestRequest
+        {
+            public string npc_slug;
+            public int player_level;
+        }
+
+        [Serializable]
+        private class AcceptQuestRequest
+        {
+            public string quest_id;
+            public string player_id;
+        }
+
+        [Serializable]
+        private class GenerateHintRequest
+        {
+            public string quest_id;
+            public string player_id;
+            public int hint_level;
+        }
+
         public static GameMindApiClient Instance { get; private set; }
 
         [SerializeField] private string defaultProjectId = "default_project";
@@ -30,14 +60,14 @@ namespace GameMind
         public IEnumerator SendChatDialogue(string npcSlug, string playerMessage, string conversationId, Action<DialogueChatResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
             string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/dialogue/chat";
-            
-            // Build simple JSON manually to avoid depending on third-party JSON libraries in clean setups
-            string jsonPayload = $"{{\"npc_slug\":\"{npcSlug}\",\"player_message\":\"{playerMessage}\"";
-            if (!string.IsNullOrEmpty(conversationId))
+
+            ChatDialogueRequest payload = new ChatDialogueRequest
             {
-                jsonPayload += $",\"conversation_id\":\"{conversationId}\"";
-            }
-            jsonPayload += "}";
+                npc_slug = npcSlug,
+                player_message = playerMessage,
+                conversation_id = conversationId
+            };
+            string jsonPayload = JsonUtility.ToJson(payload);
 
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
@@ -86,7 +116,11 @@ namespace GameMind
         public IEnumerator GenerateQuest(string npcSlug, int playerLevel, Action<QuestGeneratedResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
             string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/quests/generate";
-            string jsonPayload = $"{{\"npc_slug\":\"{npcSlug}\",\"player_level\":{playerLevel}}}";
+            string jsonPayload = JsonUtility.ToJson(new GenerateQuestRequest
+            {
+                npc_slug = npcSlug,
+                player_level = playerLevel
+            });
 
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
@@ -173,7 +207,11 @@ namespace GameMind
         public IEnumerator AcceptQuest(string questId, Action<QuestProgressResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
             string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/quests/progress";
-            string jsonPayload = $"{{\"quest_id\":\"{questId}\",\"player_id\":\"{defaultPlayerId}\"}}";
+            string jsonPayload = JsonUtility.ToJson(new AcceptQuestRequest
+            {
+                quest_id = questId,
+                player_id = defaultPlayerId
+            });
 
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
@@ -215,7 +253,12 @@ namespace GameMind
         public IEnumerator GenerateHint(string questId, int hintLevel, Action<HintResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
             string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/hints/generate";
-            string jsonPayload = $"{{\"quest_id\":\"{questId}\",\"player_id\":\"{defaultPlayerId}\",\"hint_level\":{hintLevel}}}";
+            string jsonPayload = JsonUtility.ToJson(new GenerateHintRequest
+            {
+                quest_id = questId,
+                player_id = defaultPlayerId,
+                hint_level = hintLevel
+            });
 
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
@@ -224,6 +267,7 @@ namespace GameMind
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
                 request.SetRequestHeader("X-Game-Project-ID", defaultProjectId);
+                request.SetRequestHeader("X-Player-ID", defaultPlayerId);
                 request.timeout = GameMindConfig.TimeoutSeconds;
 
                 yield return request.SendWebRequest();
@@ -255,11 +299,12 @@ namespace GameMind
 
         public IEnumerator GetHintStatus(string questId, Action<HintStatusResponse> onSuccess, Action<ErrorEnvelope> onError)
         {
-            string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/hints/status?quest_id={questId}&player_id={defaultPlayerId}";
+            string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/hints/status?quest_id={UnityWebRequest.EscapeURL(questId)}&player_id={UnityWebRequest.EscapeURL(defaultPlayerId)}";
 
             using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
                 request.SetRequestHeader("X-Game-Project-ID", defaultProjectId);
+                request.SetRequestHeader("X-Player-ID", defaultPlayerId);
                 request.timeout = GameMindConfig.TimeoutSeconds;
 
                 yield return request.SendWebRequest();

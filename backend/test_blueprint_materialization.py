@@ -286,6 +286,92 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     assert manifest_quest["objectives"]
     assert manifest_quest["objectives"][0]["description"] == "Reclaim the Ash Pass outpost."
 
+def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_session, make_blueprint):
+    """Unity demo bundles still load when a materialization skipped duplicate matching records."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "approved")
+
+    existing_npc = NPCProfile(
+        id=uuid.uuid4(),
+        slug="eldrin",
+        name="Eldrin",
+        personality_summary="Existing runtime NPC.",
+        dialogue_style="Slow and formal.",
+        game_project_id=project_id
+    )
+    db_session.add(existing_npc)
+
+    existing_quest = Quest(
+        id=uuid.uuid4(),
+        title="Reclaim Ash Pass Objective",
+        description="Existing runtime quest.",
+        npc_slug="eldrin",
+        game_project_id=project_id
+    )
+    db_session.add(existing_quest)
+    db_session.add(QuestObjective(
+        id=uuid.uuid4(),
+        quest_id=existing_quest.id,
+        objective_index=0,
+        description="Reclaim the Ash Pass outpost.",
+        target_type="retrieve",
+        target_id="key",
+        quantity_required=1
+    ))
+
+    db_session.add(NPCMemory(
+        id=uuid.uuid4(),
+        npc_id=existing_npc.id,
+        memory_text="Ember Siege historical memories",
+        memory_type="episodic",
+        importance_score=9.0,
+        chroma_indexed=False,
+        archived=False,
+        game_project_id=project_id
+    ))
+
+    db_session.add(WorldStateFlag(
+        game_project_id=project_id,
+        flag_key="checkpoint-vent-alpha",
+        flag_value="unlocked",
+        is_active=True,
+        priority=1
+    ))
+    db_session.add(WorldStateFlag(
+        game_project_id=project_id,
+        flag_key="east-gate-locked",
+        flag_value="unlocked",
+        is_active=True,
+        priority=1
+    ))
+    db_session.commit()
+
+    materialize_response = client.post(
+        f"/api/v1/blueprints/{bp.id}/materialize",
+        headers={"X-Game-Project-ID": project_id}
+    )
+    assert materialize_response.status_code == 200
+    db_session.refresh(bp)
+    assert bp.materialization_manifest["last_materialized_at"] is not None
+    assert bp.materialization_manifest["npcs"] == []
+    assert bp.materialization_manifest["quest_ids"] == []
+    assert bp.materialization_manifest["memory_ids"] == []
+    assert bp.materialization_manifest["flag_keys"] == []
+
+    response = client.get(
+        f"/api/v1/blueprints/{bp.id}/runtime-bundle",
+        headers={"X-Game-Project-ID": project_id}
+    )
+    assert response.status_code == 200
+    bundle = response.json()
+    assert [npc["slug"] for npc in bundle["npcs"]] == ["eldrin"]
+    assert [quest["title"] for quest in bundle["quests"]] == ["Reclaim Ash Pass Objective"]
+    assert [memory["memory_text"] for memory in bundle["memories"]] == ["Ember Siege historical memories"]
+    assert sorted(flag["flag_key"] for flag in bundle["world_flags"]) == [
+        "checkpoint-vent-alpha",
+        "east-gate-locked",
+    ]
+
 def test_latest_runtime_bundle_returns_newest_materialized_blueprint(make_blueprint):
     """Unity can auto-load the newest materialized bundle without a pasted blueprint ID."""
     project_id = f"project_{uuid.uuid4().hex[:6]}"

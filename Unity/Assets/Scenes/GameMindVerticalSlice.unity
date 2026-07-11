@@ -358,6 +358,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0d46be7a2b5f4f4aa9b1e35f3f7e1024, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  useLatestRuntimeBundle: 1
   targetBlueprintId: 7e003712-8537-48f3-aee5-968e672adfb2
 --- !u!1 &400001
 GameObject:
