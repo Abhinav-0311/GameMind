@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -11,7 +12,7 @@ interface DashboardLayoutProps {
 interface NavigationItem {
   name: string;
   href: string;
-  section: "Build" | "Runtime";
+  section: "Build" | "Test";
   icon: React.ReactNode;
 }
 
@@ -49,29 +50,10 @@ const IconSearch = () => (
   </svg>
 );
 
-const IconPeople = () => (
-  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9.5 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM4 20a5.5 5.5 0 0111 0M16 11a3 3 0 100-6M17 15a5 5 0 013 5" />
-  </svg>
-);
-
 const IconPlay = () => (
   <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M10 8.5v7l6-3.5-6-3.5z" />
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const IconHint = () => (
-  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M9.3 9a3 3 0 115.1 2.1c-.8.7-1.4 1.1-1.4 2.4M12 17h.01" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const IconChart = () => (
-  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 19V9M12 19V5M19 19v-7" />
   </svg>
 );
 
@@ -87,18 +69,44 @@ const IconClose = () => (
   </svg>
 );
 
+const IconMoon = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M20 15.5A8.5 8.5 0 018.5 4 7 7 0 1020 15.5z" />
+  </svg>
+);
+
+const IconSun = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 4V2.5M12 21.5V20M4 12H2.5M21.5 12H20M17.66 6.34l1.06-1.06M5.28 18.72l1.06-1.06M6.34 6.34 5.28 5.28M18.72 18.72l-1.06-1.06M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
 const navigationItems: NavigationItem[] = [
   { name: "Home", href: "/", section: "Build", icon: <IconGrid /> },
-  { name: "Knowledge", href: "/knowledge", section: "Build", icon: <IconArchive /> },
+  { name: "Sources", href: "/knowledge", section: "Build", icon: <IconArchive /> },
   { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
-  { name: "Query", href: "/query", section: "Build", icon: <IconSearch /> },
-  { name: "NPCs", href: "/npcs", section: "Runtime", icon: <IconPeople /> },
-  { name: "Simulator", href: "/vertical-slice", section: "Runtime", icon: <IconPlay /> },
-  { name: "Hints", href: "/hints", section: "Runtime", icon: <IconHint /> },
-  { name: "Observability", href: "/analytics", section: "Runtime", icon: <IconChart /> },
+  { name: "Lore Search", href: "/query", section: "Test", icon: <IconSearch /> },
+  { name: "Runtime Test", href: "/vertical-slice", section: "Test", icon: <IconPlay /> },
 ];
 
-const sections: NavigationItem["section"][] = ["Build", "Runtime"];
+const sections: NavigationItem["section"][] = ["Build", "Test"];
+const themeStorageKey = "gamemind-theme";
+const themeChangeEvent = "gamemind-theme-change";
+
+function getStoredTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
+  return window.localStorage.getItem(themeStorageKey) === "dark" ? "dark" : "light";
+}
+
+function subscribeToThemeChange(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(themeChangeEvent, callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(themeChangeEvent, callback);
+  };
+}
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -106,6 +114,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const theme = useSyncExternalStore(subscribeToThemeChange, getStoredTheme, () => "light");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -133,6 +142,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     () => commands.filter((cmd) => cmd.name.toLowerCase().includes(searchQuery.toLowerCase())),
     [commands, searchQuery]
   );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    window.localStorage.setItem(themeStorageKey, nextTheme);
+    window.dispatchEvent(new Event(themeChangeEvent));
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -175,26 +194,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="min-h-dvh text-[#f7f8fa] antialiased">
+    <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)] antialiased">
       <div className="flex min-h-dvh">
         <Sidebar pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-white/[0.07] bg-[#0b0d10]/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+          <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/88 px-4 backdrop-blur-xl sm:px-5 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => setMobileNavOpen(true)}
                 aria-label="Open navigation"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#25303b] text-[#a5afbd] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] lg:hidden"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] lg:hidden"
               >
                 <IconMenu />
               </button>
               <div className="min-w-0">
-                <p className="truncate font-display text-lg font-semibold leading-none text-[#f7f8fa]">{currentPage.name}</p>
-                <p className="mt-1 hidden text-xs text-[#7c8794] sm:block">
-                  Local-first AI game builder, running at zero model cost.
-                </p>
+                <p className="truncate text-sm font-semibold leading-none text-[var(--foreground)]">{currentPage.name}</p>
+                <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Zero-cost local game builder</p>
               </div>
             </div>
 
@@ -202,18 +219,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
-                className="hidden h-10 w-72 items-center justify-between rounded-md border border-[#25303b] bg-[#0a0e12] px-3 text-left text-xs text-[#8b96a5] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0] md:flex"
+                className="hidden h-10 w-72 items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-left text-xs text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] md:flex"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <IconSearch />
                   <span className="truncate">Search pages</span>
                 </span>
-                <kbd className="rounded border border-[#25303b] bg-[#111820] px-1.5 py-0.5 text-[10px] font-semibold text-[#c3cad4]">
+                <kbd className="rounded-lg border border-[var(--border)] bg-[var(--card-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-secondary)]">
                   Ctrl K
                 </kbd>
               </button>
-              <div className="hidden items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 sm:flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                className="inline-flex h-10 min-w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              >
+                <span className="sm:hidden">{theme === "dark" ? <IconSun /> : <IconMoon />}</span>
+                <span className="hidden items-center gap-2 sm:flex">
+                  {theme === "dark" ? <IconSun /> : <IconMoon />}
+                  {theme === "dark" ? "Light" : "Dark"}
+                </span>
+              </button>
+              <div className="hidden items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--green)_28%,transparent)] bg-[color-mix(in_srgb,var(--green)_12%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] sm:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
                 Connected
               </div>
             </div>
@@ -231,14 +260,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             onClick={() => setMobileNavOpen(false)}
             className="absolute inset-0 bg-black/70"
           />
-          <div className="relative h-full w-[min(22rem,88vw)] border-r border-[#202832] bg-[#0d1116] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#202832] px-5 py-4">
+          <div className="relative h-full w-[min(22rem,88vw)] border-r border-[var(--border)] bg-[var(--sidebar)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <Brand />
               <button
                 type="button"
                 onClick={() => setMobileNavOpen(false)}
                 aria-label="Close navigation"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#25303b] text-[#a5afbd] transition hover:border-[#3a4654] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <IconClose />
               </button>
@@ -249,10 +278,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       )}
 
       {paletteOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 pt-20 backdrop-blur-sm sm:pt-24">
-          <div className="flex max-h-[28rem] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-[#27303a] bg-[#10161d] shadow-2xl">
-            <div className="flex items-center gap-3 border-b border-[#27303a] px-4 py-3">
-              <span className="text-[#7c8794]">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 px-4 pt-20 backdrop-blur-sm sm:pt-24">
+          <div className="flex max-h-[28rem] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+              <span className="text-[var(--text-secondary)]">
                 <IconSearch />
               </span>
               <input
@@ -263,14 +292,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   setSearchQuery(event.target.value);
                   setActiveIndex(0);
                 }}
-                className="h-10 flex-1 bg-transparent text-sm text-[#f7f8fa] outline-none placeholder:text-[#6f7a87]"
+                className="h-10 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--text-tertiary)]"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={() => setPaletteOpen(false)}
                 aria-label="Close command palette"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#7c8794] transition hover:bg-[#18212b] hover:text-[#f7f8fa] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-secondary)] transition hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <IconClose />
               </button>
@@ -279,8 +308,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex-1 overflow-y-auto p-2">
               {filteredCommands.length === 0 ? (
                 <div className="py-12 text-center">
-                  <p className="text-sm font-semibold text-[#f7f8fa]">No matching page</p>
-                  <p className="mt-1 text-xs text-[#7c8794]">&quot;{searchQuery}&quot; is not in the workspace.</p>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">No matching page</p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">&quot;{searchQuery}&quot; is not in the workspace.</p>
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -293,22 +322,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         type="button"
                         onClick={() => executeCommand(index)}
                         onMouseEnter={() => setActiveIndex(index)}
-                        className={`flex min-h-11 w-full items-center justify-between rounded-md px-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
+                        className={`flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                           isActive
-                            ? "bg-[#1a242e] text-[#f7f8fa]"
-                            : "text-[#a5afbd] hover:bg-[#151d25] hover:text-[#f7f8fa]"
+                            ? "bg-[var(--accent-soft)] text-[var(--foreground)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
                         }`}
                       >
                         <span className="flex min-w-0 items-center gap-3">
-                          <span className="text-[#7c8794]">
+                          <span className="text-[var(--text-secondary)]">
                             {navigationItems.find((item) => item.href === cmd.id)?.icon}
                           </span>
                           <span className="min-w-0">
                             <span className="block truncate font-semibold">{cmd.name}</span>
-                            <span className="block text-xs text-[#6f7a87]">{cmd.category}</span>
+                            <span className="block text-xs text-[var(--text-tertiary)]">{cmd.category}</span>
                           </span>
                         </span>
-                        <span className="rounded border border-[#27303a] bg-[#0b1015] px-1.5 py-0.5 text-[10px] font-semibold text-[#8b96a5]">
+                        <span className="rounded-lg border border-[var(--border)] bg-[var(--card-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-secondary)]">
                           {cmd.shortcut}
                         </span>
                       </button>
@@ -318,7 +347,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-[#27303a] bg-[#0b1015] px-3 py-2 text-[10px] font-medium text-[#7c8794]">
+            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--card-muted)] px-3 py-2 text-[10px] font-medium text-[var(--text-secondary)]">
               <span>Arrow keys to move</span>
               <span>Esc to close</span>
             </div>
@@ -331,42 +360,33 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
 function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r border-white/[0.07] bg-[#0b0d10]/96 lg:flex lg:flex-col">
-      <div className="border-b border-white/[0.07] px-5 py-5">
+    <aside className="sticky top-0 hidden h-dvh w-[220px] shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] lg:flex lg:flex-col">
+      <div className="border-b border-[var(--border)] px-5 py-5">
         <Brand />
       </div>
       <Navigation pathname={pathname} onNavigate={onNavigate} />
-      <div className="border-t border-white/[0.07] px-5 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f7a87]">Mode</p>
-        <div className="mt-3 rounded-md border border-[#25303b] bg-[#0a0e12] p-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-[#f7f8fa]">Local demo</span>
-            <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">
-              $0
-            </span>
-          </div>
-          <p className="mt-2 text-xs leading-5 text-[#7c8794]">Chroma retrieval and deterministic generation.</p>
-        </div>
-      </div>
     </aside>
   );
 }
 
 function Brand() {
   return (
-    <div>
-      <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#25303b] bg-[#101820] font-display text-lg font-semibold text-[#f7f8fa]">
-          G
-        </span>
+    <Link href="/" className="group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
+      <Image
+        src="/brand/gamemind-icon.svg"
+        alt=""
+        aria-hidden="true"
+        width={40}
+        height={40}
+        className="h-10 w-10 rounded-[0.7rem]"
+      />
         <div>
-          <p className="font-display text-lg font-semibold leading-none text-[#f7f8fa]">GameMind</p>
-          <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7c8794]">
-            AI game builder
+          <p className="text-[1.05rem] font-semibold leading-none tracking-[-0.01em] text-[var(--foreground)] transition">GameMind</p>
+          <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
+            Guided game builder
           </p>
         </div>
-      </div>
-    </div>
+    </Link>
   );
 }
 
@@ -375,7 +395,7 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate: ()
     <nav className="flex-1 overflow-y-auto px-3 py-5">
       {sections.map((section) => (
         <div key={section} className="mb-7 last:mb-0">
-          <p className="px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[#647080]">{section}</p>
+          <p className="px-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">{section}</p>
           <div className="mt-3 space-y-1">
             {navigationItems
               .filter((item) => item.section === section)
@@ -388,13 +408,13 @@ function Navigation({ pathname, onNavigate }: { pathname: string; onNavigate: ()
                     href={item.href}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    className={`group flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
+                    className={`group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                       active
-                        ? "bg-[#151d25] text-[#f7f8fa]"
-                        : "text-[#8b96a5] hover:bg-[#121922] hover:text-[#f7f8fa]"
+                        ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
                     }`}
                   >
-                    <span className={active ? "text-[#8bdff0]" : "text-[#647080] group-hover:text-[#a5afbd]"}>
+                    <span className={active ? "text-[var(--accent)]" : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"}>
                       {item.icon}
                     </span>
                     <span>{item.name}</span>

@@ -128,12 +128,12 @@ export default function HintStudioPage() {
       <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
         <div className="max-w-3xl">
           <p className="page-kicker">Hint Studio</p>
-          <h1 className="display-title mt-5 text-[2.65rem] leading-tight sm:text-6xl">
-            Test help that respects progression.
+          <h1 className="display-title mt-5 text-[2.05rem] leading-tight sm:text-[2.85rem]">
+            Check hint progression after a quest exists.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[#a5afbd]">
-            Progressive hints should guide players without spoiling the solution too early. Check the current level,
-            cooldown, cache state, and generated hint for a selected quest.
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+            This is a focused test bench for the hint engine. Use it after the Runtime Test has accepted a quest, then
+            verify cooldowns, spoiler level, and the exact player-facing hint.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -141,7 +141,7 @@ export default function HintStudioPage() {
               type="button"
               onClick={requestHint}
               disabled={!canRequest}
-              className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#f7f8fa] px-5 text-sm font-semibold text-[#090b0e] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f8fa] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isGenerating ? "Requesting..." : cooldownSeconds > 0 ? `Cooldown ${formatCooldown(cooldownSeconds)}` : "Request hint"}
             </button>
@@ -149,16 +149,19 @@ export default function HintStudioPage() {
               type="button"
               onClick={() => syncStatus(false)}
               disabled={!activeQuestId || isCheckingStatus}
-              className="inline-flex min-h-11 items-center justify-center rounded-md border border-[#27303a] px-5 text-sm font-semibold text-[#f7f8fa] transition hover:border-[#3b4654] hover:bg-[#12161b] focus:outline-none focus:ring-2 focus:ring-[#3b4654] focus:ring-offset-2 focus:ring-offset-[#090b0e] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isCheckingStatus ? "Syncing..." : "Sync status"}
             </button>
+            <Link href="/vertical-slice" className="btn-secondary">
+              Open Runtime Test
+            </Link>
           </div>
         </div>
 
         <aside className="panel self-start rounded-xl p-5">
-          <p className="mono-label text-[#7c8794]">Player state</p>
-          <div className="mt-5 divide-y divide-[#222a33]">
+          <p className="mono-label text-[var(--text-secondary)]">Player state</p>
+          <div className="mt-5 divide-y divide-[var(--border)]">
             <FactRow label="Current level" value={`${currentLevel} / 3`} />
             <FactRow label="Cooldown" value={cooldownSeconds > 0 ? formatCooldown(cooldownSeconds) : "Ready"} />
             <FactRow label="Cache" value={generatedHint?.cache_status ?? "None"} />
@@ -167,6 +170,10 @@ export default function HintStudioPage() {
           <div className="mt-5">
             <ProgressDots currentLevel={currentLevel} />
           </div>
+          <p className="mt-5 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-xs leading-5 text-[var(--text-secondary)]">
+            Keep this page quiet in normal use. The guided Runtime Test remains the primary place to validate the full
+            loop.
+          </p>
         </aside>
       </section>
 
@@ -175,48 +182,48 @@ export default function HintStudioPage() {
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="panel overflow-hidden rounded-xl">
-          <div className="border-b border-[#222a33] px-5 py-4">
-            <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Hint request</h2>
-            <p className="mt-1 text-sm leading-6 text-[#a5afbd]">
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <h2 className="font-display text-2xl font-semibold text-[var(--foreground)]">Hint request</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
               Select the player and quest, then request the next useful level of help.
             </p>
           </div>
 
           <div className="space-y-5 p-5">
             <label className="block">
-              <span className="text-xs font-semibold text-[#a5afbd]">Player ID</span>
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">Player ID</span>
               <input
                 type="text"
                 value={playerId}
                 onChange={(event) => setPlayerId(event.target.value)}
-                className="mt-2 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition placeholder:text-[#6f7a87] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20"
+                className="mt-2 min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
               />
             </label>
 
             <div>
               <div className="flex items-center justify-between gap-4">
-                <label className="text-xs font-semibold text-[#a5afbd]" htmlFor="quest-select">
+                <label className="text-xs font-semibold text-[var(--text-secondary)]" htmlFor="quest-select">
                   Quest
                 </label>
                 <button
                   type="button"
                   onClick={loadQuests}
-                  className="rounded-md px-2 py-1 text-xs font-semibold text-[#8bdff0] transition hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 >
                   Reload
                 </button>
               </div>
 
               {isLoadingQuests ? (
-                <div className="mt-2 h-11 animate-pulse rounded-md bg-[#151b22]" />
+                <div className="mt-2 h-11 animate-pulse rounded-md bg-[var(--card-muted)]" />
               ) : quests.length === 0 && !useCustomQuestId ? (
-                <div className="mt-2 rounded-md border border-[#222a33] bg-[#0b0f13] p-4">
-                  <p className="text-sm leading-6 text-[#a5afbd]">
+                <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--card)] p-4">
+                  <p className="text-sm leading-6 text-[var(--text-secondary)]">
                     No quests are available yet. Generate and accept one in the simulator first.
                   </p>
                   <Link
                     href="/vertical-slice"
-                    className="mt-3 inline-flex min-h-9 items-center rounded-md border border-[#303a46] px-3 text-xs font-semibold text-[#f7f8fa] transition hover:border-[#4a5563] hover:bg-[#151b22] focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+                    className="mt-3 inline-flex min-h-9 items-center rounded-md border border-[var(--border-strong)] px-3 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                   >
                     Open simulator
                   </Link>
@@ -227,7 +234,7 @@ export default function HintStudioPage() {
                   value={selectedQuestId}
                   onChange={(event) => setSelectedQuestId(event.target.value)}
                   disabled={useCustomQuestId}
-                  className="mt-2 min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-2 min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {quests.map((quest) => (
                     <option key={quest.id} value={quest.id}>
@@ -238,17 +245,17 @@ export default function HintStudioPage() {
               )}
             </div>
 
-            <details className="rounded-md border border-[#222a33] bg-[#0b0f13]">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[#a5afbd] transition hover:text-[#f7f8fa]">
+            <details className="rounded-md border border-[var(--border)] bg-[var(--card)]">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
                 Advanced quest ID
               </summary>
-              <div className="space-y-3 border-t border-[#222a33] p-4">
-                <label className="flex items-center gap-3 text-sm text-[#a5afbd]">
+              <div className="space-y-3 border-t border-[var(--border)] p-4">
+                <label className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
                   <input
                     type="checkbox"
                     checked={useCustomQuestId}
                     onChange={(event) => setUseCustomQuestId(event.target.checked)}
-                    className="h-4 w-4 accent-[#8bdff0]"
+                    className="h-4 w-4 accent-[var(--accent)]"
                   />
                   Use a custom quest ID
                 </label>
@@ -258,13 +265,13 @@ export default function HintStudioPage() {
                   onChange={(event) => setCustomQuestId(event.target.value)}
                   disabled={!useCustomQuestId}
                   placeholder="Quest UUID"
-                  className="min-h-11 w-full rounded-md border border-[#27303a] bg-[#0a0e12] px-3 text-sm text-[#f7f8fa] outline-none transition placeholder:text-[#6f7a87] focus:border-[#8bdff0] focus:ring-2 focus:ring-[#8bdff0]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
             </details>
 
             <div>
-              <p className="text-xs font-semibold text-[#a5afbd]">Requested hint level</p>
+              <p className="text-xs font-semibold text-[var(--text-secondary)]">Requested hint level</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 {[
                   { level: 1, title: "Subtle", description: "Nudge without revealing the answer." },
@@ -275,15 +282,15 @@ export default function HintStudioPage() {
                     key={item.level}
                     type="button"
                     onClick={() => setHintLevel(item.level)}
-                    className={`min-h-32 rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[#8bdff0] ${
+                    className={`min-h-32 rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                       hintLevel === item.level
-                        ? "border-[#8bdff0] bg-[#8bdff0] text-[#061014]"
-                        : "border-[#27303a] bg-[#0a0e12] text-[#f7f8fa] hover:border-[#4a5563] hover:bg-[#121922]"
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--card)]"
+                        : "border-[var(--border-strong)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)] hover:bg-[var(--card-muted)]"
                     }`}
                   >
                     <span className="text-xs font-semibold uppercase tracking-[0.16em]">Level {item.level}</span>
                     <span className="mt-3 block text-lg font-semibold">{item.title}</span>
-                    <span className={`mt-2 block text-sm leading-6 ${hintLevel === item.level ? "text-[#14323a]" : "text-[#a5afbd]"}`}>
+                    <span className={`mt-2 block text-sm leading-6 ${hintLevel === item.level ? "text-white/85" : "text-[var(--text-secondary)]"}`}>
                       {item.description}
                     </span>
                   </button>
@@ -295,29 +302,29 @@ export default function HintStudioPage() {
 
         <aside className="space-y-6">
           <section className="panel overflow-hidden rounded-xl">
-            <div className="border-b border-[#222a33] px-5 py-4">
-              <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Generated hint</h2>
-              <p className="mt-1 text-xs text-[#7c8794]">The player-facing text returned by the hint engine.</p>
+            <div className="border-b border-[var(--border)] px-5 py-4">
+              <h2 className="font-display text-2xl font-semibold text-[var(--foreground)]">Generated hint</h2>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">The player-facing text returned by the hint engine.</p>
             </div>
             <div className="p-5">
               {generatedHint ? (
                 <div>
                   <div className="mb-4 flex items-center gap-2">
-                    <span className="rounded-full bg-[#8bdff0] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#061014]">
+                    <span className="rounded-full bg-[var(--accent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--card)]">
                       Level {generatedHint.hint_level}
                     </span>
-                    <span className="rounded-full border border-[#27303a] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a5afbd]">
+                    <span className="rounded-full border border-[var(--border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
                       {generatedHint.spoiler_level}
                     </span>
                   </div>
-                  <p className="rounded-md border border-[#222a33] bg-[#0b0f13] p-4 text-sm leading-7 text-[#f7f8fa]">
+                  <p className="rounded-md border border-[var(--border)] bg-[var(--card)] p-4 text-sm leading-7 text-[var(--foreground)]">
                     {generatedHint.hint}
                   </p>
                 </div>
               ) : (
                 <div className="py-10 text-center">
-                  <h3 className="text-sm font-semibold text-[#f7f8fa]">No hint generated</h3>
-                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-[#a5afbd]">
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">No hint generated</h3>
+                  <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-[var(--text-secondary)]">
                     Select a quest and request a level when the cooldown is ready.
                   </p>
                 </div>
@@ -326,18 +333,18 @@ export default function HintStudioPage() {
           </section>
 
           <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-2xl font-semibold text-[#f7f8fa]">Selected quest</h2>
+            <h2 className="font-display text-2xl font-semibold text-[var(--foreground)]">Selected quest</h2>
             {selectedQuest && !useCustomQuestId ? (
               <div className="mt-4 space-y-3">
-                <p className="text-sm font-semibold text-[#f7f8fa]">{selectedQuest.title}</p>
-                <p className="text-sm leading-6 text-[#a5afbd]">{selectedQuest.description}</p>
+                <p className="text-sm font-semibold text-[var(--foreground)]">{selectedQuest.title}</p>
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">{selectedQuest.description}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <FactTile label="Giver" value={selectedQuest.npc_slug} />
                   <FactTile label="Difficulty" value={selectedQuest.difficulty} />
                 </div>
               </div>
             ) : (
-              <p className="mt-4 text-sm leading-6 text-[#a5afbd]">
+              <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
                 {useCustomQuestId ? "Using custom quest ID." : "No quest selected."}
               </p>
             )}
@@ -359,8 +366,8 @@ function Alert({
 }) {
   const styles =
     tone === "error"
-      ? "border-rose-500/25 bg-rose-500/10 text-rose-100"
-      : "border-amber-500/25 bg-amber-500/10 text-amber-100";
+      ? "border-rose-500/25 bg-rose-500/10 text-rose-800"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-800";
 
   return (
     <div className={`mb-6 flex items-center justify-between gap-4 rounded-md border px-4 py-3 text-sm ${styles}`}>
@@ -368,7 +375,7 @@ function Alert({
       <button
         type="button"
         onClick={onDismiss}
-        className="rounded px-2 py-1 text-xs font-semibold transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-[#8bdff0]"
+        className="rounded px-2 py-1 text-xs font-semibold transition hover:bg-[var(--accent-hover)]/5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
       >
         Dismiss
       </button>
@@ -384,10 +391,10 @@ function ProgressDots({ currentLevel }: { currentLevel: number }) {
           key={level}
           className={`rounded-md border px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] ${
             level === currentLevel
-              ? "border-[#8bdff0] bg-[#8bdff0] text-[#061014]"
+              ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--card)]"
               : level < currentLevel
-                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                : "border-[#222a33] bg-[#0b0f13] text-[#7c8794]"
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-800"
+                : "border-[var(--border)] bg-[var(--card)] text-[var(--text-secondary)]"
           }`}
         >
           L{level}
@@ -400,17 +407,17 @@ function ProgressDots({ currentLevel }: { currentLevel: number }) {
 function FactRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
-      <span className="text-sm text-[#a5afbd]">{label}</span>
-      <span className="max-w-40 truncate text-right text-sm font-semibold capitalize text-[#f7f8fa]">{value}</span>
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <span className="max-w-40 truncate text-right text-sm font-semibold capitalize text-[var(--foreground)]">{value}</span>
     </div>
   );
 }
 
 function FactTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[#222a33] bg-[#0b0f13] p-3">
-      <p className="text-xs text-[#7c8794]">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-[#f7f8fa]">{value}</p>
+    <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-3">
+      <p className="text-xs text-[var(--text-secondary)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
