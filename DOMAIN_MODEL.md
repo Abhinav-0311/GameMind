@@ -51,7 +51,7 @@ erDiagram
     }
   }
   ```
-* **Future Usage:** Feeds the Dialogue Engine prompts to shape character voice and animation cues in Gemini outputs.
+* **Future Usage:** Feeds the Dialogue Engine prompts to shape character voice and animation cues in provider-generated outputs.
 
 ---
 

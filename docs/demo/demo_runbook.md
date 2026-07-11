@@ -6,6 +6,12 @@ This runbook is the controlled golden path for demonstrating GameMind as a zero-
 
 Show that a developer can start from a GDD, generate a structured game blueprint, materialize runtime data, and test that data through the dashboard and Unity scene.
 
+The story of the demo is:
+
+```text
+Sources -> Blueprints -> Lore Search -> Runtime Test -> Unity
+```
+
 ## Prerequisites
 
 - Docker Desktop is running.
@@ -62,7 +68,7 @@ Point out:
 
 ### 2. Load The GDD
 
-Go to `Knowledge Base`.
+Go to **Sources**.
 
 Recommended path:
 
@@ -88,7 +94,7 @@ Explain:
 
 ### 3. Generate A Blueprint
 
-Go to `Blueprint Studio`.
+Go to **Blueprints**.
 
 Select:
 
@@ -105,12 +111,12 @@ Generate blueprint
 Expected generated sections:
 
 - Game summary
-- Narrative
+- Narrative direction
 - Art style
-- NPCs
-- Memory
+- NPC cast
+- Memory design
 - Level design
-- Quests
+- Quest hooks
 - Unity preview
 
 Expected clean sample output:
@@ -151,6 +157,7 @@ Expected result:
 - NPCs, quests, memories, and world flags are created or updated.
 - The blueprint becomes runtime-ready.
 - A materialization summary appears.
+- If any generated fragment is unsafe, it appears as skipped instead of being written to runtime data.
 
 Explain:
 
@@ -167,7 +174,7 @@ Runtime bundle
 Expected result:
 
 - Runtime JSON includes NPCs, quests, memories, and world flags.
-- This is the payload Unity consumes.
+- This is the Unity contract.
 
 Explain:
 
@@ -175,7 +182,7 @@ Explain:
 
 ### 7. Test Lore Query
 
-Go to `Query Studio`.
+Go to **Lore Search**.
 
 Ask:
 
@@ -190,9 +197,26 @@ Expected result:
 
 Explain:
 
-> RAG retrieves relevant source chunks so generated systems remain grounded in the uploaded document.
+> RAG retrieves relevant source chunks so generated systems remain grounded in the uploaded document. If citations are weak, the source document needs more detail.
 
-### 8. Test Unity Scene
+### 8. Test Runtime In The Dashboard
+
+Go to **Runtime Test**.
+
+Expected result:
+
+- Select the Frostpeak source and an NPC.
+- Send a dialogue message.
+- Generate a quest.
+- Accept the quest.
+- Request a progressive hint.
+- Open **Unity contract** only if you need to inspect the raw runtime data.
+
+Explain:
+
+> Runtime Test proves the playable loop before Unity is opened. It checks dialogue, quest registration, and hint progression through the same backend contracts Unity uses.
+
+### 9. Test Unity Scene
 
 Open the Unity project in:
 
@@ -217,11 +241,16 @@ Expected result:
 - Talk button appears.
 - Accept quest unlocks hint flow.
 
+Explain:
+
+> Unity is the final consumer, not the place where the AI logic lives. The game scene calls the backend and renders the prepared runtime data.
+
 ## Important Demo Notes
 
 - Do not add paid API keys for the MVP demo. The project is intentionally local-first and zero-cost.
 - If materialization skips records, the dev database already contains records with the same slug/title/flag. That is a safety guard, not a crash.
 - For a clean public demo, use a clean database volume or a fresh project ID so the generated records are not mixed with older test data.
+- Hide expanded JSON/contract panels during a non-technical demo unless someone asks how Unity receives the data.
 
 ## Verification Commands
 
