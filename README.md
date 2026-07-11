@@ -10,6 +10,12 @@ The project combines a FastAPI backend, PostgreSQL, ChromaDB vector search, a Ne
 
 **Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and Unity-ready runtime data.
 
+## Demo Preview
+
+| Guided workspace | Blueprint review | Runtime test |
+| --- | --- | --- |
+| ![GameMind home dashboard showing the guided GDD to runtime workflow](assets/screenshots/dashboard-home.jpg) | ![Blueprint workspace showing source selection, saved blueprints, and section review](assets/screenshots/blueprint-workspace.jpg) | ![Runtime test page showing dialogue, quest, and hint playtest setup](assets/screenshots/runtime-test.jpg) |
+
 ## Why This Exists
 
 New game developers often have ideas, lore, and rough documents, but struggle to convert them into implementation-ready game systems. Generic chatbots can brainstorm, but they do not know the project state, cannot enforce runtime contracts, and do not naturally produce data Unity can consume.
