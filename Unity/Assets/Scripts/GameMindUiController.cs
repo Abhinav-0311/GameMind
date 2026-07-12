@@ -185,14 +185,43 @@ namespace GameMind
 
         private void OnBundleError(ErrorEnvelope error)
         {
-            string message = error != null && error.error != null
-                ? error.error.message
-                : "The backend did not return a usable runtime bundle.";
+            string message = GetErrorMessage(error, "The backend did not return a usable runtime bundle.");
 
             SetStatus("Connection error", Danger);
             ShowEmptyState("Could not load runtime", message);
             SetRetryEnabled(true);
             Debug.LogError($"[GameMind UI] Connection failed: {message}");
+        }
+
+        private void OnRuntimeActionError(string actionName, ErrorEnvelope error)
+        {
+            string message = GetErrorMessage(error, "The backend rejected this runtime action.");
+
+            if (emptyStatePanel != null && (materializedNpcs.Count > 0 || materializedQuests.Count > 0))
+            {
+                emptyStatePanel.SetActive(false);
+            }
+
+            SetStatus($"{actionName} failed", Danger);
+            if (keyboardHintText != null)
+            {
+                keyboardHintText.text = $"Last issue: {message}   R Reload";
+            }
+
+            Debug.LogWarning($"[GameMind UI] {actionName} failed: {message}");
+        }
+
+        private string GetErrorMessage(ErrorEnvelope error, string fallback)
+        {
+            return error != null && error.error != null && !string.IsNullOrEmpty(error.error.message)
+                ? error.error.message
+                : fallback;
+        }
+
+        private bool IsAlreadyAcceptedQuest(ErrorEnvelope error)
+        {
+            string message = GetErrorMessage(error, "");
+            return message.ToLower().Contains("already accepted") || message.ToLower().Contains("already accepted or completed");
         }
 
         private void InteractWithEldrin()
@@ -242,7 +271,7 @@ namespace GameMind
                 {
                     interactButton.interactable = true;
                     interactButtonText.text = $"Talk to {npcName}  T";
-                    OnBundleError(error);
+                    OnRuntimeActionError("Dialogue", error);
                 }
             ));
         }
@@ -270,9 +299,18 @@ namespace GameMind
                 },
                 error =>
                 {
+                    if (IsAlreadyAcceptedQuest(error))
+                    {
+                        SetStatus("Quest already active", Success);
+                        acceptQuestButton.gameObject.SetActive(false);
+                        hintPanel.SetActive(true);
+                        hintText.text = "Quest is already active for this player. You can request the next progressive hint.";
+                        return;
+                    }
+
                     acceptQuestButton.interactable = true;
                     acceptQuestButtonText.text = "Accept quest";
-                    OnBundleError(error);
+                    OnRuntimeActionError("Quest accept", error);
                 }
             ));
         }
@@ -303,7 +341,8 @@ namespace GameMind
                 {
                     requestHintButton.interactable = true;
                     requestHintButtonText.text = "Request hint";
-                    OnBundleError(error);
+                    OnRuntimeActionError("Hint", error);
+                    hintText.text = GetErrorMessage(error, "Hint could not be generated. Try again after reloading the runtime.");
                 }
             ));
         }

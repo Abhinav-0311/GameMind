@@ -342,23 +342,49 @@ namespace GameMind
                 try
                 {
                     ErrorEnvelope serverError = JsonUtility.FromJson<ErrorEnvelope>(responseText);
-                    onError?.Invoke(serverError);
-                    return;
+                    if (serverError != null && serverError.error != null)
+                    {
+                        onError?.Invoke(serverError);
+                        return;
+                    }
                 }
                 catch {}
             }
 
-            // Fallback generic web exception envelope
             ErrorEnvelope error = new ErrorEnvelope
             {
                 api_version = GameMindConfig.ApiVersion,
                 error = new ErrorDetail
                 {
                     code = "HTTP_ERROR",
-                    message = $"HTTP Request failed with result {request.result}. Error: {request.error}"
+                    message = ExtractErrorMessage(responseText, request)
                 }
             };
             onError?.Invoke(error);
+        }
+
+        private string ExtractErrorMessage(string responseText, UnityWebRequest request)
+        {
+            if (!string.IsNullOrEmpty(responseText))
+            {
+                const string detailPrefix = "\"detail\":\"";
+                int detailStart = responseText.IndexOf(detailPrefix, StringComparison.Ordinal);
+                if (detailStart >= 0)
+                {
+                    detailStart += detailPrefix.Length;
+                    int detailEnd = responseText.IndexOf("\"", detailStart, StringComparison.Ordinal);
+                    if (detailEnd > detailStart)
+                    {
+                        return responseText.Substring(detailStart, detailEnd - detailStart)
+                            .Replace("\\\"", "\"")
+                            .Replace("\\n", "\n");
+                    }
+                }
+
+                return responseText;
+            }
+
+            return $"HTTP Request failed with result {request.result}. Error: {request.error}";
         }
     }
 }
