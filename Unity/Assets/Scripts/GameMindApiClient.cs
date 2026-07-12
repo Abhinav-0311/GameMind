@@ -10,6 +10,13 @@ namespace GameMind
     public class GameMindApiClient : MonoBehaviour
     {
         [Serializable]
+        private class NewChatDialogueRequest
+        {
+            public string npc_slug;
+            public string player_message;
+        }
+
+        [Serializable]
         private class ChatDialogueRequest
         {
             public string npc_slug;
@@ -61,13 +68,18 @@ namespace GameMind
         {
             string url = $"{GameMindConfig.ApiBaseUrl}/api/v1/dialogue/chat";
 
-            ChatDialogueRequest payload = new ChatDialogueRequest
-            {
-                npc_slug = npcSlug,
-                player_message = playerMessage,
-                conversation_id = conversationId
-            };
-            string jsonPayload = JsonUtility.ToJson(payload);
+            string jsonPayload = string.IsNullOrWhiteSpace(conversationId)
+                ? JsonUtility.ToJson(new NewChatDialogueRequest
+                {
+                    npc_slug = npcSlug,
+                    player_message = playerMessage
+                })
+                : JsonUtility.ToJson(new ChatDialogueRequest
+                {
+                    npc_slug = npcSlug,
+                    player_message = playerMessage,
+                    conversation_id = conversationId
+                });
 
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
@@ -392,6 +404,20 @@ namespace GameMind
                     if (detailEnd > detailStart)
                     {
                         return responseText.Substring(detailStart, detailEnd - detailStart)
+                            .Replace("\\\"", "\"")
+                            .Replace("\\n", "\n");
+                    }
+                }
+
+                const string messagePrefix = "\"msg\":\"";
+                int messageStart = responseText.IndexOf(messagePrefix, StringComparison.Ordinal);
+                if (messageStart >= 0)
+                {
+                    messageStart += messagePrefix.Length;
+                    int messageEnd = responseText.IndexOf("\"", messageStart, StringComparison.Ordinal);
+                    if (messageEnd > messageStart)
+                    {
+                        return responseText.Substring(messageStart, messageEnd - messageStart)
                             .Replace("\\\"", "\"")
                             .Replace("\\n", "\n");
                     }
