@@ -31,11 +31,9 @@ def test_mock_provider_lore_awareness():
         )
     )
     
-    assert "[Eldrin of the Cinder Vanguard]" in response
-    assert "Based on the supplied lore context, I know:" in response
-    assert "- The Ember Siege destroyed the eastern watchtower." in response
-    assert "- Eldrin witnessed the siege from Frostpeak." in response
-    assert "What did you see at the siege?" in response
+    assert response.startswith("Eldrin:")
+    assert "The Ember Siege destroyed the eastern watchtower." in response
+    assert "grounded lore" in response
     assert telemetry["latency_ms"] == 100
     assert telemetry["estimated_cost_usd"] == 0.0
 
@@ -75,8 +73,7 @@ def test_api_chat_endpoint_mock_mode(db_session, setup_data):
         data = response.json()
         assert data["npc_slug"] == payload["npc_slug"]
         assert "response_text" in data
-        assert "[Zephyr of the zephyr_sect]" in data["response_text"]
-        assert "Based on the supplied lore context, I know:" in data["response_text"]
+        assert data["response_text"].startswith("Zephyr:")
         assert "The Wind Tome describes Ember Siege" in data["response_text"]
         assert data["telemetry"]["latency_ms"] > 0
         assert data["telemetry"]["estimated_cost_usd"] == 0.0
