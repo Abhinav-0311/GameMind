@@ -12,11 +12,11 @@ namespace GameMind
         [SerializeField] private bool useLatestRuntimeBundle = true;
         [SerializeField] private string targetBlueprintId = "00000000-0000-0000-0000-000000000000";
 
-        private static readonly Color Surface = new Color(0.035f, 0.04f, 0.045f, 0.94f);
-        private static readonly Color SurfaceSoft = new Color(0.07f, 0.075f, 0.08f, 0.92f);
-        private static readonly Color SurfaceLine = new Color(0.24f, 0.26f, 0.28f, 0.7f);
-        private static readonly Color TextPrimary = new Color(0.96f, 0.97f, 0.98f, 1f);
-        private static readonly Color TextSecondary = new Color(0.67f, 0.72f, 0.78f, 1f);
+        private static readonly Color Surface = new Color(0.025f, 0.03f, 0.034f, 0.96f);
+        private static readonly Color SurfaceSoft = new Color(0.055f, 0.06f, 0.066f, 0.94f);
+        private static readonly Color SurfaceLine = new Color(0.18f, 0.22f, 0.25f, 0.86f);
+        private static readonly Color TextPrimary = new Color(0.98f, 0.985f, 0.99f, 1f);
+        private static readonly Color TextSecondary = new Color(0.75f, 0.80f, 0.86f, 1f);
         private static readonly Color Accent = new Color(0.58f, 0.86f, 0.94f, 1f);
         private static readonly Color Success = new Color(0.45f, 0.95f, 0.68f, 1f);
         private static readonly Color Warning = new Color(0.95f, 0.78f, 0.38f, 1f);
@@ -261,7 +261,7 @@ namespace GameMind
                     interactButtonText.text = $"Talk to {npcName}  T";
 
                     dialogueSpeakerText.text = npcName;
-                    dialogueText.text = response.response_text;
+                    dialogueText.text = FormatDialogueText(response.response_text, npcName);
                     dialoguePanel.SetActive(true);
 
                     if (eldrinController != null)
@@ -366,6 +366,20 @@ namespace GameMind
             dialoguePanel.SetActive(false);
         }
 
+        private string FormatDialogueText(string rawText, string speakerName)
+        {
+            if (string.IsNullOrWhiteSpace(rawText)) return "No dialogue text was returned.";
+
+            string cleaned = rawText.Trim();
+            string prefix = $"{speakerName}:";
+            if (cleaned.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned = cleaned.Substring(prefix.Length).Trim();
+            }
+
+            return cleaned;
+        }
+
         private string GetPreferredNpcName()
         {
             if (materializedNpcs.Count == 0) return "NPC";
@@ -428,7 +442,7 @@ namespace GameMind
             dotRect.anchoredPosition = new Vector2(18f, 0f);
             dotRect.sizeDelta = new Vector2(8f, 8f);
 
-            statusText = CreateText("StatusText", badge.transform, "Connecting", 13, TextPrimary, TextAnchor.MiddleLeft);
+            statusText = CreateText("StatusText", badge.transform, "Connecting", 14, TextPrimary, TextAnchor.MiddleLeft);
             RectTransform textRect = statusText.GetComponent<RectTransform>();
             textRect.anchorMin = new Vector2(0f, 0f);
             textRect.anchorMax = new Vector2(1f, 1f);
@@ -490,8 +504,8 @@ namespace GameMind
             rect.anchorMin = new Vector2(0.5f, 0f);
             rect.anchorMax = new Vector2(0.5f, 0f);
             rect.pivot = new Vector2(0.5f, 0f);
-            rect.anchoredPosition = new Vector2(0f, 36f);
-            rect.sizeDelta = new Vector2(240f, 56f);
+            rect.anchoredPosition = new Vector2(0f, 34f);
+            rect.sizeDelta = new Vector2(280f, 62f);
             interactButton.onClick.AddListener(() =>
             {
                 Debug.Log("[GameMind UI] Talk button clicked.");
@@ -507,21 +521,21 @@ namespace GameMind
             rect.anchorMin = new Vector2(1f, 0.5f);
             rect.anchorMax = new Vector2(1f, 0.5f);
             rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(-32f, 20f);
-            rect.sizeDelta = new Vector2(360f, 310f);
+            rect.anchoredPosition = new Vector2(-36f, 24f);
+            rect.sizeDelta = new Vector2(420f, 330f);
 
-            Text label = CreateText("Label", questPanel.transform, "ACTIVE QUEST", 11, Accent, TextAnchor.UpperLeft);
+            Text label = CreateText("Label", questPanel.transform, "ACTIVE QUEST", 12, Accent, TextAnchor.UpperLeft);
             SetRect(label.rectTransform, new Vector2(24f, -24f), new Vector2(-48f, 24f), true);
 
-            questTitleText = CreateText("QuestTitle", questPanel.transform, "Quest title", 20, TextPrimary, TextAnchor.UpperLeft);
-            SetRect(questTitleText.rectTransform, new Vector2(24f, -58f), new Vector2(-48f, 34f), true);
+            questTitleText = CreateText("QuestTitle", questPanel.transform, "Quest title", 23, TextPrimary, TextAnchor.UpperLeft);
+            SetRect(questTitleText.rectTransform, new Vector2(24f, -60f), new Vector2(-48f, 44f), true);
 
-            questDescText = CreateText("QuestDescription", questPanel.transform, "", 13, TextSecondary, TextAnchor.UpperLeft);
+            questDescText = CreateText("QuestDescription", questPanel.transform, "", 15, TextSecondary, TextAnchor.UpperLeft);
             RectTransform descRect = questDescText.GetComponent<RectTransform>();
             descRect.anchorMin = new Vector2(0f, 0f);
             descRect.anchorMax = new Vector2(1f, 1f);
-            descRect.offsetMin = new Vector2(24f, 82f);
-            descRect.offsetMax = new Vector2(-24f, -112f);
+            descRect.offsetMin = new Vector2(24f, 92f);
+            descRect.offsetMax = new Vector2(-24f, -108f);
 
             acceptQuestButton = CreateButton("AcceptQuestButton", questPanel.transform, "Accept quest  A", Success, new Color(0.03f, 0.08f, 0.05f, 1f), out acceptQuestButtonText);
             RectTransform buttonRect = acceptQuestButton.GetComponent<RectTransform>();
@@ -546,18 +560,18 @@ namespace GameMind
             rect.anchorMin = new Vector2(1f, 0.5f);
             rect.anchorMax = new Vector2(1f, 0.5f);
             rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(-32f, -170f);
-            rect.sizeDelta = new Vector2(360f, 150f);
+            rect.anchoredPosition = new Vector2(-36f, -200f);
+            rect.sizeDelta = new Vector2(420f, 178f);
 
-            Text label = CreateText("Label", hintPanel.transform, "PROGRESSIVE HINT", 11, Accent, TextAnchor.UpperLeft);
+            Text label = CreateText("Label", hintPanel.transform, "PROGRESSIVE HINT", 12, Accent, TextAnchor.UpperLeft);
             SetRect(label.rectTransform, new Vector2(24f, -22f), new Vector2(-48f, 24f), true);
 
-            hintText = CreateText("HintText", hintPanel.transform, "Accept the quest to unlock contextual hints.", 13, TextSecondary, TextAnchor.UpperLeft);
+            hintText = CreateText("HintText", hintPanel.transform, "Accept the quest to unlock contextual hints.", 15, TextSecondary, TextAnchor.UpperLeft);
             RectTransform hintRect = hintText.GetComponent<RectTransform>();
             hintRect.anchorMin = new Vector2(0f, 0f);
             hintRect.anchorMax = new Vector2(1f, 1f);
-            hintRect.offsetMin = new Vector2(24f, 56f);
-            hintRect.offsetMax = new Vector2(-24f, -54f);
+            hintRect.offsetMin = new Vector2(24f, 64f);
+            hintRect.offsetMax = new Vector2(-24f, -58f);
 
             requestHintButton = CreateButton("RequestHintButton", hintPanel.transform, "Request hint  H", Accent, new Color(0.03f, 0.06f, 0.08f, 1f), out requestHintButtonText);
             RectTransform buttonRect = requestHintButton.GetComponent<RectTransform>();
@@ -582,26 +596,26 @@ namespace GameMind
             rect.anchorMin = new Vector2(0.5f, 0f);
             rect.anchorMax = new Vector2(0.5f, 0f);
             rect.pivot = new Vector2(0.5f, 0f);
-            rect.anchoredPosition = new Vector2(0f, 112f);
-            rect.sizeDelta = new Vector2(720f, 170f);
+            rect.anchoredPosition = new Vector2(0f, 126f);
+            rect.sizeDelta = new Vector2(840f, 220f);
 
-            dialogueSpeakerText = CreateText("Speaker", dialoguePanel.transform, "Eldrin", 12, Accent, TextAnchor.UpperLeft);
-            SetRect(dialogueSpeakerText.rectTransform, new Vector2(28f, -24f), new Vector2(-140f, 24f), true);
+            dialogueSpeakerText = CreateText("Speaker", dialoguePanel.transform, "Eldrin", 13, Accent, TextAnchor.UpperLeft);
+            SetRect(dialogueSpeakerText.rectTransform, new Vector2(32f, -28f), new Vector2(-150f, 26f), true);
 
-            dialogueText = CreateText("DialogueText", dialoguePanel.transform, "", 15, TextPrimary, TextAnchor.UpperLeft);
+            dialogueText = CreateText("DialogueText", dialoguePanel.transform, "", 18, TextPrimary, TextAnchor.UpperLeft);
             RectTransform dialogueRect = dialogueText.GetComponent<RectTransform>();
             dialogueRect.anchorMin = new Vector2(0f, 0f);
             dialogueRect.anchorMax = new Vector2(1f, 1f);
-            dialogueRect.offsetMin = new Vector2(28f, 28f);
-            dialogueRect.offsetMax = new Vector2(-28f, -58f);
+            dialogueRect.offsetMin = new Vector2(32f, 32f);
+            dialogueRect.offsetMax = new Vector2(-32f, -70f);
 
             closeDialogueButton = CreateButton("CloseDialogueButton", dialoguePanel.transform, "Close", SurfaceLine, TextPrimary, out _);
             RectTransform closeRect = closeDialogueButton.GetComponent<RectTransform>();
             closeRect.anchorMin = new Vector2(1f, 1f);
             closeRect.anchorMax = new Vector2(1f, 1f);
             closeRect.pivot = new Vector2(1f, 1f);
-            closeRect.anchoredPosition = new Vector2(-22f, -18f);
-            closeRect.sizeDelta = new Vector2(84f, 36f);
+            closeRect.anchoredPosition = new Vector2(-28f, -22f);
+            closeRect.sizeDelta = new Vector2(96f, 40f);
             closeDialogueButton.onClick.AddListener(() =>
             {
                 Debug.Log("[GameMind UI] Close dialogue clicked.");
@@ -618,10 +632,10 @@ namespace GameMind
             rect.anchorMin = new Vector2(0f, 0f);
             rect.anchorMax = new Vector2(0f, 0f);
             rect.pivot = new Vector2(0f, 0f);
-            rect.anchoredPosition = new Vector2(28f, 28f);
-            rect.sizeDelta = new Vector2(460f, 38f);
+            rect.anchoredPosition = new Vector2(28f, 26f);
+            rect.sizeDelta = new Vector2(520f, 42f);
 
-            keyboardHintText = CreateText("KeyboardHintText", panel.transform, "T Talk   A Accept quest   H Hint   R Reload   Esc Close", 12, TextSecondary, TextAnchor.MiddleLeft);
+            keyboardHintText = CreateText("KeyboardHintText", panel.transform, "T Talk   A Accept quest   H Hint   R Reload   Esc Close", 14, TextSecondary, TextAnchor.MiddleLeft);
             RectTransform textRect = keyboardHintText.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
@@ -643,7 +657,7 @@ namespace GameMind
             button.transition = Selectable.Transition.ColorTint;
             button.colors = CreateButtonColors(background);
 
-            labelText = CreateText("Label", obj.transform, label, 14, textColor, TextAnchor.MiddleCenter);
+            labelText = CreateText("Label", obj.transform, label, 16, textColor, TextAnchor.MiddleCenter);
             labelText.fontStyle = FontStyle.Bold;
             RectTransform labelRect = labelText.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
@@ -687,7 +701,7 @@ namespace GameMind
             text.fontSize = size;
             text.color = color;
             text.alignment = alignment;
-            text.lineSpacing = 1.08f;
+            text.lineSpacing = 1.18f;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Truncate;
             text.raycastTarget = false;
