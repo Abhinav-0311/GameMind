@@ -4,6 +4,39 @@ from app.services.llm.base import LLMProvider
 class MockLLMProvider(LLMProvider):
     provider_name = "local_mock"
 
+    def _clean_lore_text(self, value: str) -> str:
+        value = re.sub(r"Document:\s*[^\n]+", " ", value)
+        value = re.sub(r"Content:\s*", " ", value)
+        value = re.sub(r"#+\s*", " ", value)
+        value = re.sub(r"\*\*(.*?)\*\*", r"\1", value)
+        value = re.sub(r"\s+", " ", value)
+        return value.strip()
+
+    def _extract_source_label(self, value: str) -> str:
+        source_match = re.search(r"Document:\s*([^\n]+)", value)
+        return source_match.group(1).strip() if source_match else "uploaded lore"
+
+    def _select_relevant_sentence(self, lore_text: str, user_prompt: str) -> str:
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", lore_text)
+            if len(sentence.strip()) > 24
+        ]
+        if not sentences:
+            return lore_text[:260].strip()
+
+        prompt_terms = {
+            term.lower()
+            for term in re.findall(r"[A-Za-z][A-Za-z'-]{3,}", user_prompt)
+            if term.lower() not in {"what", "when", "where", "tell", "about", "who", "does", "with"}
+        }
+        for sentence in sentences:
+            lowered = sentence.lower()
+            if any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in prompt_terms):
+                return sentence
+
+        return sentences[0]
+
     async def generate_response(
         self, 
         system_prompt: str, 
@@ -18,37 +51,35 @@ class MockLLMProvider(LLMProvider):
         npc_name = name_match.group(1).strip() if name_match else "the NPC"
         faction = faction_match.group(1).strip() if faction_match else "UNALIGNED"
 
-        # 2. Extract lore snippets from the prompt.
-        # Check for LORE CONTEXT: in system prompt
-        lore_snippets = []
+        # 2. Extract lore from the prompt.
         lore_section = re.search(
             r"(?:LORE CONTEXT|World Lore Context)\]?:?\s*\n(.*?)(?=\n+\[[A-Z_\s]+\]|$)", 
             system_prompt, 
             re.IGNORECASE | re.DOTALL
         )
+        source_label = "uploaded lore"
+        selected_lore = ""
         if lore_section:
-            # Split by line and grab lines that are not bullet list markers or section headers
-            lines = [s.strip() for s in lore_section.group(1).split("\n") if s.strip()]
-            for line in lines:
-                # Exclude placeholder notices like "No relevant lore chunks provided"
-                if "No relevant lore chunks" in line:
-                    continue
-                # Strip leading dashes or indices if they are formatted
-                cleaned = re.sub(r"^[-*#\d\.\s]+", "", line).strip()
-                if len(cleaned) > 10:
-                    lore_snippets.append(cleaned)
-            lore_snippets = lore_snippets[:2]
+            raw_lore = lore_section.group(1)
+            if "No relevant lore chunks" not in raw_lore:
+                source_label = self._extract_source_label(raw_lore)
+                selected_lore = self._select_relevant_sentence(
+                    self._clean_lore_text(raw_lore),
+                    user_prompt
+                )
 
-        # 3. Format realistic mock response
-        mock_response = f"[{npc_name} of the {faction}]\n"
-        if lore_snippets:
-            mock_response += "Based on the supplied lore context, I know:\n"
-            for snippet in lore_snippets:
-                mock_response += f"- {snippet}\n"
+        # 3. Format a presentable local response rather than exposing prompt internals.
+        if selected_lore:
+            mock_response = (
+                f"{npc_name}: {selected_lore}\n\n"
+                f"That is the account preserved in {source_label}. "
+                "Treat it as grounded lore, not a generated invention."
+            )
         else:
-            mock_response += "No lore context was provided for this query.\n"
-
-        mock_response += f"\nYou asked:\n\"{user_prompt}\"\n\n(Local demo response generated using {model_name}.)"
+            mock_response = (
+                f"{npc_name}: I do not have enough grounded lore to answer that confidently yet. "
+                "Add more source material or ask about a documented character, faction, place, or quest."
+            )
         
         telemetry = {
             "latency_ms": 100,

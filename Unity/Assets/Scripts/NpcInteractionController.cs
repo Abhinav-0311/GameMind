@@ -74,8 +74,12 @@ namespace GameMind
         public void TriggerAnimation(string animationName)
         {
             if (animator == null) return;
+            if (animator.runtimeAnimatorController == null)
+            {
+                Debug.Log($"NPC animation '{animationName}' skipped because no Animator Controller is assigned.");
+                return;
+            }
 
-            // Clear any active trigger flags if necessary, or set trigger
             try
             {
                 animator.SetTrigger(animationName);
