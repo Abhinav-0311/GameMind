@@ -213,9 +213,11 @@ namespace GameMind
 
         private string GetErrorMessage(ErrorEnvelope error, string fallback)
         {
-            return error != null && error.error != null && !string.IsNullOrEmpty(error.error.message)
-                ? error.error.message
-                : fallback;
+            if (error == null) return fallback;
+            if (error.error != null && !string.IsNullOrEmpty(error.error.message)) return error.error.message;
+            if (!string.IsNullOrEmpty(error.detail)) return error.detail;
+            if (!string.IsNullOrEmpty(error.raw_message)) return error.raw_message;
+            return fallback;
         }
 
         private bool IsAlreadyAcceptedQuest(ErrorEnvelope error)

@@ -78,6 +78,8 @@ namespace GameMind.Contracts
     {
         public string api_version;
         public ErrorDetail error;
+        public string detail;
+        public string raw_message;
     }
 
     [Serializable]
