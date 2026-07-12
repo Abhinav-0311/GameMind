@@ -337,13 +337,28 @@ namespace GameMind
         private void HandleError(UnityWebRequest request, Action<ErrorEnvelope> onError)
         {
             string responseText = request.downloadHandler?.text;
+            string message = ExtractErrorMessage(responseText, request);
+
             if (!string.IsNullOrEmpty(responseText))
             {
                 try
                 {
                     ErrorEnvelope serverError = JsonUtility.FromJson<ErrorEnvelope>(responseText);
-                    if (serverError != null && serverError.error != null)
+                    if (serverError != null)
                     {
+                        serverError.raw_message = message;
+                        if (serverError.error == null)
+                        {
+                            serverError.error = new ErrorDetail
+                            {
+                                code = "HTTP_ERROR",
+                                message = message
+                            };
+                        }
+                        else if (string.IsNullOrEmpty(serverError.error.message))
+                        {
+                            serverError.error.message = message;
+                        }
                         onError?.Invoke(serverError);
                         return;
                     }
@@ -354,10 +369,11 @@ namespace GameMind
             ErrorEnvelope error = new ErrorEnvelope
             {
                 api_version = GameMindConfig.ApiVersion,
+                raw_message = message,
                 error = new ErrorDetail
                 {
                     code = "HTTP_ERROR",
-                    message = ExtractErrorMessage(responseText, request)
+                    message = message
                 }
             };
             onError?.Invoke(error);
