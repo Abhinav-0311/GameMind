@@ -21,8 +21,12 @@ namespace GameMind
         private static readonly Color Success = new Color(0.45f, 0.95f, 0.68f, 1f);
         private static readonly Color Warning = new Color(0.95f, 0.78f, 0.38f, 1f);
         private static readonly Color Danger = new Color(0.95f, 0.38f, 0.43f, 1f);
-        private static readonly Color StageFloor = new Color(0.12f, 0.13f, 0.13f, 1f);
-        private static readonly Color StageAccent = new Color(0.18f, 0.34f, 0.38f, 1f);
+        private static readonly Color StageFloor = new Color(0.16f, 0.18f, 0.18f, 1f);
+        private static readonly Color StageIce = new Color(0.42f, 0.70f, 0.78f, 1f);
+        private static readonly Color StageStone = new Color(0.24f, 0.26f, 0.28f, 1f);
+        private static readonly Color StageOre = new Color(0.30f, 0.78f, 0.92f, 1f);
+        private static readonly Color StageFlag = new Color(0.25f, 0.90f, 0.52f, 1f);
+        private static readonly Color StageAccent = new Color(0.30f, 0.58f, 0.64f, 1f);
 
         private readonly List<NpcProfileDto> materializedNpcs = new List<NpcProfileDto>();
         private readonly List<QuestDto> materializedQuests = new List<QuestDto>();
@@ -746,11 +750,11 @@ namespace GameMind
             Camera mainCamera = Camera.main;
             if (mainCamera != null)
             {
-                mainCamera.transform.position = new Vector3(0f, 2.7f, -6.5f);
-                mainCamera.transform.rotation = Quaternion.Euler(14f, 0f, 0f);
+                mainCamera.transform.position = new Vector3(0f, 3.2f, -7.8f);
+                mainCamera.transform.rotation = Quaternion.Euler(17f, 0f, 0f);
                 mainCamera.clearFlags = CameraClearFlags.SolidColor;
                 mainCamera.backgroundColor = new Color(0.08f, 0.095f, 0.11f, 1f);
-                mainCamera.fieldOfView = 42f;
+                mainCamera.fieldOfView = 38f;
             }
 
             if (GameObject.Find("GameMindDemoFloor") == null)
@@ -758,33 +762,73 @@ namespace GameMind
                 GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
                 floor.name = "GameMindDemoFloor";
                 floor.transform.position = Vector3.zero;
-                floor.transform.localScale = new Vector3(4.8f, 1f, 4.8f);
-                Renderer floorRenderer = floor.GetComponent<Renderer>();
-                floorRenderer.material = new Material(Shader.Find("Standard"));
-                floorRenderer.material.color = StageFloor;
+                floor.transform.localScale = new Vector3(7.5f, 1f, 5.4f);
+                SetMaterial(floor, StageFloor, 0.18f);
             }
 
             if (FindFirstObjectByType<NpcInteractionController>() == null)
             {
                 GameObject npc = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 npc.name = "Runtime Eldrin Proxy";
-                npc.transform.position = new Vector3(0f, 1f, 0f);
-                npc.transform.localScale = new Vector3(0.9f, 1.1f, 0.9f);
-                Renderer npcRenderer = npc.GetComponent<Renderer>();
-                npcRenderer.material = new Material(Shader.Find("Standard"));
-                npcRenderer.material.color = StageAccent;
+                npc.transform.position = new Vector3(0f, 1.05f, 0.15f);
+                npc.transform.localScale = new Vector3(0.78f, 1.18f, 0.78f);
+                SetMaterial(npc, StageAccent, 0.22f);
                 npc.AddComponent<Animator>();
                 npc.AddComponent<NpcInteractionController>();
             }
+
+            CreateFrostpeakSetDressing();
 
             if (FindFirstObjectByType<Light>() == null)
             {
                 GameObject lightObj = new GameObject("GameMindKeyLight");
                 Light light = lightObj.AddComponent<Light>();
                 light.type = LightType.Directional;
-                light.intensity = 1.2f;
-                light.transform.rotation = Quaternion.Euler(48f, -28f, 0f);
+                light.intensity = 1.45f;
+                light.color = new Color(0.82f, 0.93f, 1f, 1f);
+                light.transform.rotation = Quaternion.Euler(46f, -32f, 0f);
             }
+        }
+
+        private void CreateFrostpeakSetDressing()
+        {
+            if (GameObject.Find("GameMindFrostpeakSet") != null) return;
+
+            GameObject root = new GameObject("GameMindFrostpeakSet");
+            CreateProp(root.transform, "AshPassStoneLeft", PrimitiveType.Cube, new Vector3(-2.25f, 0.28f, 1.35f), new Vector3(0.45f, 0.56f, 1.15f), StageStone);
+            CreateProp(root.transform, "AshPassStoneRight", PrimitiveType.Cube, new Vector3(2.25f, 0.28f, 1.35f), new Vector3(0.45f, 0.56f, 1.15f), StageStone);
+            CreateProp(root.transform, "BrokenGateLintel", PrimitiveType.Cube, new Vector3(0f, 1.05f, 1.42f), new Vector3(4.8f, 0.22f, 0.18f), StageStone);
+
+            CreateProp(root.transform, "SkyIronOreA", PrimitiveType.Sphere, new Vector3(-1.55f, 0.2f, -0.75f), new Vector3(0.34f, 0.18f, 0.34f), StageOre);
+            CreateProp(root.transform, "SkyIronOreB", PrimitiveType.Sphere, new Vector3(1.6f, 0.18f, -0.9f), new Vector3(0.28f, 0.14f, 0.28f), StageOre);
+            CreateProp(root.transform, "FrostPatchA", PrimitiveType.Cube, new Vector3(-0.95f, 0.015f, -0.25f), new Vector3(1.6f, 0.03f, 0.55f), StageIce);
+            CreateProp(root.transform, "FrostPatchB", PrimitiveType.Cube, new Vector3(1.05f, 0.015f, 0.65f), new Vector3(1.2f, 0.03f, 0.42f), StageIce);
+
+            GameObject flagPole = CreateProp(root.transform, "NorthernFlagPole", PrimitiveType.Cylinder, new Vector3(-2.65f, 0.78f, -0.05f), new Vector3(0.045f, 0.78f, 0.045f), StageStone);
+            flagPole.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
+            CreateProp(root.transform, "NorthernFlag", PrimitiveType.Cube, new Vector3(-2.36f, 1.28f, -0.05f), new Vector3(0.56f, 0.28f, 0.035f), StageFlag);
+        }
+
+        private GameObject CreateProp(Transform parent, string name, PrimitiveType primitive, Vector3 position, Vector3 scale, Color color)
+        {
+            GameObject prop = GameObject.CreatePrimitive(primitive);
+            prop.name = name;
+            prop.transform.SetParent(parent, false);
+            prop.transform.position = position;
+            prop.transform.localScale = scale;
+            SetMaterial(prop, color, 0.12f);
+            return prop;
+        }
+
+        private void SetMaterial(GameObject obj, Color color, float smoothness)
+        {
+            Renderer renderer = obj.GetComponent<Renderer>();
+            if (renderer == null) return;
+
+            Material material = new Material(Shader.Find("Standard"));
+            material.color = color;
+            material.SetFloat("_Glossiness", smoothness);
+            renderer.material = material;
         }
 
         private void EnsureEventSystem()
