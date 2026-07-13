@@ -35,6 +35,24 @@ class BlueprintService:
                 if cleaned:
                     yield chunk, cleaned
 
+    def _iter_table_rows(self, chunks: List[DocumentChunk]) -> Iterable[Tuple[DocumentChunk, List[str], List[str]]]:
+        """Yield Markdown table rows with their header cells when a supported table is present."""
+        for chunk in chunks:
+            headers = None
+            for raw_line in chunk.content.split("\n"):
+                if "|" not in raw_line:
+                    headers = None
+                    continue
+                cells = [self._clean_markdown(cell) for cell in raw_line.strip().strip("|").split("|")]
+                if not any(cells) or all(re.fullmatch(r"[-:\s]+", cell or "") for cell in cells):
+                    continue
+                normalized = [cell.lower() for cell in cells]
+                if any(cell in {"name", "npc", "character", "title", "quest"} for cell in normalized):
+                    headers = normalized
+                    continue
+                if headers and len(cells) == len(headers):
+                    yield chunk, headers, cells
+
     def _section(
         self,
         content: Dict[str, Any],
@@ -220,6 +238,23 @@ class BlueprintService:
             })
             citations.append(str(chunk.id))
 
+        for chunk, headers, cells in self._iter_table_rows(chunks):
+            if not any(header in {"name", "npc", "character"} for header in headers):
+                continue
+            row = dict(zip(headers, cells))
+            name = self._clean_title(row.get("name") or row.get("npc") or row.get("character") or "")
+            if not name or name.lower() in seen_names:
+                continue
+            description = row.get("dialogue style") or row.get("dialogue") or row.get("personality") or ""
+            archetype = row.get("archetype") or row.get("role") or row.get("type") or "Character profile"
+            seen_names.add(name.lower())
+            found_npcs.append({
+                "name": name,
+                "archetype": self._clean_markdown(archetype),
+                "dialogue_style": self._clean_markdown(description),
+            })
+            citations.append(str(chunk.id))
+
         warnings = [] if found_npcs else ["No explicit NPC archetypes or character profiles detected in the source document."]
         return self._section(
             {"npcs": found_npcs[:5]},
@@ -303,6 +338,33 @@ class BlueprintService:
                 duplicate_index += 1
             seen_titles.add(title.lower())
             found_quests.append({"id": f"q_{len(found_quests)}", "title": title, "objective": objective, "reward": reward})
+            citations.append(str(chunk.id))
+
+        for chunk, headers, cells in self._iter_table_rows(chunks):
+            if not any(header in {"title", "quest"} for header in headers) or "objective" not in headers:
+                continue
+            row = dict(zip(headers, cells))
+            objective = self._clean_markdown(row.get("objective", ""))
+            if not objective:
+                continue
+            objective_key = re.sub(r"\s+", " ", objective.lower()).strip()
+            if objective_key in seen_objectives:
+                continue
+            seen_objectives.add(objective_key)
+            title = self._clean_title(row.get("title") or row.get("quest") or "")
+            title = title or self._objective_to_title(objective, len(found_quests))
+            base_title = title
+            duplicate_index = 2
+            while title.lower() in seen_titles:
+                title = f"{base_title} {duplicate_index}"
+                duplicate_index += 1
+            seen_titles.add(title.lower())
+            found_quests.append({
+                "id": f"q_{len(found_quests)}",
+                "title": title,
+                "objective": objective,
+                "reward": self._clean_markdown(row.get("reward", "")),
+            })
             citations.append(str(chunk.id))
 
         warnings = [] if found_quests else ["No quest chains or reward metrics defined in the source document."]
