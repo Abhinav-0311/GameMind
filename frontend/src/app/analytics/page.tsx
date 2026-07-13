@@ -103,31 +103,22 @@ export default function AnalyticsDashboard() {
 
   return (
     <main className="page-shell">
-      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
-        <div className="max-w-3xl">
+      <section className="flex flex-col gap-5 py-8 sm:py-10 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl">
           <p className="page-kicker">Diagnostics</p>
-          <h1 className="display-title mt-5 text-[2.05rem] leading-tight sm:text-[2.85rem]">
-            Inspect the runtime only when something feels off.
+          <h1 className="display-title mt-4 text-[2.05rem] leading-tight sm:text-[2.8rem]">
+            Check system health when you need an answer.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
-            This page is not part of the daily build flow. Use it to confirm the local-first promise, understand errors,
-            and check whether dialogue, quests, memory, or hints are producing traces.
+          <p className="mt-4 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
+            Confirm that local mode is healthy, then use trace detail only to investigate a concrete playtest problem.
           </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href="/vertical-slice" className="btn-primary">
-              Run Runtime Test
-            </Link>
-            <Link href="/blueprints" className="btn-secondary">
-              Review blueprint
-            </Link>
-          </div>
         </div>
 
-        <aside className="panel self-start rounded-xl p-5">
+        <aside className="panel w-full rounded-2xl p-5 lg:w-80">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="mono-label text-[var(--text-secondary)]">Runtime health</p>
-              <h2 className="mt-3 font-display text-3xl font-semibold text-[var(--foreground)]">{isLoading ? "Checking" : healthLabel}</h2>
+              <p className="mono-label text-[var(--text-tertiary)]">Runtime health</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold text-[var(--foreground)]">{isLoading ? "Checking" : healthLabel}</h2>
             </div>
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal ${
@@ -137,21 +128,17 @@ export default function AnalyticsDashboard() {
               {issueCount === 0 ? "Clean" : "Review"}
             </span>
           </div>
-          <div className="mt-5 divide-y divide-[var(--border)]">
+          <div className="mt-4 divide-y divide-[var(--border)]">
             <FactRow label="Paid API cost" value={formatCurrency(overview?.total_cost_usd ?? 0)} />
             <FactRow label="Errors" value={String(overview?.error_count ?? 0)} />
             <FactRow label="Memory index failures" value={String(memories?.failed_chroma_indexing_count ?? 0)} />
-            <FactRow label="Trace events" value={String(overview?.total_requests ?? 0)} />
           </div>
-          <p className="mt-5 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-xs leading-5 text-[var(--text-secondary)]">
-            For the zero-cost MVP, model cost should stay at $0. Any errors here should point back to a concrete runtime
-            test action.
-          </p>
+          <Link href="/vertical-slice" className="btn-primary mt-5 w-full">Run Runtime Test</Link>
         </aside>
       </section>
 
       {error && (
-        <div className="mb-6 rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
+        <div role="alert" className="mb-6 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
           {error}
         </div>
       )}
@@ -160,8 +147,7 @@ export default function AnalyticsDashboard() {
         <LoadingState />
       ) : (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard label="Cost guardrail" value={formatCurrency(overview?.total_cost_usd ?? 0)} description="Local mode should stay at zero" accent />
+          <section className="grid gap-3 sm:grid-cols-3">
             <MetricCard label="Runtime issues" value={String(issueCount)} description="Errors, safety blocks, and index failures" />
             <MetricCard label="Latency" value={`${Math.round(overview?.avg_latency_ms ?? 0)}ms`} description="Average response time" />
             <MetricCard label="Trace events" value={String(overview?.total_requests ?? 0)} description={`${totalTokens.toLocaleString()} estimated tokens logged`} />
@@ -204,7 +190,11 @@ export default function AnalyticsDashboard() {
           </section>
 
           {(hasHintActivity || hasNpcUsage) && (
-            <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <details className="panel mt-8 overflow-hidden rounded-2xl">
+              <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]">
+                View more runtime detail
+              </summary>
+              <div className="grid gap-6 border-t border-[var(--border)] p-5 lg:grid-cols-[minmax(0,1fr)_360px]">
               {hasHintActivity && (
                 <div className="panel overflow-hidden rounded-xl">
                   <div className="border-b border-[var(--border)] px-5 py-4">
@@ -239,13 +229,17 @@ export default function AnalyticsDashboard() {
                   </div>
                 </div>
               )}
-            </section>
+              </div>
+            </details>
           )}
 
-          <section className="panel mt-8 overflow-hidden rounded-xl">
-            <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <details className="panel mt-8 overflow-hidden rounded-2xl">
+            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]">
+              Inspect recent trace log
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-[var(--border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="font-display text-2xl font-semibold text-[var(--foreground)]">Recent trace log</h2>
+                <h2 className="font-display text-xl font-semibold text-[var(--foreground)]">Recent trace log</h2>
                 <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                   Latest runtime events, filtered when you need to inspect a specific NPC or action.
                 </p>
@@ -319,7 +313,7 @@ export default function AnalyticsDashboard() {
                 </button>
               </div>
             </div>
-          </section>
+          </details>
         </>
       )}
     </main>

@@ -122,7 +122,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
     [pathname]
   );
-  const pageTitle = pathname === "/hints" ? "Hint Studio" : currentPage.name;
+  const pageTitle = pathname === "/hints" ? "Hint Studio" : pathname === "/analytics" ? "Diagnostics" : currentPage.name;
 
   const commands: CommandItem[] = useMemo(
     () =>
