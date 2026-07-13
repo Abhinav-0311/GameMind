@@ -266,3 +266,37 @@ def test_blueprint_extracts_npcs_and_quests_from_markdown_tables(db_session):
     ]
     assert data["npc_archetypes"]["citations"]
     assert data["quest_hooks"]["citations"]
+
+def test_blueprint_extracts_explicit_gameplay_systems(db_session):
+    """Gameplay sections should remain empty unless the GDD labels actual mechanics or rules."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"systems_gdd_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Gameplay Loop\n"
+            b"Core loop: Explore derelict stations, scan artifacts, craft upgrades, and return safely.\n\n"
+            b"# Progression\n"
+            b"Players earn research points to unlock navigation modules.\n\n"
+            b"# Constraints\n"
+            b"The player can carry only two power cells at once.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+    assert response.status_code == 201
+    systems = response.json()["gameplay_systems"]
+
+    assert systems["confidence"] == "High"
+    assert systems["content"] == {
+        "core_loop": ["Explore derelict stations, scan artifacts, craft upgrades, and return safely."],
+        "progression": ["Players earn research points to unlock navigation modules."],
+        "design_constraints": ["The player can carry only two power cells at once."],
+    }
+    assert systems["citations"]

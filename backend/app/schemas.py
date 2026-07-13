@@ -542,6 +542,7 @@ class BlueprintResponse(BaseModel):
     npc_archetypes: BlueprintSectionResponse
     npc_memory_design: BlueprintSectionResponse
     level_design_suggestions: BlueprintSectionResponse
+    gameplay_systems: Optional[BlueprintSectionResponse] = None
     quest_hooks: BlueprintSectionResponse
     unity_runtime_preview: BlueprintSectionResponse
     status: str
@@ -583,7 +584,6 @@ class BlueprintRuntimeBundleResponse(BaseModel):
     quests: List[QuestResponse]
     memories: List[NPCMemoryResponse]
     world_flags: List[WorldStateFlagResponse]
-
 
 
 

@@ -19,6 +19,7 @@ class GameBlueprint(Base, ProjectScopedMixin):
     npc_archetypes = Column(JSONB, nullable=False)
     npc_memory_design = Column(JSONB, nullable=False)
     level_design_suggestions = Column(JSONB, nullable=False)
+    gameplay_systems = Column(JSONB, nullable=True)
     quest_hooks = Column(JSONB, nullable=False)
     unity_runtime_preview = Column(JSONB, nullable=False)
 
