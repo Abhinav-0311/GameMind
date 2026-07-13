@@ -387,61 +387,28 @@ export default function VerticalSliceSimulator() {
 
   return (
     <main className="page-shell">
-      <section className="grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:py-10">
-        <div className="max-w-3xl">
-          <p className="page-kicker">
-            Runtime Test
-          </p>
-          <h1 className="display-title mt-5 text-[2.05rem] leading-tight sm:text-[2.85rem]">
-            Playtest the generated game loop.
+      <section className="flex flex-col gap-5 py-8 sm:py-10 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="page-kicker">Runtime test</p>
+          <h1 className="display-title mt-4 text-[2.05rem] leading-tight sm:text-[2.8rem]">
+            Walk through the game loop.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
-            Run the same path Unity needs: talk to an NPC, generate a quest, accept it, then request progressive
-            help from the hint system.
+          <p className="mt-4 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
+            Verify the player-facing flow before connecting any game engine: dialogue first, then a quest, then a
+            measured hint.
           </p>
-
-          <div className="mt-7 grid gap-3 sm:grid-cols-4">
-            {playtestSteps.map((step, index) => (
-              <div key={step.label} className="panel-muted rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="mono-label text-[var(--text-tertiary)]">0{index + 1}</span>
-                  <span
-                    className={`h-2 w-2 rounded-full ${step.complete ? "bg-[var(--green)]" : "bg-[var(--border-strong)]"}`}
-                    aria-hidden="true"
-                  />
-                </div>
-                <p className="mt-3 text-sm font-semibold text-[var(--foreground)]">{step.label}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
-        <aside className="panel self-start rounded-2xl p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="mono-label text-[var(--text-secondary)]">Current run</p>
-              <h2 className="mt-3 font-display text-3xl font-semibold text-[var(--foreground)]">{runState}</h2>
-            </div>
-            <StatusPill ready={setupReady && !isLoadingSetup} label={setupReady ? "Ready" : "Setup"} />
-          </div>
-          <div className="mt-5 divide-y divide-[var(--border)]">
-            <FactRow label="Document" value={selectedDocument?.title ?? "Missing"} />
-            <FactRow label="NPC" value={selectedNpc?.name ?? "Missing"} />
-            <FactRow label="Messages" value={String(chatHistory.length)} />
-            <FactRow label="Hint level" value={`${currentHintLevel} / 3`} />
-          </div>
-          <button
-            type="button"
-            onClick={resetSession}
-            className="btn-secondary mt-5 w-full"
-          >
-            Reset session
+        <div className="flex items-center gap-3">
+          <StatusPill ready={setupReady && !isLoadingSetup} label={isLoadingSetup ? "Loading" : setupReady ? "Run ready" : "Needs setup"} />
+          <button type="button" onClick={resetSession} className="btn-secondary">
+            Reset run
           </button>
-        </aside>
+        </div>
       </section>
 
       {error && (
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
+        <div role="alert" className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
           <span>{error}</span>
           <button
             type="button"
@@ -454,11 +421,12 @@ export default function VerticalSliceSimulator() {
       )}
 
       <section className="panel overflow-hidden rounded-2xl">
-        <div className="border-b border-[var(--border)] px-5 py-4">
-          <h2 className="text-lg font-semibold tracking-normal text-[var(--foreground)]">Playtest setup</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Choose the exact source and NPC this runtime session should use.
-          </p>
+        <div className="flex flex-col gap-2 border-b border-[var(--border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="mono-label text-[var(--text-tertiary)]">01 / Configure</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-normal text-[var(--foreground)]">Choose the run context</h2>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">Source: {selectedDocument?.title ?? "Not selected"} · NPC: {selectedNpc?.name ?? "Not selected"}</p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">
           <SetupSelect
@@ -499,13 +467,14 @@ export default function VerticalSliceSimulator() {
         </details>
       </section>
 
-      <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="panel flex min-h-[36rem] flex-col overflow-hidden rounded-2xl">
+      <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="panel flex min-h-[30rem] flex-col overflow-hidden rounded-2xl">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
             <div>
-              <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Dialogue playtest</h2>
+              <p className="mono-label text-[var(--text-tertiary)]">02 / Dialogue</p>
+              <h2 className="mt-1 font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Talk to {selectedNpc?.name ?? "your NPC"}</h2>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                Ask the selected NPC about the world, quest, faction, or current objective.
+                Ground the conversation in the selected source, then inspect the response only if needed.
               </p>
             </div>
             <StatusPill ready={Boolean(conversationId || chatHistory.length)} label={conversationId ? "Live" : "Idle"} />
@@ -513,11 +482,11 @@ export default function VerticalSliceSimulator() {
 
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
             {chatHistory.length === 0 ? (
-              <div className="flex h-full min-h-80 items-center justify-center text-center">
+              <div className="flex h-full min-h-56 items-center justify-center text-center">
                 <div className="max-w-sm">
-                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Start the conversation</h3>
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Begin with a grounded question</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                    Try asking who the NPC is, what the player should do next, or what danger exists nearby.
+                    Ask who this character is, what the player should do next, or what danger exists nearby.
                   </p>
                 </div>
               </div>
@@ -552,13 +521,30 @@ export default function VerticalSliceSimulator() {
                 disabled={isSending || !messageInput.trim() || !setupReady}
                 className="btn-primary min-h-11 px-5 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSending ? "Sending..." : "Send"}
+                {isSending ? "Sending..." : "Start dialogue"}
               </button>
             </div>
           </form>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="space-y-4">
+          <section className="panel overflow-hidden rounded-2xl">
+            <div className="border-b border-[var(--border)] px-5 py-4">
+              <p className="mono-label text-[var(--text-tertiary)]">Run progress</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{runState}</p>
+            </div>
+            <ol className="divide-y divide-[var(--border)]">
+              {playtestSteps.map((step, index) => (
+                <li key={step.label} className="flex items-center gap-3 px-5 py-3">
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${step.complete ? "bg-[var(--green)] text-white" : "bg-[var(--card-muted)] text-[var(--text-secondary)]"}`}>
+                    {step.complete ? "Done" : index + 1}
+                  </span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">{step.label}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+
           <QuestPanel
             quest={generatedQuest}
             acceptedQuestId={acceptedQuestId}
@@ -579,18 +565,18 @@ export default function VerticalSliceSimulator() {
             onRequest={requestHint}
           />
 
-          <details className="panel overflow-hidden rounded-2xl">
-            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--card-muted)]">
-              Unity contract
+          <details className="rounded-xl border border-[var(--border)] bg-[var(--card-muted)]">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
+              View runtime payload
             </summary>
-            <div className="max-h-80 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)] p-4">
+            <div className="max-h-80 overflow-y-auto border-t border-[var(--border)] p-4">
               {rawPayload ? (
                 <pre className="whitespace-pre-wrap text-xs leading-5 text-[var(--text-secondary)]">
                   {JSON.stringify(rawPayload, null, 2)}
                 </pre>
               ) : (
                 <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                  Send dialogue, generate a quest, or request a hint to inspect the data Unity receives.
+                  Run an action to inspect the integration payload that a game client receives.
                 </p>
               )}
             </div>
