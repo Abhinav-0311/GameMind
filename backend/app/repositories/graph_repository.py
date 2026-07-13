@@ -39,18 +39,29 @@ class GraphRepository:
         active_ver = self.get_active_entity_version(session, entity.id)
         return entity, active_ver
 
-    def get_active_relationship(self, db: Session, source_slug: str, target_slug: str, rel_type: str, game_project_id: str = "default_project") -> Optional[WorldRelationship]:
+    def get_active_relationship(
+        self,
+        db: Session,
+        source_slug: str,
+        target_slug: str,
+        rel_type: str,
+        game_project_id: str = "default_project",
+        for_update: bool = False,
+    ) -> Optional[WorldRelationship]:
         """Fetch the active relationship edge between source and target slugs scoped by project."""
         source = self.get_entity_by_slug(db, source_slug, game_project_id=game_project_id)
         target = self.get_entity_by_slug(db, target_slug, game_project_id=game_project_id)
         if not source or not target:
             return None
-        return db.query(WorldRelationship).filter(
+        query = db.query(WorldRelationship).filter(
             WorldRelationship.source_id == source.id,
             WorldRelationship.target_id == target.id,
             WorldRelationship.rel_type == rel_type,
             WorldRelationship.valid_to.is_(None)
-        ).first()
+        )
+        if for_update:
+            query = query.with_for_update()
+        return query.first()
 
     def get_entity_by_slug(self, db: Session, slug: str, game_project_id: str = "default_project") -> Optional[WorldEntity]:
         """Fetch a WorldEntity by slug scoped by project."""
@@ -279,7 +290,7 @@ class GraphRepository:
             WorldRelationship.target_id == target.id,
             WorldRelationship.rel_type == rel_type,
             WorldRelationship.valid_to.is_(None)
-        ).first()
+        ).with_for_update().first()
 
         if not active_rel:
             return None

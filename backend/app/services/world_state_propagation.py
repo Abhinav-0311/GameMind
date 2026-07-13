@@ -35,7 +35,9 @@ class WorldStatePropagationService:
         graph_repo._lock_entities_ordered([source_slug, target_slug], db)
 
         # Step 2: Fetch the active relationship
-        active_rel = graph_repo.get_active_relationship(db, source_slug, target_slug, rel_type)
+        active_rel = graph_repo.get_active_relationship(
+            db, source_slug, target_slug, rel_type, for_update=True
+        )
         if not active_rel:
             logger.warning(f"No active relationship found between '{source_slug}' and '{target_slug}' of type '{rel_type}' to propagate.")
             return 0
