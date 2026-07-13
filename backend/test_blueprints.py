@@ -165,3 +165,63 @@ def test_blueprint_generates_distinct_quest_titles(uploaded_document):
     titles = [quest["title"] for quest in quests]
     assert titles == ["Reclaim Ash Pass"]
     assert len(titles) == len(set(titles))
+
+def test_blueprint_extracts_source_art_and_level_details(uploaded_document):
+    """Structured fields should preserve facts from the GDD instead of generic styling defaults."""
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    art = data["art_style_direction"]["content"]
+    assert art["visual_theme"] == "Stylized dark fantasy visual elements"
+    assert art["color_palette"] == []
+
+    levels = data["level_design_suggestions"]["content"]
+    assert "Level Geothermal Vents" in levels["level_layout"]
+    assert any("vents" in element.lower() for element in levels["interactive_elements"])
+    assert any("east gate" in element.lower() for element in levels["interactive_elements"])
+
+def test_blueprint_leaves_unsupported_sections_empty(db_session):
+    """A sparse GDD must produce warnings, not fabricated lore, NPCs, quests, or level data."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"sparse_{uuid.uuid4().hex[:6]}.txt",
+        file_bytes=b"# Small Prototype\nA two-button puzzle game for one player.",
+        content_type="text/plain",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    assert data["narrative_direction"]["content"] == {"themes": [], "lore_background": None}
+    assert data["art_style_direction"]["content"] == {
+        "visual_theme": None,
+        "color_palette": [],
+        "visual_notes": [],
+    }
+    assert data["npc_archetypes"]["content"]["npcs"] == []
+    assert data["npc_memory_design"]["content"]["memory_nodes"] == []
+    assert data["level_design_suggestions"]["content"] == {
+        "level_layout": None,
+        "interactive_elements": [],
+    }
+    assert data["quest_hooks"]["content"]["quests"] == []
+    assert all(section["warnings"] for section in [
+        data["narrative_direction"],
+        data["art_style_direction"],
+        data["npc_archetypes"],
+        data["npc_memory_design"],
+        data["level_design_suggestions"],
+        data["quest_hooks"],
+    ])

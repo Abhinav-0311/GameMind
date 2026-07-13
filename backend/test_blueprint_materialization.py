@@ -300,6 +300,9 @@ def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_se
         game_project_id=project_id
     )
     db_session.add(existing_npc)
+    # The database enforces a project-scoped composite foreign key for memories.
+    # Flush the NPC before constructing a memory that refers to it by raw UUID.
+    db_session.flush()
 
     existing_quest = Quest(
         id=uuid.uuid4(),
