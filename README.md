@@ -4,11 +4,11 @@
 
 # GameMind
 
-GameMind is an AI-powered game design co-pilot and Unity runtime assistant for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard and exported for Unity.
+GameMind is a local-first AI game design and runtime intelligence platform for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard, exported for a team, or consumed by a game runtime.
 
 The project combines a FastAPI backend, PostgreSQL, ChromaDB vector search, a Next.js developer dashboard, and Unity C# runtime scripts. It is designed to run in a zero-cost local demo mode without mandatory paid AI APIs, while keeping the AI provider layer optional and swappable.
 
-**Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and Unity-ready runtime data.
+**Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and engine-ready runtime data.
 
 ## Demo Preview
 
@@ -20,13 +20,46 @@ The project combines a FastAPI backend, PostgreSQL, ChromaDB vector search, a Ne
 
 New game developers often have ideas, lore, and rough documents, but struggle to convert them into implementation-ready game systems. Generic chatbots can brainstorm, but they do not know the project state, cannot enforce runtime contracts, and do not naturally produce data Unity can consume.
 
-GameMind focuses on the full game-building loop:
+GameMind supports two connected workflows:
 
 ```text
-Upload GDD -> Search grounded lore -> Generate blueprint -> Materialize runtime data -> Test dialogue, quests, and hints -> Connect Unity
+Dashboard Workspace
+Upload GDD -> Search grounded lore -> Generate blueprint -> Review/export design systems
+```
+
+```text
+Runtime Integration
+Approve blueprint -> Materialize runtime data -> Test dialogue, quests, and hints -> Connect a game client
 ```
 
 The goal is not to replace a designer or developer. The goal is to give early teams a practical assistant that keeps narrative, characters, quests, memory, and runtime data connected.
+
+## Two Product Modes
+
+### 1. Dashboard Workspace
+
+Use GameMind as a game design command center without integrating a game engine.
+
+- Upload GDDs, lore files, NPC sheets, quest notes, and level briefs.
+- Search lore with citations before trusting generated output.
+- Generate structured blueprints for narrative, art direction, NPCs, quests, memory, and level ideas.
+- Review confidence, warnings, and missing design information.
+- Export blueprint JSON, runtime bundle JSON, or team-facing design notes.
+
+This mode is useful for students, writers, designers, and indie teams that need help organizing a game before runtime integration.
+
+### 2. Runtime Integration
+
+Use GameMind as a backend intelligence layer for an actual game client.
+
+- Fetch approved runtime bundles.
+- Ask NPC dialogue questions.
+- Request progressive hints.
+- Sync quest state and world flags.
+- Map emotion and animation suggestions into a client-specific presentation layer.
+- Connect Unity today, or build a Godot, Unreal, web, or custom REST adapter later.
+
+Unity is included as one proof-of-integration adapter. It is not the whole product.
 
 ## What It Does
 
@@ -35,7 +68,7 @@ The goal is not to replace a designer or developer. The goal is to give early te
 - Generate game blueprints from uploaded GDDs using local rules, templates, and schema validation.
 - Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, quest hooks, and Unity runtime previews.
 - Manage NPC profiles, quests, world state, memory, dialogue assembly, progressive hints, and analytics.
-- Export structured JSON that Unity can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
+- Export structured JSON that Unity or another game client can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
 
 ## How It Is Different From ChatGPT/Codex/Claude
 
@@ -43,7 +76,7 @@ GameMind is not a general chat interface. It is a project-specific game-building
 
 - **Grounded in project files:** responses trace back to uploaded GDD/lore chunks.
 - **Structured outputs:** blueprints, NPCs, quests, memories, and world flags use API contracts instead of free-form chat.
-- **Runtime aware:** the system prepares data for Unity rather than stopping at text suggestions.
+- **Runtime aware:** the system prepares data for game clients rather than stopping at text suggestions.
 - **Repeatable workflow:** every project follows the same path from source document to runtime test.
 - **Zero-cost MVP:** the current demo works locally without a paid LLM key.
 
@@ -68,7 +101,9 @@ Next.js Dashboard
     -> ChromaDB for local document retrieval
     -> Local rule/template providers for zero-cost generation
     -> Optional future hosted provider interface
-  -> Unity C# client consumes runtime endpoints
+  -> Runtime clients consume stable REST contracts
+     -> Unity adapter
+     -> Future Godot/Unreal/custom clients
 ```
 
 Core backend areas:
@@ -85,8 +120,10 @@ Core backend areas:
 ```text
 backend/        FastAPI app, services, models, migrations, tests
 frontend/       Next.js developer dashboard
-Unity/          Unity C# runtime integration scripts
-docs/demo/      Demo GDD used for the blueprint golden path
+Unity/          Unity C# runtime adapter and vertical-slice scene
+docs/demo/      Demo GDD and presentation runbooks
+docs/workflows/ Dashboard workspace workflows
+docs/integrations/ Runtime API and engine integration docs
 docker-compose.yml
 ```
 
@@ -182,6 +219,8 @@ Expected local demo mode:
 For a presenter-friendly walkthrough, use [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
 For a short recording script, use [docs/demo/demo_script.md](docs/demo/demo_script.md).
 For release readiness, use [docs/demo/mvp_acceptance_checklist.md](docs/demo/mvp_acceptance_checklist.md).
+For dashboard-only usage, use [docs/workflows/dashboard_workspace.md](docs/workflows/dashboard_workspace.md).
+For runtime integration, use [docs/integrations/runtime_api.md](docs/integrations/runtime_api.md).
 
 ## Current MVP Status
 
@@ -199,9 +238,10 @@ Implemented:
 
 Remaining product work:
 
-- Improve Unity scene presentation and click/interaction polish.
+- Strengthen dashboard workspace exports and onboarding.
 - Add richer blueprint quality checks for weak GDDs.
 - Add a cleaner public demo video/GIF.
+- Package integration docs and sample clients more clearly.
 - Add optional hosted provider implementation behind the existing provider interface.
 - Continue simplifying dashboard pages around the main indie-dev workflow.
 
