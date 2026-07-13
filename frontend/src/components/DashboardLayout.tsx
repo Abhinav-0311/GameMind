@@ -122,6 +122,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
     [pathname]
   );
+  const pageTitle = pathname === "/hints" ? "Hint Studio" : currentPage.name;
 
   const commands: CommandItem[] = useMemo(
     () =>
@@ -210,7 +211,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <IconMenu />
               </button>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold leading-none text-[var(--foreground)]">{currentPage.name}</p>
+                <p className="truncate text-sm font-semibold leading-none text-[var(--foreground)]">{pageTitle}</p>
                 <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Zero-cost local game builder</p>
               </div>
             </div>
