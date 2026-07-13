@@ -24,6 +24,14 @@ interface CommandItem {
   action: () => void;
 }
 
+interface CommandNavigationItem {
+  name: string;
+  href: string;
+  category: "Build" | "Test" | "Support";
+  shortcut: string;
+  icon: React.ReactNode;
+}
+
 const iconClassName = "h-4 w-4";
 
 const IconGrid = () => (
@@ -57,6 +65,18 @@ const IconPlay = () => (
   </svg>
 );
 
+const IconPeople = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8.5 11a3 3 0 100-6 3 3 0 000 6zM15.5 10a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM3.5 19.5c.7-3 2.4-4.5 5-4.5s4.3 1.5 5 4.5M13.2 15.2c2.8-.2 4.8 1.2 5.5 4.3" />
+  </svg>
+);
+
+const IconChart = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 19.5V5.5M4 19.5h16M8 16v-4M12 16V8M16 16v-7" />
+  </svg>
+);
+
 const IconMenu = () => (
   <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 7h16M4 12h16M4 17h16" />
@@ -87,6 +107,19 @@ const navigationItems: NavigationItem[] = [
   { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
   { name: "Lore Search", href: "/query", section: "Test", icon: <IconSearch /> },
   { name: "Runtime Test", href: "/vertical-slice", section: "Test", icon: <IconPlay /> },
+];
+
+const commandNavigationItems: CommandNavigationItem[] = [
+  ...navigationItems.map((item) => ({
+    name: item.name,
+    href: item.href,
+    category: item.section,
+    shortcut: item.name === "Home" ? "G H" : `G ${item.name[0]}`,
+    icon: item.icon,
+  })),
+  { name: "NPC Studio", href: "/npcs", category: "Support", shortcut: "G N", icon: <IconPeople /> },
+  { name: "Hint Studio", href: "/hints", category: "Support", shortcut: "G I", icon: <IconPlay /> },
+  { name: "Diagnostics", href: "/analytics", category: "Support", shortcut: "G D", icon: <IconChart /> },
 ];
 
 const sections: NavigationItem["section"][] = ["Build", "Test"];
@@ -133,11 +166,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const commands: CommandItem[] = useMemo(
     () =>
-      navigationItems.map((item) => ({
+      commandNavigationItems.map((item) => ({
         id: item.href,
         name: item.name,
-        category: item.section,
-        shortcut: item.name === "Home" ? "G H" : `G ${item.name[0]}`,
+        category: item.category,
+        shortcut: item.shortcut,
         action: () => {
           router.push(item.href);
           setMobileNavOpen(false);
@@ -338,7 +371,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       >
                         <span className="flex min-w-0 items-center gap-3">
                           <span className="text-[var(--text-secondary)]">
-                            {navigationItems.find((item) => item.href === cmd.id)?.icon}
+                          {commandNavigationItems.find((item) => item.href === cmd.id)?.icon}
                           </span>
                           <span className="min-w-0">
                             <span className="block truncate font-semibold">{cmd.name}</span>
