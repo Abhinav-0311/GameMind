@@ -4,7 +4,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 export const metadata: Metadata = {
   title: "GameMind Workspace",
-  description: "Game design co-pilot for GDD analysis, blueprint generation, and Unity runtime testing.",
+  description: "Local-first AI game builder for GDD analysis, grounded blueprints, and runtime integration.",
   icons: {
     icon: "/brand/gamemind-icon.svg",
     apple: "/brand/gamemind-icon.svg",
