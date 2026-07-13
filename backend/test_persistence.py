@@ -78,7 +78,9 @@ def test_conversation_persistence_lifecycle(db):
         assert db_messages[0].sender == "player"
         assert db_messages[0].content == "Play me a tune, bard."
         assert db_messages[1].sender == "npc"
-        assert "[Elidor of the bard_guild]" in db_messages[1].content
+        assert db_messages[1].content.startswith("Elidor:")
+        assert "do not have enough grounded lore" in db_messages[1].content
+        npc_response_text = db_messages[1].content
 
     # 3. Test Session Restoration
     # Fetch details endpoint
@@ -119,7 +121,7 @@ def test_conversation_persistence_lifecycle(db):
         assembled_data = DialogueService.assemble_prompt(db, assemble_req, history=history_msgs)
         # Check that historical dialogue session transcript is built in
         assert "Player: Play me a tune, bard." in assembled_data.assembled_prompt
-        assert "Elidor: [Elidor of the bard_guild]" in assembled_data.assembled_prompt
+        assert npc_response_text in assembled_data.assembled_prompt
 
     # 4. Test Deleted Conversation Handling
     delete_response = client.delete(f"/api/v1/conversations/{conv_id}")

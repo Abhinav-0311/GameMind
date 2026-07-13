@@ -22,7 +22,9 @@ class FactionDynamicsEngine:
         graph_repo._lock_entities_ordered([faction_a, faction_b], db)
 
         # Get or create active standing relationship
-        active_rel = graph_repo.get_active_relationship(db, faction_a, faction_b, "standing")
+        active_rel = graph_repo.get_active_relationship(
+            db, faction_a, faction_b, "standing", for_update=True
+        )
         old_weight = active_rel.weight if active_rel else 50.0
 
         if not active_rel:
