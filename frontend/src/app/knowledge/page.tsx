@@ -16,11 +16,11 @@ interface SourceGroup {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  });
+  }).format(new Date(value));
 }
 
 function formatFileSize(bytes: number) {
@@ -72,6 +72,7 @@ export default function KnowledgeBasePage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const sourceGroups = useMemo(() => groupSources(documents), [documents]);
+  const totalChunks = useMemo(() => documents.reduce((sum, doc) => sum + doc.chunks_count, 0), [documents]);
 
   const handleViewDetails = useCallback(async (id: string) => {
     setLoadingDetail(true);
@@ -81,8 +82,10 @@ export default function KnowledgeBasePage() {
       const detail = await api.getDocument(id);
       setSelectedDoc(detail);
     } catch (err) {
-      console.error(err);
-      setError("Could not load the selected document.");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Could not load selected source:", err);
+      }
+      setError("Could not load the selected source.");
     } finally {
       setLoadingDetail(false);
     }
@@ -105,8 +108,10 @@ export default function KnowledgeBasePage() {
         await handleViewDetails(docs[0].id);
       }
     } catch (err) {
-      console.error(err);
-      setError("Could not load the knowledge library.");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Could not load source library:", err);
+      }
+      setError("Could not load sources. Start Docker and refresh this page.");
     } finally {
       setLoadingList(false);
     }
@@ -133,7 +138,6 @@ export default function KnowledgeBasePage() {
       await fetchDocuments();
       await handleViewDetails(newDoc.id);
     } catch (err) {
-      console.error(err);
       setError(err instanceof Error ? err.message : "Document upload failed.");
     } finally {
       setUploading(false);
@@ -169,8 +173,10 @@ export default function KnowledgeBasePage() {
       setSuccessMsg(`${title} was removed.`);
       await fetchDocuments();
     } catch (err) {
-      console.error(err);
-      setError("Could not delete the document.");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Could not delete source:", err);
+      }
+      setError("Could not delete the selected source.");
     }
   };
 
@@ -181,11 +187,10 @@ export default function KnowledgeBasePage() {
 
     try {
       const demoDoc = await api.loadFrostpeakDemoDocument();
-      setSuccessMsg("Frostpeak demo GDD is ready. Generate a blueprint from it next.");
+      setSuccessMsg("Frostpeak demo GDD is indexed. Generate a blueprint from it next.");
       await fetchDocuments();
       await handleViewDetails(demoDoc.id);
     } catch (err) {
-      console.error(err);
       setError(err instanceof Error ? err.message : "Could not load the Frostpeak demo document.");
     } finally {
       setLoadingDemo(false);
@@ -193,44 +198,42 @@ export default function KnowledgeBasePage() {
   };
 
   return (
-    <div className="page-shell space-y-10">
-      <section className="space-y-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl space-y-4">
-            <div className="page-kicker">
-              Sources
-            </div>
-            <div className="space-y-3">
-              <h1 className="display-title text-[2.05rem] leading-tight sm:text-[2.85rem]">
-                Upload the source of truth.
-              </h1>
-              <p className="max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
-                Add a GDD, lore brief, NPC sheet, quest outline, or level notes. GameMind turns the document into
-                searchable source evidence for blueprints, lore answers, and runtime tests.
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href="/blueprints"
-            className="btn-secondary"
-          >
-            Continue to Blueprints
-          </Link>
+    <main className="page-shell">
+      <section className="grid items-end gap-6 py-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="max-w-3xl">
+          <p className="page-kicker">Sources</p>
+          <h1 className="display-title mt-4 text-[2.15rem] leading-tight sm:text-[3rem]">
+            Start with source truth.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+            Upload a GDD, lore brief, NPC sheet, quest outline, or level notes. GameMind indexes the file so every
+            blueprint and lore answer can point back to evidence.
+          </p>
         </div>
 
-        {(error || successMsg) && (
-          <div
-            className={`rounded-md border px-4 py-3 text-sm ${
-              error
-                ? "border-rose-500/25 bg-rose-500/10 text-rose-700"
-                : "border-emerald-500/25 bg-emerald-500/10 text-emerald-800"
-            }`}
-          >
-            {error || successMsg}
+        <div className="panel-muted rounded-3xl p-5">
+          <p className="page-kicker">Library</p>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <Fact label="Sources" value={loadingList ? "--" : String(sourceGroups.length)} />
+            <Fact label="Chunks" value={loadingList ? "--" : String(totalChunks)} />
           </div>
-        )}
+        </div>
+      </section>
 
+      {(error || successMsg) && (
+        <section
+          className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
+            error
+              ? "border-amber-500/30 bg-amber-500/10 text-[var(--foreground)]"
+              : "border-emerald-500/25 bg-emerald-500/10 text-[var(--foreground)]"
+          }`}
+          role={error ? "alert" : "status"}
+        >
+          {error || successMsg}
+        </section>
+      )}
+
+      <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div
           onDragOver={(event) => {
             event.preventDefault();
@@ -238,44 +241,39 @@ export default function KnowledgeBasePage() {
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          className={`rounded-md border p-6 transition ${
-            dragOver
-              ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-              : "panel"
+          className={`panel rounded-3xl p-6 transition ${
+            dragOver ? "border-[var(--accent)] bg-[var(--accent-soft)]" : ""
           }`}
         >
-          <div className="grid gap-6 lg:grid-cols-[1fr_280px] lg:items-center">
-            <div className="space-y-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--card-muted)] text-sm font-semibold text-[var(--accent)]">
-                GDD
-              </div>
-              <div className="space-y-2">
-                <h2 className="font-display text-[1.65rem] font-semibold tracking-normal text-[var(--foreground)]">
-                  {uploading ? "Indexing source material" : "Drop your game document here"}
-                </h2>
-                <p className="max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                  Supported formats: TXT, Markdown, and PDF. Keep files under 5 MB for this MVP.
-                </p>
-              </div>
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="page-kicker">Add source</p>
+              <h2 className="mt-4 text-2xl font-semibold tracking-normal text-[var(--foreground)]">
+                Drop a game document here.
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                Supported for the MVP: TXT, Markdown, and PDF under 5 MB. Use the demo if you want to test the whole
+                flow before writing your own GDD.
+              </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[22rem] lg:grid-cols-1">
               <button
                 type="button"
                 onClick={handleLoadDemo}
                 disabled={loadingDemo || uploading}
-                className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loadingDemo ? "Loading Frostpeak" : "Load Frostpeak demo"}
+                {loadingDemo ? "Loading demo" : "Load Frostpeak demo"}
               </button>
               <label
-                  className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl text-sm font-semibold transition focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--card)] ${
+                className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl px-4 text-sm font-semibold transition focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--card)] ${
                   uploading
                     ? "bg-[var(--border-strong)] text-[var(--text-tertiary)]"
                     : "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
                 }`}
               >
-                {uploading ? "Uploading" : "Choose your own file"}
+                {uploading ? "Uploading" : "Choose file"}
                 <input
                   type="file"
                   className="sr-only"
@@ -284,140 +282,146 @@ export default function KnowledgeBasePage() {
                   onChange={handleFileChange}
                 />
               </label>
-              <p className="text-center text-xs leading-5 text-[var(--text-secondary)]">
-                Start with the bundled sample, or upload your own GDD.
-              </p>
             </div>
           </div>
         </div>
 
+        <aside className="panel-muted rounded-3xl p-6">
+          <p className="page-kicker">Why this matters</p>
+          <h2 className="mt-4 text-xl font-semibold text-[var(--foreground)]">Good source creates useful output.</h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            A weak GDD gives generic blueprints. A clear source lets GameMind cite lore, extract NPCs, propose quests,
+            and build runtime data that stays consistent.
+          </p>
+        </aside>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <main className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="panel overflow-hidden rounded-3xl">
+          <div className="flex flex-col gap-4 border-b border-[var(--border)] p-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Uploaded sources</h2>
-              <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                Repeated uploads are grouped by title. Use the latest copy for generation, or delete it if it was a test.
+              <p className="page-kicker">Indexed library</p>
+              <h2 className="mt-3 text-2xl font-semibold text-[var(--foreground)]">Uploaded sources</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+                Repeated uploads are grouped by title. Select one to inspect its indexed chunks.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={fetchDocuments}
-              className="btn-secondary min-h-10"
-            >
+            <button type="button" onClick={fetchDocuments} className="btn-secondary shrink-0">
               Refresh
             </button>
           </div>
 
-          <div className="panel overflow-hidden rounded-xl">
-            {loadingList ? (
-              <div className="space-y-3 p-4">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 animate-pulse rounded-md bg-[var(--card-muted)]" />
-                ))}
-              </div>
-            ) : sourceGroups.length === 0 ? (
-              <div className="px-6 py-14 text-center">
-              <h3 className="text-lg font-semibold text-[var(--foreground)]">No sources uploaded</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-                Upload the Frostpeak sample GDD or your own notes to begin the full GameMind flow.
+          {loadingList ? (
+            <div className="space-y-3 p-5">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-20 animate-pulse rounded-2xl bg-[var(--card-muted)]" />
+              ))}
+            </div>
+          ) : sourceGroups.length === 0 ? (
+            <div className="px-6 py-16 text-center">
+              <p className="page-kicker">Empty state</p>
+              <h3 className="mt-4 text-2xl font-semibold text-[var(--foreground)]">No source documents yet.</h3>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+                Load Frostpeak or upload your own notes to begin the GameMind workflow.
               </p>
               <button
                 type="button"
                 onClick={handleLoadDemo}
                 disabled={loadingDemo}
-                className="btn-primary mt-5 min-h-10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-primary mt-5 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loadingDemo ? "Loading demo" : "Load Frostpeak demo"}
               </button>
             </div>
-            ) : (
-              <div className="divide-y divide-[var(--border)]">
-                {sourceGroups.map((source) => {
-                  const selected = Boolean(selectedDoc && source.documents.some((doc) => doc.id === selectedDoc.id));
-                  const hasCopies = source.documents.length > 1;
+          ) : (
+            <div className="divide-y divide-[var(--border)]">
+              {sourceGroups.map((source) => {
+                const selected = Boolean(selectedDoc && source.documents.some((doc) => doc.id === selectedDoc.id));
+                const hasCopies = source.documents.length > 1;
 
-                  return (
-                    <article
-                      key={source.key}
-                      className={`grid gap-4 px-5 py-4 transition sm:grid-cols-[1fr_auto] sm:items-center ${
-                        selected ? "bg-[var(--card-muted)]" : "hover:bg-[var(--card-muted)]"
-                      }`}
+                return (
+                  <article
+                    key={source.key}
+                    className={`grid gap-4 px-5 py-4 transition sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${
+                      selected ? "bg-[var(--card-muted)]" : "hover:bg-[var(--card-muted)]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleViewDetails(source.latest.id)}
+                      className="min-w-0 text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                     >
+                      <p className="truncate text-base font-semibold text-[var(--foreground)]">{source.title}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+                        <span>{source.latest.chunks_count} latest chunks</span>
+                        <span>{source.totalChunks} total chunks</span>
+                        <span>Latest {formatDate(source.latest.created_at)}</span>
+                        <span>{source.contentType}</span>
+                      </div>
+                    </button>
+
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      {hasCopies && (
+                        <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
+                          {source.documents.length} copies
+                        </span>
+                      )}
+                      <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)]">
+                        Indexed
+                      </span>
                       <button
                         type="button"
-                        onClick={() => handleViewDetails(source.latest.id)}
-                        className="min-w-0 text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                        onClick={() => handleDeleteDoc(source.latest.id, source.latest.title)}
+                        className="rounded-xl px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                       >
-                        <div className="truncate text-sm font-semibold text-[var(--foreground)]">{source.title}</div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
-                          <span>{source.latest.chunks_count} chunks in latest</span>
-                          <span>{source.totalChunks} total chunks</span>
-                          <span>Latest {formatDate(source.latest.created_at)}</span>
-                          <span>{source.contentType}</span>
-                        </div>
+                        Delete latest
                       </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-                      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-                        {hasCopies && (
-                          <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-muted)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                            {source.documents.length} copies
-                          </span>
-                        )}
-                        <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-[var(--foreground)]">
-                          Ready
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDoc(source.latest.id, source.latest.title)}
-                          className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-                        >
-                          Delete latest
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </main>
-
-        <aside className="panel overflow-hidden rounded-xl">
-          <div className="border-b border-[var(--border)] p-5">
-            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Source preview</h2>
+        <aside className="panel overflow-hidden rounded-3xl">
+          <div className="border-b border-[var(--border)] p-6">
+            <p className="page-kicker">Inspect</p>
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--foreground)]">Source chunks</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-              These are the source fragments GameMind can cite while generating plans and runtime behavior.
+              These fragments are what GameMind can cite during lore search and blueprint generation.
             </p>
           </div>
 
-          <div className="max-h-[38rem] overflow-y-auto p-5">
+          <div className="max-h-[40rem] overflow-y-auto p-5">
             {loadingDetail ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-24 animate-pulse rounded-md bg-[var(--card-muted)]" />
+                  <div key={item} className="h-24 animate-pulse rounded-2xl bg-[var(--card-muted)]" />
                 ))}
               </div>
             ) : selectedDoc ? (
               <div className="space-y-5">
                 <div>
-                  <div className="truncate text-sm font-semibold text-[var(--foreground)]">{selectedDoc.title}</div>
-                  <div className="mt-2 text-xs text-[var(--text-secondary)]">{selectedDoc.chunks_count} indexed chunks</div>
+                  <p className="truncate text-sm font-semibold text-[var(--foreground)]">{selectedDoc.title}</p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">{selectedDoc.chunks_count} indexed chunks</p>
                 </div>
 
                 <div className="space-y-3">
                   {selectedDoc.chunks.slice(0, 6).map((chunk) => (
-                    <div key={chunk.id} className="panel-muted rounded-xl p-4">
-                      <div className="mono-label mb-3 flex items-center justify-between text-[var(--text-secondary)]">
-                        <span>Chunk {chunk.chunk_index + 1}</span>
-                        <span>{chunk.content.length} chars</span>
+                    <div key={chunk.id} className="panel-muted rounded-2xl p-4">
+                      <div className="mb-3 flex items-center justify-between gap-4">
+                        <p className="page-kicker">Chunk {chunk.chunk_index + 1}</p>
+                        <span className="text-xs text-[var(--text-secondary)]">{chunk.content.length} chars</span>
                       </div>
                       <p className="line-clamp-6 text-sm leading-6 text-[var(--text-secondary)]">{chunk.content}</p>
                     </div>
                   ))}
                 </div>
+
+                <Link href="/blueprints" className="btn-primary w-full">
+                  Generate blueprint
+                </Link>
               </div>
             ) : (
               <div className="flex min-h-56 items-center justify-center text-center">
@@ -429,6 +433,15 @@ export default function KnowledgeBasePage() {
           </div>
         </aside>
       </section>
+    </main>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <p className="page-kicker">{label}</p>
+      <p className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
