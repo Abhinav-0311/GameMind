@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { api, QueryResult } from "@/lib/api";
 
 const SAMPLE_QUERIES = [
@@ -12,9 +13,17 @@ const SAMPLE_QUERIES = [
 
 function confidenceTone(confidence: string) {
   const normalized = confidence.toLowerCase();
-  if (normalized.includes("high")) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-800";
-  if (normalized.includes("medium")) return "border-amber-500/20 bg-amber-500/10 text-amber-800";
-  return "border-[var(--border-strong)] bg-[var(--card-muted)] text-[var(--text-secondary)]";
+  if (normalized.includes("high")) return "border-emerald-500/25 bg-emerald-500/10 text-[var(--foreground)]";
+  if (normalized.includes("medium")) return "border-amber-500/25 bg-amber-500/10 text-[var(--foreground)]";
+  return "border-[var(--border)] bg-[var(--card-muted)] text-[var(--text-secondary)]";
+}
+
+function confidenceCopy(confidence?: string) {
+  const normalized = (confidence || "").toLowerCase();
+  if (normalized.includes("high")) return "Good grounding. This answer is safe to use as blueprint evidence.";
+  if (normalized.includes("medium")) return "Usable, but review the cited chunks before generating from it.";
+  if (confidence) return "Weak grounding. Improve the source document or ask a more specific question.";
+  return "Ask a question to test whether your source material is ready.";
 }
 
 function formatPercent(value: number) {
@@ -61,7 +70,9 @@ export default function QueryStudioPage() {
       setResults(response.results);
       setMessage(response.message || null);
     } catch (err: unknown) {
-      console.error(err);
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Lore search unavailable:", err);
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       setError(errMsg || "Failed to search the local vector index. Check that the backend and Chroma are running.");
       setResults([]);
@@ -76,232 +87,209 @@ export default function QueryStudioPage() {
   };
 
   return (
-    <div className="page-shell space-y-10">
-      <section className="grid gap-8 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-8">
-          <div className="space-y-4">
-            <div className="page-kicker">
-              Lore Search
-            </div>
-            <div className="max-w-3xl space-y-3">
-              <h1 className="display-title text-[2.05rem] leading-tight sm:text-[2.85rem]">
-                Search the lore before you generate.
-              </h1>
-              <p className="max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
-                Ask a direct question and inspect the cited source fragments. This keeps blueprints, NPCs, and quests
-                grounded in the uploaded game document.
-              </p>
-            </div>
+    <main className="page-shell">
+      <section className="grid items-end gap-6 py-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="max-w-3xl">
+          <p className="page-kicker">Lore Search</p>
+          <h1 className="display-title mt-4 text-[2.15rem] leading-tight sm:text-[3rem]">
+            Check the lore before you trust the output.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+            Ask a direct question and inspect cited source fragments. This keeps blueprints, NPCs, quests, and runtime
+            behavior grounded in your uploaded documents.
+          </p>
+        </div>
+
+        <aside className="panel-muted rounded-3xl p-5">
+          <p className="page-kicker">Trust signal</p>
+          <h2 className="mt-4 text-xl font-semibold text-[var(--foreground)]">
+            {bestMatch ? `${bestMatch.confidence} confidence` : "No check yet"}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+            {confidenceCopy(bestMatch?.confidence)}
+          </p>
+        </aside>
+      </section>
+
+      <section className="mt-8 panel rounded-3xl p-4 sm:p-5">
+        <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_150px]">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-[var(--foreground)]" htmlFor="lore-query">
+              Lore question
+            </label>
+            <input
+              id="lore-query"
+              type="text"
+              placeholder="Ask about characters, factions, locations, quests..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="min-h-12 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-4 text-base text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+            />
           </div>
 
-          <form
-            onSubmit={onSubmit}
-            className="panel rounded-xl p-3"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <label className="sr-only" htmlFor="lore-query">
-                Lore question
-              </label>
-              <input
-                id="lore-query"
-                type="text"
-                placeholder="Ask about characters, factions, locations, quests..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="min-h-12 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--card)] px-4 text-base text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15"
-              />
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-[var(--foreground)]" htmlFor="match-limit">
+              Citations
+            </label>
+            <select
+              id="match-limit"
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+              className="min-h-12 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+            >
+              {[3, 5, 8, 10].map((value) => (
+                <option key={value} value={value}>
+                  {value} matches
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <label className="sr-only" htmlFor="match-limit">
-                Number of citations
-              </label>
-              <select
-                id="match-limit"
-                value={limit}
-                onChange={(event) => setLimit(Number(event.target.value))}
-                className="min-h-12 rounded-lg border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/15 sm:w-36"
-              >
-                {[3, 5, 8, 10].map((value) => (
-                  <option key={value} value={value}>
-                    {value} citations
-                  </option>
-                ))}
-              </select>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="btn-primary min-h-12 w-full disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Searching" : "Search"}
+            </button>
+          </div>
+        </form>
 
-              <button
-                type="submit"
-                disabled={loading || !query.trim()}
-                className="btn-primary min-h-12 rounded-lg px-6 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {loading ? "Searching" : "Search lore"}
-              </button>
-            </div>
-          </form>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {SAMPLE_QUERIES.map((sample) => (
+            <button
+              key={sample}
+              type="button"
+              onClick={() => handleSearch(sample)}
+              className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            >
+              {sample}
+            </button>
+          ))}
+        </div>
+      </section>
 
-          {error && (
-            <div className="rounded-md border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
+      {error && (
+        <section className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--foreground)]" role="alert">
+          {error}
+        </section>
+      )}
 
+      <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
           {loading ? (
-            <div className="space-y-4">
-              <div className="h-48 animate-pulse rounded-md border border-[var(--border)] bg-[var(--card)]" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="h-32 animate-pulse rounded-md border border-[var(--border)] bg-[var(--card)]" />
-                <div className="h-32 animate-pulse rounded-md border border-[var(--border)] bg-[var(--card)]" />
-              </div>
-            </div>
+            <LoadingState />
           ) : bestMatch ? (
-            <div className="space-y-6">
-              <section className="panel overflow-hidden rounded-xl">
-                <div className="border-b border-[var(--border)] px-6 py-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <div className="mono-label text-[var(--text-secondary)]">
-                        Best grounded match
-                      </div>
-                      <h2 className="font-display text-3xl font-semibold text-[var(--foreground)]">
-                        {bestMatch.title}
-                      </h2>
+            <>
+              <section className="panel overflow-hidden rounded-3xl">
+                <div className="border-b border-[var(--border)] p-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="page-kicker">Best match</p>
+                      <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--foreground)]">{bestMatch.title}</h2>
+                      <p className="mt-2 text-sm text-[var(--text-secondary)]">Answer evidence for &quot;{query}&quot;</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full border border-[var(--border-strong)] bg-[var(--card-muted)] px-3 py-1 text-xs font-medium text-[var(--foreground)]">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--foreground)]">
                         {formatPercent(bestMatch.similarity)} match
                       </span>
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-medium ${confidenceTone(bestMatch.confidence)}`}
-                      >
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceTone(bestMatch.confidence)}`}>
                         {bestMatch.confidence} confidence
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-5 px-6 py-6">
-                  <p className="max-w-3xl text-lg leading-8 text-[var(--foreground)]">
-                    {bestMatch.content}
-                  </p>
+                <div className="p-6">
+                  <p className="max-w-4xl text-lg leading-8 text-[var(--foreground)]">{bestMatch.content}</p>
 
-                <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
-                    <span className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1">
+                  <div className="mt-5 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
                       Chunk {bestMatch.chunk_index + 1}
                     </span>
-                    <span className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1">
+                    <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
                       {results.length} citations found
                     </span>
                     {message && (
-                      <span className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1">
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
                         {message}
                       </span>
                     )}
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <Link href="/blueprints" className="btn-primary">
+                      Use source in Blueprint
+                    </Link>
+                    <Link href="/knowledge" className="btn-secondary">
+                      Improve sources
+                    </Link>
                   </div>
                 </div>
               </section>
 
               <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-[var(--foreground)]">Citations</h2>
-                  <span className="text-xs text-[var(--text-secondary)]">Grounding for &quot;{query}&quot;</span>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="page-kicker">Citations</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">Evidence found</h2>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)]">{results.length} cited fragments</p>
                 </div>
 
-                <div className="space-y-3">
+                <div className="grid gap-3">
                   {results.map((result, index) => (
-                    <article
-                      key={result.chunk_id}
-                      className="panel-muted rounded-xl px-5 py-4 transition hover:border-[var(--accent)]"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-medium text-[var(--text-secondary)]">#{index + 1}</span>
-                            <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">{result.title}</h3>
-                            <span className="text-xs text-[var(--text-secondary)]">Chunk {result.chunk_index + 1}</span>
-                          </div>
-                          <p className="line-clamp-3 text-sm leading-6 text-[var(--text-secondary)]">{result.content}</p>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-2 text-xs">
-                          <span className="font-medium text-[var(--foreground)]">{formatPercent(result.similarity)}</span>
-                          <span className={`rounded-full border px-2.5 py-1 ${confidenceTone(result.confidence)}`}>
-                            {result.confidence}
-                          </span>
-                        </div>
-                      </div>
-
-                  <details className="mt-3 border-t border-[var(--border)] pt-3">
-                    <summary className="cursor-pointer text-xs font-medium text-[var(--accent)] outline-none transition hover:text-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30">
-                          Citation metadata
-                        </summary>
-                        <div className="mt-3 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
-                          <div>Document ID: {result.document_id}</div>
-                          <div>Vector ID: {result.chunk_id}</div>
-                        </div>
-                      </details>
-                    </article>
+                    <CitationCard key={result.chunk_id} result={result} index={index} />
                   ))}
                 </div>
               </section>
-            </div>
+            </>
           ) : searched ? (
-            <div className="rounded-md border border-[var(--border)] bg-[var(--card)] px-6 py-12 text-center">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">No matching lore found</h2>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-                Upload a GDD or lore document first, then ask a question that appears in the source material.
+            <section className="panel rounded-3xl px-6 py-16 text-center">
+              <p className="page-kicker">No match</p>
+              <h2 className="mt-4 text-2xl font-semibold text-[var(--foreground)]">No matching lore found.</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+                Upload a source document, ask a more specific question, or add more detail to the GDD before generating.
               </p>
-            </div>
+              <Link href="/knowledge" className="btn-primary mt-5">
+                Add source
+              </Link>
+            </section>
           ) : (
-            <div className="rounded-md border border-[var(--border)] bg-[var(--card)] px-6 py-14">
-              <div className="mx-auto max-w-lg text-center">
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">Start with a lore question</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  Try asking about a ruler, faction, location, conflict, or NPC. Results come from your uploaded
-                  documents, not from an external paid provider.
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {SAMPLE_QUERIES.slice(0, 3).map((sample) => (
-                    <button
-                      key={sample}
-                      type="button"
-                      onClick={() => handleSearch(sample)}
-                      className="rounded-full border border-[var(--border-strong)] bg-[var(--card-muted)] px-3 py-1.5 text-xs text-[var(--foreground)] transition hover:border-[var(--accent)]/50 hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                    >
-                      {sample}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <section className="panel rounded-3xl px-6 py-16 text-center">
+              <p className="page-kicker">Ready</p>
+              <h2 className="mt-4 text-2xl font-semibold text-[var(--foreground)]">Ask one precise lore question.</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+                Start with a ruler, faction, location, conflict, or NPC memory. Results come from local indexed source
+                chunks, not a paid model.
+              </p>
+            </section>
           )}
         </div>
 
         <aside className="space-y-5">
-          <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Why this matters</h2>
+          <section className="panel-muted rounded-3xl p-5">
+            <p className="page-kicker">How to read results</p>
             <div className="mt-4 space-y-4 text-sm leading-6 text-[var(--text-secondary)]">
               <p>
-                Lore Search is the trust check. If citations are weak, the generated blueprint will also be weak.
+                Use this page before generation. If the system cannot cite the fact, the blueprint should not invent it.
               </p>
               <div className="grid grid-cols-2 gap-3 border-t border-[var(--border)] pt-4">
-                <div>
-                  <div className="mono-label text-[var(--text-secondary)]">Mode</div>
-                  <div className="mt-1 font-medium text-[var(--foreground)]">Local demo</div>
-                </div>
-                <div>
-                  <div className="mono-label text-[var(--text-secondary)]">Paid API cost</div>
-                  <div className="mt-1 font-medium text-[var(--foreground)]">$0</div>
-                </div>
+                <Fact label="Mode" value="Local demo" />
+                <Fact label="API cost" value="$0" />
               </div>
             </div>
           </section>
 
           {groupedSources.length > 0 && (
-            <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Sources used</h2>
+            <section className="panel rounded-3xl p-5">
+              <p className="page-kicker">Sources used</p>
               <div className="mt-4 space-y-3">
                 {groupedSources.map((source) => (
                   <div key={source.title} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate text-[var(--foreground)]">{source.title}</span>
-                    <span className="shrink-0 rounded-full border border-[var(--border-strong)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
+                    <span className="truncate font-semibold text-[var(--foreground)]">{source.title}</span>
+                    <span className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                       {source.count}
                     </span>
                   </div>
@@ -310,15 +298,15 @@ export default function QueryStudioPage() {
             </section>
           )}
 
-          <section className="panel rounded-xl p-5">
-            <h2 className="font-display text-xl font-semibold tracking-normal text-[var(--foreground)]">Recent questions</h2>
+          <section className="panel rounded-3xl p-5">
+            <p className="page-kicker">Recent questions</p>
             <div className="mt-4 space-y-2">
               {history.map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => handleSearch(item)}
-                  className="block w-full rounded-md px-2 py-2 text-left text-sm leading-5 text-[var(--text-secondary)] transition hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                  className="block min-h-10 w-full rounded-xl px-3 py-2 text-left text-sm leading-5 text-[var(--text-secondary)] transition hover:bg-[var(--card-muted)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 >
                   {item}
                 </button>
@@ -327,6 +315,61 @@ export default function QueryStudioPage() {
           </section>
         </aside>
       </section>
+    </main>
+  );
+}
+
+function CitationCard({ result, index }: { result: QueryResult; index: number }) {
+  return (
+    <article className="panel-muted rounded-2xl p-5 transition hover:border-[var(--accent)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="page-kicker">#{index + 1}</span>
+            <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{result.title}</h3>
+            <span className="text-xs text-[var(--text-secondary)]">Chunk {result.chunk_index + 1}</span>
+          </div>
+          <p className="mt-3 max-w-4xl text-sm leading-7 text-[var(--text-secondary)]">{result.content}</p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 text-xs">
+          <span className="font-semibold text-[var(--foreground)]">{formatPercent(result.similarity)}</span>
+          <span className={`rounded-full border px-2.5 py-1 font-semibold ${confidenceTone(result.confidence)}`}>
+            {result.confidence}
+          </span>
+        </div>
+      </div>
+
+      <details className="mt-4 border-t border-[var(--border)] pt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[var(--accent)] outline-none transition hover:text-[var(--accent-hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+          Technical metadata
+        </summary>
+        <div className="mt-3 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
+          <div className="break-all">Document ID: {result.document_id}</div>
+          <div className="break-all">Vector ID: {result.chunk_id}</div>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="page-kicker">{label}</p>
+      <p className="mt-1 font-semibold text-[var(--foreground)]">{value}</p>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="space-y-4">
+      <div className="h-56 animate-pulse rounded-3xl border border-[var(--border)] bg-[var(--card)]" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="h-36 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--card)]" />
+        <div className="h-36 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--card)]" />
+      </div>
     </div>
   );
 }
