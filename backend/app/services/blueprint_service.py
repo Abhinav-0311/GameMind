@@ -35,6 +35,18 @@ class BlueprintService:
                 if cleaned:
                     yield chunk, cleaned
 
+    def _iter_chunk_lines_with_heading(self, chunks: List[DocumentChunk]) -> Iterable[Tuple[DocumentChunk, str, str]]:
+        """Keep nearby Markdown headings as context for local, rule-based extraction."""
+        for chunk in chunks:
+            heading = ""
+            for raw_line in chunk.content.split("\n"):
+                if re.match(r"^\s*#+\s+", raw_line):
+                    heading = self._clean_markdown(raw_line)
+                    continue
+                cleaned = self._clean_markdown(raw_line)
+                if cleaned:
+                    yield chunk, cleaned, heading
+
     def _iter_table_rows(self, chunks: List[DocumentChunk]) -> Iterable[Tuple[DocumentChunk, List[str], List[str]]]:
         """Yield Markdown table rows with their header cells when a supported table is present."""
         for chunk in chunks:
@@ -109,9 +121,10 @@ class BlueprintService:
         npcs = self._parse_npc_archetypes(chunks)
         memory = self._parse_npc_memory(chunks)
         levels = self._parse_level_design(chunks)
+        gameplay_systems = self._parse_gameplay_systems(chunks)
         quests = self._parse_quest_hooks(chunks)
         unity_preview = self._generate_unity_preview(
-            game_project_id, summary, narrative, art, npcs, memory, levels, quests
+            game_project_id, summary, narrative, art, npcs, memory, levels, gameplay_systems, quests
         )
 
         blueprint = GameBlueprint(
@@ -124,6 +137,7 @@ class BlueprintService:
             npc_archetypes=npcs,
             npc_memory_design=memory,
             level_design_suggestions=levels,
+            gameplay_systems=gameplay_systems,
             quest_hooks=quests,
             unity_runtime_preview=unity_preview,
             status="draft",
@@ -313,6 +327,40 @@ class BlueprintService:
             warnings,
         )
 
+    def _parse_gameplay_systems(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
+        """Extract explicitly labelled gameplay systems without inventing mechanics."""
+        categories = {
+            "core_loop": (r"\b(?:core loop|gameplay loop|gameplay systems?|mechanics?)\b", []),
+            "progression": (r"\b(?:progression|level(?:ling|ing)?|experience|xp|upgrade|unlock|skill tree)\b", []),
+            "design_constraints": (r"\b(?:constraints?|restrictions?|limitations?|must not|cannot|can only|requires?)\b", []),
+        }
+        citations = []
+        for chunk, line, heading in self._iter_chunk_lines_with_heading(chunks):
+            context = f"{heading} {line}"
+            for name, (pattern, values) in categories.items():
+                if not re.search(pattern, context, re.IGNORECASE):
+                    continue
+                cleaned_line = re.sub(
+                    rf"^(?:{pattern})\s*[:\-]\s*",
+                    "",
+                    line,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if cleaned_line and cleaned_line.lower() != heading.lower():
+                    values.append(cleaned_line)
+                    citations.append(str(chunk.id))
+                break
+
+        content = {name: self._unique(values) for name, (_, values) in categories.items()}
+        found_systems = any(content.values())
+        warnings = [] if found_systems else ["No explicit gameplay loop, progression, or design constraints were detected in the source document."]
+        return self._section(
+            content,
+            self._unique(citations),
+            "High" if found_systems else "Low",
+            warnings,
+        )
+
     def _parse_quest_hooks(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
         found_quests = []
         citations = []
@@ -384,6 +432,7 @@ class BlueprintService:
         npcs: Dict[str, Any],
         memory: Dict[str, Any],
         levels: Dict[str, Any],
+        gameplay_systems: Dict[str, Any],
         quests: Dict[str, Any],
     ) -> Dict[str, Any]:
         return self._section(
@@ -396,6 +445,7 @@ class BlueprintService:
                 "npcs": npcs["content"].get("npcs", []),
                 "npc_memories": memory["content"].get("memory_nodes", []),
                 "levels": levels["content"],
+                "gameplay_systems": gameplay_systems["content"],
                 "quests": quests["content"].get("quests", []),
             },
             [],

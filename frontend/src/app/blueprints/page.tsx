@@ -51,6 +51,10 @@ const sectionGuidance: Record<string, { use: string; runtime: string }> = {
     use: "Turn lore into spaces, gates, objectives, and progression beats.",
     runtime: "Informs level tags, world flags, and objective availability.",
   },
+  systems: {
+    use: "Check the player loop, progression, and hard constraints before building features around them.",
+    runtime: "Provides reviewed mechanics context for engine adapters and future design tools.",
+  },
   quests: {
     use: "Choose the first playable missions. Prefer quests that prove the core fantasy quickly.",
     runtime: "Can become quest records, objectives, rewards, and progressive hint paths.",
@@ -215,6 +219,12 @@ export default function BlueprintsDashboard() {
         description: "Spaces, gates, activities, and progression ideas.",
         section: activeBlueprint.level_design_suggestions,
       },
+      ...(activeBlueprint.gameplay_systems ? [{
+        id: "systems",
+        title: "Gameplay systems",
+        description: "Core loop, progression, and explicit design constraints.",
+        section: activeBlueprint.gameplay_systems,
+      }] : []),
       {
         id: "quests",
         title: "Quests",
