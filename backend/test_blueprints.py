@@ -225,3 +225,44 @@ def test_blueprint_leaves_unsupported_sections_empty(db_session):
         data["level_design_suggestions"],
         data["quest_hooks"],
     ])
+
+def test_blueprint_extracts_npcs_and_quests_from_markdown_tables(db_session):
+    """Common compact GDD tables should become structured, source-backed runtime data."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"table_gdd_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Characters\n"
+            b"| Name | Role | Dialogue Style |\n"
+            b"| --- | --- | --- |\n"
+            b"| Mira | Systems engineer | Direct and practical |\n"
+            b"| Orren | Archivist | Patient and reflective |\n\n"
+            b"# Quest Plan\n"
+            b"| Title | Objective | Reward |\n"
+            b"| --- | --- | --- |\n"
+            b"| Restore Power | Activate three substations | 80 credits |\n"
+            b"| Map the Ruins | Survey the flooded archive | Access key |\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+
+    assert data["npc_archetypes"]["content"]["npcs"] == [
+        {"name": "Mira", "archetype": "Systems engineer", "dialogue_style": "Direct and practical"},
+        {"name": "Orren", "archetype": "Archivist", "dialogue_style": "Patient and reflective"},
+    ]
+    assert data["quest_hooks"]["content"]["quests"] == [
+        {"id": "q_0", "title": "Restore Power", "objective": "Activate three substations", "reward": "80 credits"},
+        {"id": "q_1", "title": "Map the Ruins", "objective": "Survey the flooded archive", "reward": "Access key"},
+    ]
+    assert data["npc_archetypes"]["citations"]
+    assert data["quest_hooks"]["citations"]
