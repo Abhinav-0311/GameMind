@@ -612,7 +612,7 @@ function Alert({ tone, message }: { tone: "error" | "success"; message: string }
       ? "border-rose-500/25 bg-rose-500/10 text-rose-800"
       : "border-emerald-500/25 bg-emerald-500/10 text-emerald-800";
 
-  return <div className={`mb-4 rounded-md border px-4 py-3 text-sm ${styles}`}>{message}</div>;
+  return <div role={tone === "error" ? "alert" : "status"} className={`mb-4 rounded-xl border px-4 py-3 text-sm ${styles}`}>{message}</div>;
 }
 
 function FactRow({ label, value }: { label: string; value: string }) {
