@@ -136,6 +136,10 @@ export default function WorkspaceOverview() {
     },
   ];
 
+  if (!isLoading && !error && !hasDocuments) {
+    return <FirstRunWorkspace />;
+  }
+
   return (
     <main className="page-shell">
       <section className="grid items-center gap-10 py-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:py-10">
@@ -259,6 +263,70 @@ export default function WorkspaceOverview() {
             <ReadinessRow label="Vector index" value={health?.chromadb ?? "checking"} good={health?.chromadb === "healthy"} loading={isLoading} />
             <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "checking"} good={Boolean(health?.ai_mode)} loading={isLoading} />
           </div>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function FirstRunWorkspace() {
+  const steps = [
+    {
+      number: "01",
+      title: "Add the source of truth",
+      body: "Start with one GDD. You can add lore, NPC notes, level briefs, and technical constraints later.",
+    },
+    {
+      number: "02",
+      title: "Review what is missing",
+      body: "GameMind turns uncertain or conflicting details into decisions instead of quietly inventing an answer.",
+    },
+    {
+      number: "03",
+      title: "Build from evidence",
+      body: "Generate a blueprint only after the source is searchable, then inspect the citations behind each section.",
+    },
+  ];
+
+  return (
+    <main className="page-shell">
+      <section className="grid min-h-[calc(100dvh-9rem)] items-center gap-12 py-10 lg:grid-cols-[minmax(0,1fr)_21rem] lg:py-16">
+        <div className="max-w-3xl">
+          <p className="page-kicker">New workspace</p>
+          <h1 className="display-title mt-5 max-w-2xl text-[2.5rem] leading-[1.04] sm:text-[3.6rem]">
+            Start with the game you want to build.
+          </h1>
+          <p className="mt-6 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
+            Add one design document first. GameMind will keep the source, the design decisions, and the resulting blueprint connected as your game develops.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link href="/knowledge" className="btn-primary">
+              Open sources
+            </Link>
+            <Link href="/blueprints" className="btn-secondary">
+              See blueprint workflow
+            </Link>
+          </div>
+
+          <p className="mt-5 text-sm leading-6 text-[var(--text-secondary)]">
+            Not ready with your own GDD? Load the Frostpeak sample from Sources to explore the full workflow without changing this workspace plan.
+          </p>
+        </div>
+
+        <aside className="border-l border-[var(--border)] pl-0 lg:pl-8" aria-label="First workspace steps">
+          <p className="page-kicker">Your path</p>
+          <ol className="mt-5 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+            {steps.map((step) => (
+              <li key={step.number} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-4 py-5">
+                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{step.number}</span>
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--foreground)]">{step.title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{step.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </aside>
       </section>
     </main>
