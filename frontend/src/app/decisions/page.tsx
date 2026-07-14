@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { api, type DecisionCoverageResponse, type DesignDecision, type DocumentResponse } from "@/lib/api";
 
@@ -11,6 +12,16 @@ function decisionTone(decision: DesignDecision) {
 }
 
 export default function DecisionsPage() {
+  return (
+    <Suspense fallback={<DecisionsLoadingState />}>
+      <DecisionsContent />
+    </Suspense>
+  );
+}
+
+function DecisionsContent() {
+  const searchParams = useSearchParams();
+  const requestedDocumentId = searchParams.get("document");
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [decisions, setDecisions] = useState<DesignDecision[]>([]);
@@ -35,14 +46,18 @@ export default function DecisionsPage() {
       .then((loaded) => {
         if (!active) return;
         setDocuments(loaded);
-        setSelectedDocumentId((current) => current || loaded[0]?.id || "");
+        setSelectedDocumentId((current) => {
+          if (current) return current;
+          if (requestedDocumentId && loaded.some((document) => document.id === requestedDocumentId)) return requestedDocumentId;
+          return loaded[0]?.id || "";
+        });
       })
       .catch(() => active && setError("Could not load sources. Start Docker and refresh this page."))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, []);
+  }, [requestedDocumentId]);
 
   useEffect(() => {
     if (!selectedDocumentId) {
@@ -216,6 +231,20 @@ export default function DecisionsPage() {
             </div>
           )}
         </section>
+      </section>
+    </main>
+  );
+}
+
+function DecisionsLoadingState() {
+  return (
+    <main className="page-shell" aria-busy="true" aria-label="Loading design decisions">
+      <section className="py-3">
+        <div className="h-3 w-28 animate-pulse rounded bg-[var(--card-muted)]" />
+        <div className="mt-5 h-12 max-w-xl animate-pulse rounded bg-[var(--card-muted)]" />
+      </section>
+      <section className="mt-8 space-y-4">
+        {[1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse border-y border-[var(--border)] bg-[var(--card-muted)]" />)}
       </section>
     </main>
   );

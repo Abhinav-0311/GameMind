@@ -74,6 +74,8 @@ export default function KnowledgeBasePage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [savingSourceKind, setSavingSourceKind] = useState(false);
   const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
+  const [uploadSourceKind, setUploadSourceKind] = useState("gdd");
+  const [reviewReadyId, setReviewReadyId] = useState<string | null>(null);
   const handledTrace = useRef<string | null>(null);
 
   const sourceGroups = useMemo(() => groupSources(documents), [documents]);
@@ -166,8 +168,9 @@ export default function KnowledgeBasePage() {
     setUploading(true);
 
     try {
-      const newDoc = await api.uploadDocument(file);
-      setSuccessMsg(`${file.name} was uploaded, chunked, and indexed.`);
+      const newDoc = await api.uploadDocument(file, uploadSourceKind);
+      setReviewReadyId(newDoc.id);
+      setSuccessMsg(`${file.name} was indexed as ${sourceKindMeta[asSourceKind(newDoc.source_kind)].label}. Review it before generating a blueprint.`);
       await fetchDocuments();
       await handleViewDetails(newDoc.id);
     } catch (err) {
@@ -243,7 +246,8 @@ export default function KnowledgeBasePage() {
 
     try {
       const demoDoc = await api.loadFrostpeakDemoDocument();
-      setSuccessMsg("Frostpeak demo GDD is indexed. Generate a blueprint from it next.");
+      setReviewReadyId(demoDoc.id);
+      setSuccessMsg("Frostpeak demo GDD is indexed. Review it before generating a blueprint.");
       await fetchDocuments();
       await handleViewDetails(demoDoc.id);
     } catch (err) {
@@ -301,7 +305,14 @@ export default function KnowledgeBasePage() {
           }`}
           role={error ? "alert" : "status"}
         >
-          {error || successMsg}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{error || successMsg}</span>
+            {!error && reviewReadyId && (
+              <Link href={`/decisions?document=${reviewReadyId}`} className="btn-secondary shrink-0">
+                Review this source
+              </Link>
+            )}
+          </div>
         </section>
       )}
 
@@ -329,7 +340,26 @@ export default function KnowledgeBasePage() {
               </p>
             </div>
 
-            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[22rem] lg:grid-cols-1">
+            <div className="w-full space-y-3 lg:w-[22rem]">
+              <div>
+                <label htmlFor="upload-source-kind" className="text-sm font-semibold text-[var(--foreground)]">
+                  This source is a
+                </label>
+                <select
+                  id="upload-source-kind"
+                  value={uploadSourceKind}
+                  disabled={uploading || loadingDemo}
+                  onChange={(event) => setUploadSourceKind(event.target.value)}
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sourceKinds.map((kind) => <option key={kind} value={kind}>{sourceKindMeta[kind].label}</option>)}
+                </select>
+                <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                  {sourceKindMeta[asSourceKind(uploadSourceKind)].description}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <button
                 type="button"
                 onClick={handleLoadDemo}
@@ -354,6 +384,7 @@ export default function KnowledgeBasePage() {
                   onChange={handleFileChange}
                 />
               </label>
+              </div>
             </div>
           </div>
         </div>

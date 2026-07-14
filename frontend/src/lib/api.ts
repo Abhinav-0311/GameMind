@@ -169,9 +169,10 @@ export const api = {
     return res.json();
   },
 
-  async uploadDocument(file: File): Promise<DocumentResponse> {
+  async uploadDocument(file: File, sourceKind?: string): Promise<DocumentResponse> {
     const formData = new FormData();
     formData.append("file", file);
+    if (sourceKind) formData.append("source_kind", sourceKind);
 
     const res = await fetch(`${API_BASE_URL}/api/v1/documents/upload`, {
       method: "POST",
