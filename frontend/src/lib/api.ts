@@ -1,9 +1,56 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const activeProjectStorageKey = "gamemind-active-project";
+const projectChangeEvent = "gamemind-project-change";
+
+export interface GameProject {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+function activeProjectId() {
+  if (typeof window === "undefined") return "default_project";
+  return window.localStorage.getItem(activeProjectStorageKey) || "default_project";
+}
+
+export function getActiveProjectId() {
+  return activeProjectId();
+}
+
+export function setActiveProjectId(projectId: string) {
+  window.localStorage.setItem(activeProjectStorageKey, projectId);
+  window.dispatchEvent(new Event(projectChangeEvent));
+}
+
+export function subscribeToProjectChange(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(projectChangeEvent, callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(projectChangeEvent, callback);
+  };
+}
+
+async function projectFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("X-Game-Project-ID")) {
+    headers.set("X-Game-Project-ID", activeProjectId());
+  }
+
+  return globalThis.fetch(input, { ...init, headers });
+}
+
+// API calls are project-scoped unless an individual request supplies its own header.
+const fetch = projectFetch;
 
 export interface DocumentResponse {
   id: string;
   title: string;
   content_type: string;
+  source_kind: string;
+  source_document_id?: string | null;
+  revision_number: number;
   created_at: string;
   updated_at: string;
   chunks_count: number;
@@ -18,6 +65,55 @@ export interface ChunkResponse {
 
 export interface DocumentDetailResponse extends DocumentResponse {
   chunks: ChunkResponse[];
+}
+
+export interface GddReviewFinding {
+  title: string;
+  severity: "covered" | "needs_decision" | "conflict";
+  message: string;
+  guidance?: string | null;
+  citations: string[];
+}
+
+export interface GddReviewResponse {
+  document_id: string;
+  title: string;
+  revision_number: number;
+  summary: { covered: number; needs_decision: number; conflicts: number };
+  findings: GddReviewFinding[];
+}
+
+export interface DesignDecision {
+  id: string;
+  document_id: string;
+  game_project_id: string;
+  category: string;
+  title: string;
+  guidance?: string | null;
+  severity: "needs_decision" | "conflict";
+  decision?: string | null;
+  status: "open" | "resolved";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DecisionCoverageResponse {
+  document_id: string;
+  revision_number: number;
+  summary: {
+    source_backed: number;
+    needs_source_evidence: number;
+    decision_open: number;
+  };
+  items: Array<{
+    decision_id: string;
+    title: string;
+    decision?: string | null;
+    status: "open" | "resolved";
+    origin_revision_number: number;
+    evidence_status: "source_backed" | "needs_source_evidence" | "decision_open";
+    citations: string[];
+  }>;
 }
 
 export interface QueryResult {
@@ -48,6 +144,25 @@ export interface HealthResponse {
 }
 
 export const api = {
+  async getProjects(): Promise<GameProject[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/projects/`);
+    if (!res.ok) throw new Error("Failed to fetch workspaces");
+    return res.json();
+  },
+
+  async createProject(name: string): Promise<GameProject> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/projects/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to create workspace");
+    }
+    return res.json();
+  },
+
   async getHealth(): Promise<HealthResponse> {
     const res = await fetch(`${API_BASE_URL}/health`);
     if (!res.ok) throw new Error("Health check failed");
@@ -65,6 +180,34 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.detail || "Failed to upload document");
+    }
+    return res.json();
+  },
+
+  async updateDocumentSourceKind(id: string, sourceKind: string): Promise<DocumentResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/documents/${id}/source-kind`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_kind: sourceKind }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not update source type");
+    }
+    return res.json();
+  },
+
+  async uploadDocumentRevision(documentId: string, file: File): Promise<DocumentResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}/revision`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to upload document revision");
     }
     return res.json();
   },
@@ -89,6 +232,53 @@ export const api = {
   async getDocument(id: string): Promise<DocumentDetailResponse> {
     const res = await fetch(`${API_BASE_URL}/api/v1/documents/${id}`);
     if (!res.ok) throw new Error("Failed to fetch document details");
+    return res.json();
+  },
+
+  async reviewDocument(id: string): Promise<GddReviewResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/reviews/documents/${id}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not review this source document");
+    }
+    return res.json();
+  },
+
+  async getDesignDecisions(documentId: string): Promise<DesignDecision[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/decisions?document_id=${documentId}`);
+    if (!res.ok) throw new Error("Could not load design decisions");
+    return res.json();
+  },
+
+  async syncDesignDecisions(documentId: string): Promise<DesignDecision[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/decisions/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document_id: documentId }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not create design decisions");
+    }
+    return res.json();
+  },
+
+  async getDecisionCoverage(documentId: string): Promise<DecisionCoverageResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/decisions/coverage?document_id=${documentId}`);
+    if (!res.ok) throw new Error("Could not assess decision coverage");
+    return res.json();
+  },
+
+  async updateDesignDecision(id: string, payload: { decision?: string; status?: "open" | "resolved" }): Promise<DesignDecision> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/decisions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not save design decision");
+    }
     return res.json();
   },
 
@@ -274,13 +464,13 @@ export const api = {
     return res.json();
   },
 
-  async generateBlueprint(documentId: string): Promise<BlueprintResponse> {
+  async generateBlueprint(documentId: string, supportingDocumentIds: string[] = []): Promise<BlueprintResponse> {
     const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ document_id: documentId }),
+      body: JSON.stringify({ document_id: documentId, supporting_document_ids: supportingDocumentIds }),
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -312,9 +502,46 @@ export const api = {
     return res.json();
   },
 
-  async materializeBlueprint(blueprintId: string): Promise<MaterializationReportResponse> {
+  async getBlueprintBrief(blueprintId: string): Promise<{ markdown: string; filename: string }> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/brief`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not export blueprint brief");
+    }
+    const disposition = res.headers.get("content-disposition") || "";
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || "gamemind-brief.md";
+    return { markdown: await res.text(), filename };
+  },
+
+  async getBlueprintReadiness(blueprintId: string): Promise<BlueprintReadinessResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/readiness`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to assess blueprint readiness");
+    }
+    return res.json();
+  },
+
+  async getBlueprintProvenance(blueprintId: string): Promise<BlueprintProvenanceResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/provenance`);
+    if (!res.ok) throw new Error("Could not load blueprint citations");
+    return res.json();
+  },
+
+  async compareBlueprints(baseBlueprintId: string, revisedBlueprintId: string): Promise<BlueprintComparisonResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${baseBlueprintId}/compare/${revisedBlueprintId}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to compare blueprints");
+    }
+    return res.json();
+  },
+
+  async materializeBlueprint(blueprintId: string, confirmIncomplete: boolean = false): Promise<MaterializationReportResponse> {
     const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/materialize`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm_incomplete: confirmIncomplete }),
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -522,6 +749,7 @@ export interface BlueprintResponse {
   game_project_id: string;
   title: string;
   document_id?: string;
+  source_document_ids: string[];
   summary: BlueprintSectionResponse;
   narrative_direction: BlueprintSectionResponse;
   art_style_direction: BlueprintSectionResponse;
@@ -535,6 +763,40 @@ export interface BlueprintResponse {
   materialization_manifest?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface BlueprintReadinessResponse {
+  status: "planning_only" | "runtime_review" | "runtime_ready";
+  can_materialize: boolean;
+  missing_required: string[];
+  advisories: string[];
+}
+
+export interface BlueprintProvenanceResponse {
+  blueprint_id: string;
+  sections: Array<{
+    section: string;
+    citations: Array<{
+      chunk_id: string;
+      document_id: string;
+      document_title: string;
+      revision_number: number;
+      chunk_index: number;
+    }>;
+  }>;
+}
+
+export interface BlueprintComparisonSection {
+  section: string;
+  status: string;
+  before_warnings: number;
+  after_warnings: number;
+}
+
+export interface BlueprintComparisonResponse {
+  base_blueprint_id: string;
+  revised_blueprint_id: string;
+  changed_sections: BlueprintComparisonSection[];
 }
 
 export interface BlueprintExportResponse {

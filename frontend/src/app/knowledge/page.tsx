@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, DocumentDetailResponse, DocumentResponse } from "@/lib/api";
+import { asSourceKind, sourceKindMeta, sourceKinds } from "@/lib/sourceKinds";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -30,7 +31,7 @@ function formatFileSize(bytes: number) {
 }
 
 function sourceGroupKey(document: DocumentResponse) {
-  return `${document.title.trim().toLowerCase()}::${document.content_type}`;
+  return document.source_document_id || document.id;
 }
 
 function groupSources(documents: DocumentResponse[]): SourceGroup[] {
@@ -65,14 +66,25 @@ export default function KnowledgeBasePage() {
   const [selectedDoc, setSelectedDoc] = useState<DocumentDetailResponse | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [revising, setRevising] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [savingSourceKind, setSavingSourceKind] = useState(false);
+  const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
+  const handledTrace = useRef<string | null>(null);
 
   const sourceGroups = useMemo(() => groupSources(documents), [documents]);
   const totalChunks = useMemo(() => documents.reduce((sum, doc) => sum + doc.chunks_count, 0), [documents]);
+  const visibleChunks = useMemo(() => {
+    if (!selectedDoc) return [];
+    const initialChunks = selectedDoc.chunks.slice(0, 6);
+    const targetChunk = highlightedChunkId ? selectedDoc.chunks.find((chunk) => chunk.id === highlightedChunkId) : undefined;
+    if (!targetChunk || initialChunks.some((chunk) => chunk.id === targetChunk.id)) return initialChunks;
+    return [targetChunk, ...initialChunks].slice(0, 6);
+  }, [highlightedChunkId, selectedDoc]);
 
   const handleViewDetails = useCallback(async (id: string) => {
     setLoadingDetail(true);
@@ -121,6 +133,27 @@ export default function KnowledgeBasePage() {
     Promise.resolve().then(fetchDocuments);
   }, [fetchDocuments]);
 
+  useEffect(() => {
+    if (!documents.length || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const documentId = params.get("document");
+    const chunkId = params.get("chunk");
+    if (!documentId || !documents.some((document) => document.id === documentId)) return;
+    const traceKey = `${documentId}:${chunkId || ""}`;
+    if (handledTrace.current === traceKey) return;
+    handledTrace.current = traceKey;
+
+    Promise.resolve().then(async () => {
+      setHighlightedChunkId(chunkId);
+      await handleViewDetails(documentId);
+    });
+  }, [documents, handleViewDetails]);
+
+  useEffect(() => {
+    if (!highlightedChunkId || selectedDoc?.id === undefined) return;
+    document.getElementById(`source-chunk-${highlightedChunkId}`)?.scrollIntoView({ block: "nearest" });
+  }, [highlightedChunkId, selectedDoc?.id]);
+
   const handleFileUpload = async (file: File) => {
     setError(null);
     setSuccessMsg(null);
@@ -149,6 +182,29 @@ export default function KnowledgeBasePage() {
     if (file) {
       handleFileUpload(file);
       event.target.value = "";
+    }
+  };
+
+  const handleRevisionUpload = async (file: File) => {
+    if (!selectedDoc) return;
+    setError(null);
+    setSuccessMsg(null);
+
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`${file.name} is ${formatFileSize(file.size)}. The current limit is 5 MB.`);
+      return;
+    }
+
+    setRevising(true);
+    try {
+      const revised = await api.uploadDocumentRevision(selectedDoc.id, file);
+      setSuccessMsg(`${file.name} is indexed as revision ${revised.revision_number}. Generate a new blueprint to compare it with the earlier plan.`);
+      await fetchDocuments();
+      await handleViewDetails(revised.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload the source revision.");
+    } finally {
+      setRevising(false);
     }
   };
 
@@ -194,6 +250,22 @@ export default function KnowledgeBasePage() {
       setError(err instanceof Error ? err.message : "Could not load the Frostpeak demo document.");
     } finally {
       setLoadingDemo(false);
+    }
+  };
+
+  const handleSourceKindChange = async (sourceKind: string) => {
+    if (!selectedDoc) return;
+    setSavingSourceKind(true);
+    setError(null);
+    try {
+      const updated = await api.updateDocumentSourceKind(selectedDoc.id, sourceKind);
+      setDocuments((current) => current.map((document) => (document.id === updated.id ? updated : document)));
+      setSelectedDoc((current) => current && current.id === updated.id ? { ...current, source_kind: updated.source_kind } : current);
+      setSuccessMsg("Source type updated. Blueprint impact guidance is refreshed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update source type.");
+    } finally {
+      setSavingSourceKind(false);
     }
   };
 
@@ -252,8 +324,8 @@ export default function KnowledgeBasePage() {
                 Drop a game document here.
               </h2>
               <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                Supported for the MVP: TXT, Markdown, and PDF under 5 MB. Use the demo if you want to test the whole
-                flow before writing your own GDD.
+                Supported for the MVP: TXT, Markdown, and PDF under 5 MB. Identical source text is kept out of the
+                index, even when the file has a different name.
               </p>
             </div>
 
@@ -337,7 +409,7 @@ export default function KnowledgeBasePage() {
             <div className="divide-y divide-[var(--border)]">
               {sourceGroups.map((source) => {
                 const selected = Boolean(selectedDoc && source.documents.some((doc) => doc.id === selectedDoc.id));
-                const hasCopies = source.documents.length > 1;
+                const hasRevisions = source.documents.length > 1;
 
                 return (
                   <article
@@ -356,14 +428,14 @@ export default function KnowledgeBasePage() {
                         <span>{source.latest.chunks_count} latest chunks</span>
                         <span>{source.totalChunks} total chunks</span>
                         <span>Latest {formatDate(source.latest.created_at)}</span>
-                        <span>{source.contentType}</span>
+                        <span>{sourceKindMeta[asSourceKind(source.latest.source_kind)].label}</span>
                       </div>
                     </button>
 
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      {hasCopies && (
+                      {hasRevisions && (
                         <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                          {source.documents.length} copies
+                          {source.documents.length} revisions
                         </span>
                       )}
                       <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-[var(--foreground)]">
@@ -404,12 +476,31 @@ export default function KnowledgeBasePage() {
               <div className="space-y-5">
                 <div>
                   <p className="truncate text-sm font-semibold text-[var(--foreground)]">{selectedDoc.title}</p>
-                  <p className="mt-2 text-xs text-[var(--text-secondary)]">{selectedDoc.chunks_count} indexed chunks</p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">Revision {selectedDoc.revision_number} · {selectedDoc.chunks_count} indexed chunks</p>
+                </div>
+
+                <div className="border-y border-[var(--border)] py-4">
+                  <label htmlFor="source-kind" className="text-sm font-semibold text-[var(--foreground)]">Source type</label>
+                  <select
+                    id="source-kind"
+                    value={asSourceKind(selectedDoc.source_kind)}
+                    disabled={savingSourceKind}
+                    onChange={(event) => handleSourceKindChange(event.target.value)}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {sourceKinds.map((kind) => <option key={kind} value={kind}>{sourceKindMeta[kind].label}</option>)}
+                  </select>
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{sourceKindMeta[asSourceKind(selectedDoc.source_kind)].description}</p>
+                  <p className="mt-3 text-xs font-semibold text-[var(--text-secondary)]">Can improve: {sourceKindMeta[asSourceKind(selectedDoc.source_kind)].impact.join(" · ")}</p>
                 </div>
 
                 <div className="space-y-3">
-                  {selectedDoc.chunks.slice(0, 6).map((chunk) => (
-                    <div key={chunk.id} className="panel-muted rounded-2xl p-4">
+                  {visibleChunks.map((chunk) => (
+                    <div
+                      id={`source-chunk-${chunk.id}`}
+                      key={chunk.id}
+                      className={`rounded-2xl p-4 ${chunk.id === highlightedChunkId ? "border border-[var(--accent)] bg-[var(--accent-soft)]" : "panel-muted"}`}
+                    >
                       <div className="mb-3 flex items-center justify-between gap-4">
                         <p className="page-kicker">Chunk {chunk.chunk_index + 1}</p>
                         <span className="text-xs text-[var(--text-secondary)]">{chunk.content.length} chars</span>
@@ -422,6 +513,22 @@ export default function KnowledgeBasePage() {
                 <Link href="/blueprints" className="btn-primary w-full">
                   Generate blueprint
                 </Link>
+                <label className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl border border-[var(--border)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--card)] ${
+                  revising ? "cursor-not-allowed opacity-50" : ""
+                }`}>
+                  {revising ? "Indexing revision" : "Upload revision"}
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept=".txt,.md,.pdf"
+                    disabled={revising}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) handleRevisionUpload(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
               </div>
             ) : (
               <div className="flex min-h-56 items-center justify-center text-center">

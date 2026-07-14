@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { getActiveProjectId } from "@/lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -66,7 +67,7 @@ interface Quest {
 }
 
 export default function VerticalSliceSimulator() {
-  const [projectId, setProjectId] = useState("default_project");
+  const [projectId, setProjectId] = useState(getActiveProjectId);
   const [playerId, setPlayerId] = useState("default_player");
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [npcs, setNpcs] = useState<NpcItem[]>([]);

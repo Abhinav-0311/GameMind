@@ -5,12 +5,18 @@ import Link from "next/link";
 import {
   api,
   BlueprintExportResponse,
+  BlueprintComparisonResponse,
+  BlueprintProvenanceResponse,
+  BlueprintReadinessResponse,
   BlueprintResponse,
+  DecisionCoverageResponse,
+  GddReviewResponse,
   BlueprintRuntimeBundleResponse,
   BlueprintSectionResponse,
   DocumentResponse,
   MaterializationReportResponse,
 } from "@/lib/api";
+import { asSourceKind, sourceKindMeta } from "@/lib/sourceKinds";
 
 interface ReviewSection {
   id: string;
@@ -24,6 +30,21 @@ interface StepItem {
   detail: string;
   complete: boolean;
   active: boolean;
+}
+
+interface ReadinessState {
+  blueprintId: string;
+  value: BlueprintReadinessResponse;
+}
+
+interface DecisionCoverageState {
+  documentId: string;
+  value: DecisionCoverageResponse;
+}
+
+interface ProvenanceState {
+  blueprintId: string;
+  value: BlueprintProvenanceResponse;
 }
 
 const sectionGuidance: Record<string, { use: string; runtime: string }> = {
@@ -78,6 +99,13 @@ function statusLabel(blueprint: BlueprintResponse | null) {
   if (blueprint.materialization_manifest) return "Runtime ready";
   if (blueprint.status === "approved") return "Approved";
   return "Draft";
+}
+
+function readinessLabel(readiness: BlueprintReadinessResponse | null) {
+  if (!readiness) return "Checking runtime";
+  if (readiness.status === "runtime_ready") return "Runtime ready";
+  if (readiness.status === "runtime_review") return "Runtime review";
+  return "Planning only";
 }
 
 function confidenceTone(confidence: string) {
@@ -136,6 +164,7 @@ function sectionRows(report: MaterializationReportResponse) {
 export default function BlueprintsDashboard() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [selectedDocId, setSelectedDocId] = useState("");
+  const [supportingDocIds, setSupportingDocIds] = useState<string[]>([]);
   const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
   const [activeBlueprint, setActiveBlueprint] = useState<BlueprintResponse | null>(null);
   const [activeSectionId, setActiveSectionId] = useState("summary");
@@ -148,6 +177,16 @@ export default function BlueprintsDashboard() {
   const [exportData, setExportData] = useState<BlueprintExportResponse | null>(null);
   const [runtimeBundle, setRuntimeBundle] = useState<BlueprintRuntimeBundleResponse | null>(null);
   const [materializeReport, setMaterializeReport] = useState<MaterializationReportResponse | null>(null);
+  const [readinessState, setReadinessState] = useState<ReadinessState | null>(null);
+  const [materializationReviewOpen, setMaterializationReviewOpen] = useState(false);
+  const [compareTargetId, setCompareTargetId] = useState("");
+  const [comparison, setComparison] = useState<BlueprintComparisonResponse | null>(null);
+  const [isComparing, setIsComparing] = useState(false);
+  const [isExportingBrief, setIsExportingBrief] = useState(false);
+  const [sourceReview, setSourceReview] = useState<GddReviewResponse | null>(null);
+  const [isReviewingSource, setIsReviewingSource] = useState(false);
+  const [decisionCoverageState, setDecisionCoverageState] = useState<DecisionCoverageState | null>(null);
+  const [provenanceState, setProvenanceState] = useState<ProvenanceState | null>(null);
 
   const loadInitialData = async () => {
     setIsLoading(true);
@@ -178,6 +217,55 @@ export default function BlueprintsDashboard() {
   useEffect(() => {
     Promise.resolve().then(loadInitialData);
   }, []);
+
+  useEffect(() => {
+    const blueprintId = activeBlueprint?.id;
+    if (!blueprintId) return;
+
+    let active = true;
+    api
+      .getBlueprintReadiness(blueprintId)
+      .then((result) => {
+        if (active) setReadinessState({ blueprintId, value: result });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [activeBlueprint?.id]);
+
+  useEffect(() => {
+    const documentId = activeBlueprint?.document_id;
+    if (!documentId) return;
+    let active = true;
+    api.getDecisionCoverage(documentId)
+      .then((result) => {
+        if (active) setDecisionCoverageState({ documentId, value: result });
+      })
+      .catch(() => {
+        if (active) setDecisionCoverageState(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeBlueprint?.document_id]);
+
+  useEffect(() => {
+    const blueprintId = activeBlueprint?.id;
+    if (!blueprintId) return;
+    let active = true;
+    api.getBlueprintProvenance(blueprintId)
+      .then((result) => {
+        if (active) setProvenanceState({ blueprintId, value: result });
+      })
+      .catch(() => {
+        if (active) setProvenanceState(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeBlueprint?.id]);
 
   const reviewSections: ReviewSection[] = useMemo(() => {
     if (!activeBlueprint) return [];
@@ -222,7 +310,7 @@ export default function BlueprintsDashboard() {
       ...(activeBlueprint.gameplay_systems ? [{
         id: "systems",
         title: "Gameplay systems",
-        description: "Core loop, progression, and explicit design constraints.",
+        description: "Gameplay loop, progression, economy, controls, accessibility, and technical constraints.",
         section: activeBlueprint.gameplay_systems,
       }] : []),
       {
@@ -242,8 +330,14 @@ export default function BlueprintsDashboard() {
 
   const activeSection = reviewSections.find((section) => section.id === activeSectionId) || reviewSections[0];
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId);
+  const supportingDocuments = documents.filter((doc) => doc.id !== selectedDocId);
   const blueprintIsApproved = activeBlueprint?.status === "approved";
   const blueprintIsMaterialized = Boolean(activeBlueprint?.materialization_manifest);
+  const readiness = readinessState && readinessState.blueprintId === activeBlueprint?.id ? readinessState.value : null;
+  const decisionCoverage = decisionCoverageState && decisionCoverageState.documentId === activeBlueprint?.document_id
+    ? decisionCoverageState.value
+    : null;
+  const provenance = provenanceState && provenanceState.blueprintId === activeBlueprint?.id ? provenanceState.value : null;
   const payload = runtimeBundle || exportData;
   const skippedRuntimeItems = skippedCount(materializeReport);
 
@@ -285,16 +379,33 @@ export default function BlueprintsDashboard() {
     setRuntimeBundle(null);
 
     try {
-      const newBlueprint = await api.generateBlueprint(selectedDocId);
+      const newBlueprint = await api.generateBlueprint(selectedDocId, supportingDocIds);
       const existingBlueprints = await api.getBlueprints();
       setBlueprints(existingBlueprints);
       setActiveBlueprint(newBlueprint);
       setActiveSectionId("summary");
+      setCompareTargetId("");
+      setComparison(null);
       setSuccess("Blueprint generated. Review the sections before approval.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Blueprint generation failed.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleReviewSource = async () => {
+    if (!selectedDocId) return;
+
+    setIsReviewingSource(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      setSourceReview(await api.reviewDocument(selectedDocId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not review this source document.");
+    } finally {
+      setIsReviewingSource(false);
     }
   };
 
@@ -317,8 +428,12 @@ export default function BlueprintsDashboard() {
     }
   };
 
-  const handleMaterialize = async () => {
+  const handleMaterialize = async (confirmIncomplete: boolean = false) => {
     if (!activeBlueprint) return;
+    if (!confirmIncomplete && readiness && !readiness.can_materialize) {
+      setMaterializationReviewOpen(true);
+      return;
+    }
 
     setIsMaterializing(true);
     setError(null);
@@ -326,12 +441,13 @@ export default function BlueprintsDashboard() {
     setMaterializeReport(null);
 
     try {
-      const report = await api.materializeBlueprint(activeBlueprint.id);
+      const report = await api.materializeBlueprint(activeBlueprint.id, confirmIncomplete);
       const existingBlueprints = await api.getBlueprints();
       const updated = existingBlueprints.find((item) => item.id === activeBlueprint.id) || activeBlueprint;
       setMaterializeReport(report);
       setBlueprints(existingBlueprints);
       setActiveBlueprint(updated);
+      setMaterializationReviewOpen(false);
       setSuccess("Runtime data materialized. The simulator or a game client can fetch it.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Materialization failed.");
@@ -353,6 +469,27 @@ export default function BlueprintsDashboard() {
       setSuccess("Blueprint export generated.");
     } catch {
       setError("Could not create the export.");
+    }
+  };
+
+  const handleExportBrief = async () => {
+    if (!activeBlueprint) return;
+    setIsExportingBrief(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const brief = await api.getBlueprintBrief(activeBlueprint.id);
+      const url = URL.createObjectURL(new Blob([brief.markdown], { type: "text/markdown;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = brief.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSuccess("Project brief exported as Markdown.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export the project brief.");
+    } finally {
+      setIsExportingBrief(false);
     }
   };
 
@@ -378,6 +515,21 @@ export default function BlueprintsDashboard() {
     setSuccess("Payload copied to clipboard.");
   };
 
+  const handleCompare = async () => {
+    if (!activeBlueprint || !compareTargetId) return;
+    setIsComparing(true);
+    setError(null);
+    try {
+      setComparison(await api.compareBlueprints(compareTargetId, activeBlueprint.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not compare blueprints.");
+    } finally {
+      setIsComparing(false);
+    }
+  };
+
+  const comparableBlueprints = blueprints.filter((blueprint) => blueprint.id !== activeBlueprint?.id);
+
   return (
     <main className="page-shell">
       <section className="flex flex-col gap-6 py-3 lg:flex-row lg:items-end lg:justify-between">
@@ -402,8 +554,8 @@ export default function BlueprintsDashboard() {
             </button>
           )}
           {activeBlueprint && blueprintIsApproved && !blueprintIsMaterialized && (
-            <button type="button" onClick={handleMaterialize} disabled={isMaterializing} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
-              {isMaterializing ? "Materializing" : "Materialize"}
+            <button type="button" onClick={() => handleMaterialize()} disabled={isMaterializing || !readiness} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+              {isMaterializing ? "Materializing" : !readiness ? "Checking runtime" : readiness.can_materialize ? "Materialize" : "Review runtime"}
             </button>
           )}
         </div>
@@ -469,12 +621,16 @@ export default function BlueprintsDashboard() {
                   <select
                     id="source-document"
                     value={selectedDocId}
-                    onChange={(event) => setSelectedDocId(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedDocId(event.target.value);
+                      setSupportingDocIds((current) => current.filter((id) => id !== event.target.value));
+                      setSourceReview(null);
+                    }}
                     className="min-h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
                   >
                     {documents.map((doc) => (
                       <option key={doc.id} value={doc.id}>
-                        {doc.title}
+                        {doc.title} · revision {doc.revision_number}
                       </option>
                     ))}
                   </select>
@@ -482,15 +638,85 @@ export default function BlueprintsDashboard() {
                   <div className="rounded-2xl border border-[var(--border)] bg-[var(--card-muted)] p-4">
                     <p className="break-words text-sm font-semibold text-[var(--foreground)]">{selectedDocument?.title || "Selected document"}</p>
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">{selectedDocument?.chunks_count || 0} searchable chunks</p>
+                    {selectedDocument && (
+                      <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">
+                        {sourceKindMeta[asSourceKind(selectedDocument.source_kind)].label} · improves {sourceKindMeta[asSourceKind(selectedDocument.source_kind)].impact.join(", ")}
+                      </p>
+                    )}
                   </div>
 
+                  {supportingDocuments.length > 0 && (
+                    <details className="border-y border-[var(--border)] py-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground)] marker:text-[var(--accent)]">
+                        Supporting sources {supportingDocIds.length > 0 ? `(${supportingDocIds.length})` : ""}
+                      </summary>
+                      <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Add only documents that should contribute evidence to this blueprint.</p>
+                      <div className="mt-4 space-y-3">
+                        {supportingDocuments.map((document) => {
+                          const checked = supportingDocIds.includes(document.id);
+                          const kind = sourceKindMeta[asSourceKind(document.source_kind)];
+                          return (
+                            <label key={document.id} className="flex cursor-pointer items-start gap-3 text-sm text-[var(--foreground)]">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => setSupportingDocIds((current) => checked ? current.filter((id) => id !== document.id) : [...current, document.id])}
+                                className="mt-1 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{document.title}</span>
+                                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{kind.label} · {kind.impact.join(", ")}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
+
                   <button type="button" onClick={handleGenerate} disabled={isGenerating || !selectedDocId} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50">
-                    {isGenerating ? "Generating" : "Generate blueprint"}
+                    {isGenerating ? "Generating" : supportingDocIds.length > 0 ? `Generate from ${supportingDocIds.length + 1} sources` : "Generate blueprint"}
+                  </button>
+                  <button type="button" onClick={handleReviewSource} disabled={isReviewingSource || !selectedDocId} className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-50">
+                    {isReviewingSource ? "Reviewing source" : "Review source"}
                   </button>
                 </div>
               )}
             </div>
           </section>
+
+          {sourceReview && (
+            <section className="border-y border-[var(--border)] py-5" aria-live="polite">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="page-kicker">Design review</p>
+                  <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">Source decision coverage</h2>
+                </div>
+                <span className="text-sm font-semibold text-[var(--text-secondary)]">
+                  {sourceReview.summary.needs_decision} open
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                {sourceReview.summary.conflicts > 0
+                  ? `${sourceReview.summary.conflicts} scope conflict needs a decision before generation.`
+                  : "Only missing decisions and explicit conflicts are shown. Covered areas remain quiet."}
+              </p>
+              <ul className="mt-4 space-y-3">
+                {sourceReview.findings.filter((finding) => finding.severity !== "covered").map((finding) => (
+                  <li key={finding.title} className={`border-l-2 pl-3 ${finding.severity === "conflict" ? "border-amber-500" : "border-[var(--accent)]"}`}>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{finding.title}</p>
+                    <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{finding.guidance || finding.message}</p>
+                  </li>
+                ))}
+              </ul>
+              {sourceReview.summary.needs_decision === 0 && sourceReview.summary.conflicts === 0 && (
+                <p className="mt-4 text-sm font-medium text-[var(--foreground)]">The source covers the first-pass decisions GameMind checks.</p>
+              )}
+              {(sourceReview.summary.needs_decision > 0 || sourceReview.summary.conflicts > 0) && (
+                <Link href="/decisions" className="btn-secondary mt-5">Open decision workspace</Link>
+              )}
+            </section>
+          )}
 
           <section className="panel overflow-hidden rounded-3xl">
             <div className="border-b border-[var(--border)] p-5">
@@ -520,6 +746,8 @@ export default function BlueprintsDashboard() {
                         setExportData(null);
                         setRuntimeBundle(null);
                         setMaterializeReport(null);
+                        setCompareTargetId("");
+                        setComparison(null);
                       }}
                       className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                         selected ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--card-muted)]"
@@ -563,13 +791,63 @@ export default function BlueprintsDashboard() {
                         <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--foreground)]">
                           {statusLabel(activeBlueprint)}
                         </span>
+                        {activeBlueprint.source_document_ids.length > 1 && (
+                          <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+                            {activeBlueprint.source_document_ids.length} sources
+                          </span>
+                        )}
+                        {!blueprintIsMaterialized && (
+                          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                            readiness?.status === "runtime_ready"
+                              ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--foreground)]"
+                              : readiness?.status === "planning_only"
+                                ? "border-amber-500/25 bg-amber-500/10 text-[var(--foreground)]"
+                                : "border-[var(--border)] bg-[var(--card-muted)] text-[var(--text-secondary)]"
+                          }`}>
+                            {readinessLabel(readiness)}
+                          </span>
+                        )}
+                        {decisionCoverage && decisionCoverage.items.length > 0 && (
+                          <Link href="/decisions" className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)]">
+                            Decisions: {decisionCoverage.summary.source_backed} backed · {decisionCoverage.summary.needs_source_evidence + decisionCoverage.summary.decision_open} open
+                          </Link>
+                        )}
                       </div>
                       <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
                         Review section by section. Approval is the point where draft design becomes runtime intent.
                       </p>
+                      {comparableBlueprints.length > 0 && (
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <label className="min-w-0 flex-1 text-sm font-semibold text-[var(--foreground)]" htmlFor="compare-blueprint">
+                            Compare with earlier blueprint
+                            <select
+                              id="compare-blueprint"
+                              value={compareTargetId}
+                              onChange={(event) => {
+                                setCompareTargetId(event.target.value);
+                                setComparison(null);
+                              }}
+                              className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                            >
+                              <option value="">Choose a snapshot</option>
+                              {comparableBlueprints.map((blueprint) => (
+                                <option key={blueprint.id} value={blueprint.id}>
+                                  {blueprint.title} · {formatDate(blueprint.created_at)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button type="button" onClick={handleCompare} disabled={!compareTargetId || isComparing} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                            {isComparing ? "Comparing" : "Compare changes"}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={handleExportBrief} disabled={isExportingBrief} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                        {isExportingBrief ? "Exporting brief" : "Export brief"}
+                      </button>
                       <button type="button" onClick={handleExport} className="btn-secondary">
                         Export JSON
                       </button>
@@ -603,9 +881,26 @@ export default function BlueprintsDashboard() {
                     </div>
                   </nav>
 
-                  {activeSection && <SectionBrief section={activeSection} />}
+                  {activeSection && <SectionBrief section={activeSection} citations={provenance?.sections.find((item) => item.section === activeSection.id)?.citations || []} />}
                 </div>
               </section>
+
+              {comparison && (
+                <section className="border border-[var(--border)] bg-[var(--card-muted)] px-5 py-4">
+                  <p className="page-kicker">Revision comparison</p>
+                  {comparison.changed_sections.length === 0 ? (
+                    <p className="mt-3 text-sm text-[var(--text-secondary)]">No extracted blueprint sections changed between these snapshots.</p>
+                  ) : (
+                    <ul className="mt-3 flex flex-wrap gap-2" aria-label="Changed blueprint sections">
+                      {comparison.changed_sections.map((section) => (
+                        <li key={section.section} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]">
+                          {section.section} · warnings {section.before_warnings} to {section.after_warnings}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
 
               {materializeReport && (
                 <section className="panel rounded-3xl p-6">
@@ -665,11 +960,52 @@ export default function BlueprintsDashboard() {
           )}
         </section>
       </section>
+
+      {materializationReviewOpen && readiness && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="presentation">
+          <button
+            type="button"
+            aria-label="Close runtime review"
+            onClick={() => !isMaterializing && setMaterializationReviewOpen(false)}
+            className="absolute inset-0"
+          />
+          <section role="dialog" aria-modal="true" aria-labelledby="runtime-review-title" className="relative w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-2xl">
+            <p className="page-kicker">Runtime review</p>
+            <h2 id="runtime-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">
+              This blueprint is incomplete for runtime.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              GameMind found useful planning material, but the source does not yet support every runtime record.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm text-[var(--foreground)]">
+              {readiness.missing_required.map((item) => <li key={item}>Missing: {item}</li>)}
+              {readiness.advisories.map((item) => <li key={item} className="text-[var(--text-secondary)]">Review: {item}</li>)}
+            </ul>
+            <p className="mt-5 text-sm leading-6 text-[var(--text-secondary)]">
+              Improve the source and regenerate for a complete bundle, or continue knowing that the runtime output may be partial.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" onClick={() => setMaterializationReviewOpen(false)} disabled={isMaterializing} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                Return to review
+              </button>
+              <button type="button" onClick={() => handleMaterialize(true)} disabled={isMaterializing} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+                {isMaterializing ? "Materializing" : "Materialize anyway"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
 
-function SectionBrief({ section }: { section: ReviewSection }) {
+function SectionBrief({
+  section,
+  citations,
+}: {
+  section: ReviewSection;
+  citations: BlueprintProvenanceResponse["sections"][number]["citations"];
+}) {
   const guidance = sectionGuidance[section.id];
   const entries = previewEntries(section.section);
   const hasWarnings = section.section.warnings.length > 0;
@@ -747,6 +1083,27 @@ function SectionBrief({ section }: { section: ReviewSection }) {
           {JSON.stringify(section.section.content, null, 2)}
         </pre>
       </details>
+
+      {citations.length > 0 && (
+        <details className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--accent)] outline-none transition hover:text-[var(--accent-hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+            Evidence sources ({citations.length})
+          </summary>
+          <ul className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+            {citations.map((citation) => (
+              <li key={citation.chunk_id} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <Link
+                  href={`/knowledge?document=${citation.document_id}&chunk=${citation.chunk_id}`}
+                  className="font-medium text-[var(--foreground)] underline-offset-4 transition hover:text-[var(--accent)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  {citation.document_title}
+                </Link>
+                <span className="text-[var(--text-secondary)]">Revision {citation.revision_number} · Chunk {citation.chunk_index + 1}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </article>
   );
 }

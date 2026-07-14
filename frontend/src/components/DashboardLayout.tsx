@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { api, getActiveProjectId, setActiveProjectId, subscribeToProjectChange, type GameProject } from "@/lib/api";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -49,6 +50,12 @@ const IconArchive = () => (
 const IconBlueprint = () => (
   <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 4h6l4 4v12H7V4zM13 4v4h4M9.5 12h5M9.5 15h5" />
+  </svg>
+);
+
+const IconDecisions = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 5.5h9.5M8 10.5h9.5M8 15.5h5.5M4.5 5.5h.01M4.5 10.5h.01M4.5 15.5h.01" />
   </svg>
 );
 
@@ -104,6 +111,7 @@ const IconSun = () => (
 const navigationItems: NavigationItem[] = [
   { name: "Home", href: "/", section: "Build", icon: <IconGrid /> },
   { name: "Sources", href: "/knowledge", section: "Build", icon: <IconArchive /> },
+  { name: "Decisions", href: "/decisions", section: "Build", icon: <IconDecisions /> },
   { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
   { name: "Lore Search", href: "/query", section: "Test", icon: <IconSearch /> },
   { name: "Runtime Test", href: "/vertical-slice", section: "Test", icon: <IconPlay /> },
@@ -148,8 +156,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const theme = useSyncExternalStore(subscribeToThemeChange, getStoredTheme, () => "light");
+  const activeProjectId = useSyncExternalStore(subscribeToProjectChange, getActiveProjectId, () => "default_project");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [projects, setProjects] = useState<GameProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const currentPage = useMemo(
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
@@ -188,10 +203,59 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  useEffect(() => {
+    let active = true;
+
+    api
+      .getProjects()
+      .then((loadedProjects) => {
+        if (!active) return;
+        setProjects(loadedProjects);
+        if (!loadedProjects.some((project) => project.id === activeProjectId)) {
+          setActiveProjectId("default_project");
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setProjectError(error instanceof Error ? error.message : "Could not load workspaces.");
+      })
+      .finally(() => {
+        if (active) setProjectsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeProjectId]);
+
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
     window.localStorage.setItem(themeStorageKey, nextTheme);
     window.dispatchEvent(new Event(themeChangeEvent));
+  };
+
+  const selectProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    setProjectError(null);
+  };
+
+  const createProject = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newProjectName.trim();
+    if (!name) return;
+
+    setCreatingProject(true);
+    setProjectError(null);
+    try {
+      const project = await api.createProject(name);
+      setProjects((current) => [...current, project]);
+      setActiveProjectId(project.id);
+      setNewProjectName("");
+      setProjectDialogOpen(false);
+    } catch (error: unknown) {
+      setProjectError(error instanceof Error ? error.message : "Could not create workspace.");
+    } finally {
+      setCreatingProject(false);
+    }
   };
 
   useEffect(() => {
@@ -257,10 +321,37 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2 lg:flex">
+                <label className="sr-only" htmlFor="active-project">
+                  Active workspace
+                </label>
+                <select
+                  id="active-project"
+                  value={activeProjectId}
+                  onChange={(event) => selectProject(event.target.value)}
+                  disabled={projectsLoading || projects.length === 0}
+                  className="h-10 max-w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                  title={projectError || "Active workspace"}
+                >
+                  {projectsLoading ? <option>Loading workspace</option> : null}
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setProjectDialogOpen(true)}
+                  className="btn-secondary h-10 whitespace-nowrap px-3 text-xs"
+                >
+                  New project
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
-                className="hidden h-10 w-72 items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-left text-xs text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] md:flex"
+                className="hidden h-10 w-72 items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-left text-xs text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] xl:flex"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <IconSearch />
@@ -289,7 +380,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">{children}</main>
+          <main key={activeProjectId} className="flex-1 px-4 py-8 sm:px-6 lg:px-10">{children}</main>
         </div>
       </div>
 
@@ -311,6 +402,33 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <IconClose />
+              </button>
+            </div>
+            <div className="border-b border-[var(--border)] px-5 py-4">
+              <label className="page-kicker" htmlFor="mobile-active-project">Active workspace</label>
+              <select
+                id="mobile-active-project"
+                value={activeProjectId}
+                onChange={(event) => selectProject(event.target.value)}
+                disabled={projectsLoading || projects.length === 0}
+                className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-semibold text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {projectsLoading ? <option>Loading workspace</option> : null}
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  setProjectDialogOpen(true);
+                }}
+                className="btn-secondary mt-3 w-full"
+              >
+                New project
               </button>
             </div>
             <Navigation pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
@@ -393,6 +511,61 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <span>Esc to close</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {projectDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="presentation">
+          <button
+            type="button"
+            aria-label="Close new project dialog"
+            onClick={() => !creatingProject && setProjectDialogOpen(false)}
+            className="absolute inset-0"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-project-title"
+            className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-2xl"
+          >
+            <p className="page-kicker">New workspace</p>
+            <h2 id="new-project-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">
+              Name your game project.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              Sources, blueprints, searches, and runtime data will stay separate from your other projects.
+            </p>
+            <form className="mt-6" onSubmit={createProject}>
+              <label htmlFor="new-project-name" className="mb-2 block text-sm font-semibold text-[var(--foreground)]">
+                Project name
+              </label>
+              <input
+                id="new-project-name"
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                maxLength={100}
+                minLength={2}
+                required
+                autoFocus
+                placeholder="e.g. Moonlit Citadel"
+                className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent)]"
+              />
+              {projectError && <p className="mt-3 text-sm text-rose-700" role="alert">{projectError}</p>}
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setProjectDialogOpen(false)}
+                  disabled={creatingProject}
+                  className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={creatingProject || newProjectName.trim().length < 2} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+                  {creatingProject ? "Creating" : "Create project"}
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
     </div>
