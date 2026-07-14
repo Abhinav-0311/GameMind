@@ -72,6 +72,8 @@ export interface GddReviewFinding {
   severity: "covered" | "needs_decision" | "conflict";
   message: string;
   guidance?: string | null;
+  priority: "critical" | "high" | "medium" | "low";
+  recommended_source_kind?: string | null;
   citations: string[];
 }
 

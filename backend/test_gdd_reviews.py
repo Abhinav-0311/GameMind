@@ -54,3 +54,29 @@ def test_gdd_review_enforces_project_scope(db_session):
     )
 
     assert response.status_code == 404
+
+
+def test_gdd_review_prioritizes_delivery_scope_and_recommends_a_supporting_source(db_session):
+    project_id = f"delivery_scope_{uuid.uuid4().hex[:8]}"
+    document = RAGService().process_document(
+        db=db_session,
+        file_name="cross_platform_game.md",
+        file_bytes=(
+            b"# Project plan\n"
+            b"The PC game includes an Android AR companion and optional VR challenge levels.\n"
+            b"A weekly online leaderboard rewards the fastest players."
+        ),
+        content_type="text/markdown",
+        game_project_id=project_id,
+    )
+
+    response = client.get(
+        f"/api/v1/reviews/documents/{document.id}",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    findings = {finding["title"]: finding for finding in response.json()["findings"]}
+    assert findings["Multi-platform delivery scope"]["priority"] == "high"
+    assert findings["Multi-platform delivery scope"]["recommended_source_kind"] == "technical_brief"
+    assert findings["Online feature boundary"]["priority"] == "high"

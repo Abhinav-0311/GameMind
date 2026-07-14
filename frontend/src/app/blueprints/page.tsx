@@ -114,6 +114,13 @@ function confidenceTone(confidence: string) {
   return "border-[var(--border)] bg-[var(--card-muted)] text-[var(--text-secondary)]";
 }
 
+const reviewPriorityRank: Record<"critical" | "high" | "medium" | "low", number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
 function readableValue(value: unknown): string {
   if (Array.isArray(value)) {
     if (value.length === 0) return "None detected";
@@ -340,6 +347,13 @@ export default function BlueprintsDashboard() {
   const provenance = provenanceState && provenanceState.blueprintId === activeBlueprint?.id ? provenanceState.value : null;
   const payload = runtimeBundle || exportData;
   const skippedRuntimeItems = skippedCount(materializeReport);
+  const actionableSourceFindings = useMemo(() => {
+    if (!sourceReview) return [];
+    return sourceReview.findings
+      .filter((finding) => finding.severity !== "covered")
+      .sort((left, right) => reviewPriorityRank[left.priority] - reviewPriorityRank[right.priority]);
+  }, [sourceReview]);
+  const nextSourceFinding = actionableSourceFindings[0];
 
   const steps: StepItem[] = [
     {
@@ -701,10 +715,24 @@ export default function BlueprintsDashboard() {
                   ? `${sourceReview.summary.conflicts} scope conflict needs a decision before generation.`
                   : "Only missing decisions and explicit conflicts are shown. Covered areas remain quiet."}
               </p>
+              {nextSourceFinding && (
+                <div className="mt-5 border-y border-[var(--border)] py-4">
+                  <p className="page-kicker">Start here · {nextSourceFinding.priority} priority</p>
+                  <h3 className="mt-2 text-base font-semibold text-[var(--foreground)]">{nextSourceFinding.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{nextSourceFinding.guidance || nextSourceFinding.message}</p>
+                  {nextSourceFinding.recommended_source_kind && (
+                    <p className="mt-3 text-xs font-semibold text-[var(--foreground)]">
+                      {nextSourceFinding.recommended_source_kind === "gdd"
+                        ? "Recommended action: update this GDD."
+                        : `Recommended source: add a ${sourceKindMeta[asSourceKind(nextSourceFinding.recommended_source_kind)].label.toLowerCase()}.`}
+                    </p>
+                  )}
+                </div>
+              )}
               <ul className="mt-4 space-y-3">
-                {sourceReview.findings.filter((finding) => finding.severity !== "covered").map((finding) => (
+                {actionableSourceFindings.slice(1).map((finding) => (
                   <li key={finding.title} className={`border-l-2 pl-3 ${finding.severity === "conflict" ? "border-amber-500" : "border-[var(--accent)]"}`}>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">{finding.title}</p>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{finding.title} <span className="font-normal text-[var(--text-secondary)]">· {finding.priority}</span></p>
                     <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{finding.guidance || finding.message}</p>
                   </li>
                 ))}
@@ -713,7 +741,7 @@ export default function BlueprintsDashboard() {
                 <p className="mt-4 text-sm font-medium text-[var(--foreground)]">The source covers the first-pass decisions GameMind checks.</p>
               )}
               {(sourceReview.summary.needs_decision > 0 || sourceReview.summary.conflicts > 0) && (
-                <Link href="/decisions" className="btn-secondary mt-5">Open decision workspace</Link>
+                <Link href={`/decisions?document=${selectedDocId}`} className="btn-secondary mt-5">Open decision workspace</Link>
               )}
             </section>
           )}

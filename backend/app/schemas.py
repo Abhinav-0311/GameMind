@@ -58,6 +58,8 @@ class GddReviewFinding(BaseModel):
     severity: str
     message: str
     guidance: Optional[str] = None
+    priority: str = "medium"
+    recommended_source_kind: Optional[str] = None
     citations: List[str] = []
 
 
