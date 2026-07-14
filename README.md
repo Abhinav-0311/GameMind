@@ -40,13 +40,31 @@ The goal is not to replace a designer or developer. The goal is to give early te
 
 Use GameMind as a game design command center without integrating a game engine.
 
-- Upload GDDs, lore files, NPC sheets, quest notes, and level briefs.
-- Search lore with citations before trusting generated output.
-- Generate structured blueprints for narrative, art direction, NPCs, quests, memory, and level ideas.
-- Review confidence, warnings, and missing design information.
-- Export blueprint JSON, runtime bundle JSON, or team-facing design notes.
+- Create a named workspace for each game.
+- Upload GDDs, lore files, NPC sheets, quest notes, level briefs, and technical constraints.
+- Review a GDD for missing decisions, conflicts, and unsupported assumptions.
+- Track and resolve design decisions against source evidence.
+- Generate multi-source blueprints for narrative, art direction, NPCs, quests, memory, level ideas, and gameplay systems.
+- Open section-level evidence and export a portable Markdown project brief.
 
 This mode is useful for students, writers, designers, and indie teams that need help organizing a game before runtime integration.
+
+## Core Dashboard Workflow
+
+The dashboard is deliberately organised around one clear path:
+
+```text
+Workspace -> Sources -> GDD review -> Decisions -> Blueprint -> Evidence -> Project brief
+```
+
+1. Create or select a **workspace**. A workspace scopes documents, decisions, blueprints, and runtime data to one game.
+2. In **Sources**, add a GDD or supporting notes. GameMind identifies the source type, rejects exact duplicate content, and preserves later uploads as revisions instead of overwriting evidence.
+3. Open the source review to see what is specified, what conflicts, and which product decisions still need an answer.
+4. Use **Decisions** to resolve those questions in one place.
+5. In **Blueprints**, choose a primary GDD and, when useful, add supporting source documents. Review structured sections, warnings, readiness, and citations before approving anything.
+6. Open a citation to inspect the exact source chunk, then export the blueprint as a Markdown project brief for a teammate, portfolio review, or implementation handoff.
+
+Runtime materialization is optional and comes only after the blueprint is reviewed. This keeps the dashboard useful for planning even when a team has no engine integration yet.
 
 ### 2. Runtime Integration
 
@@ -64,9 +82,12 @@ Unity is included as one proof-of-integration adapter. It is not the whole produ
 ## What It Does
 
 - Upload and index game documents such as GDDs, lore files, character notes, and quest rules.
+- Keep source lineages through revisions and prevent duplicate files from polluting a workspace.
 - Query the lore index with citations, confidence scores, and local Chroma retrieval.
-- Generate game blueprints from uploaded GDDs using local rules, templates, and schema validation.
-- Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, quest hooks, and Unity runtime previews.
+- Generate source-grounded, multi-source game blueprints with local rules, templates, and schema validation.
+- Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, gameplay systems, quest hooks, and runtime previews.
+- Turn missing or conflicting GDD details into visible, resolvable design decisions.
+- Trace each generated section to its source chunks and export a team-facing Markdown brief.
 - Manage NPC profiles, quests, world state, memory, dialogue assembly, progressive hints, and analytics.
 - Export structured JSON that Unity or another game client can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
 
@@ -209,12 +230,12 @@ Expected local demo mode:
 
 ## Demo Flow
 
-1. Open **Sources** and click **Load Frostpeak demo**. You can also manually upload `docs/demo/sample_gdd_frostpeak.md`.
-2. Open **Blueprints**.
-3. Generate a blueprint from the uploaded GDD.
-4. Review all generated sections with citations, confidence, and warnings.
-5. Approve and materialize the blueprint into runtime records.
-6. Use the simulator or Unity scripts to test NPC dialogue, quests, and hint flows.
+1. Create a workspace, then open **Sources** and click **Load Frostpeak demo**. You can also upload `docs/demo/sample_gdd_frostpeak.md`.
+2. Inspect the source review and open **Decisions** to resolve the extracted open questions.
+3. Open **Blueprints**, select the primary GDD, and optionally add supporting sources.
+4. Generate the blueprint, inspect its readiness and section citations, and use **View source** to verify any important claim.
+5. Export a **Project brief** when you want a portable Markdown handoff.
+6. Only when runtime testing is useful, approve and materialize the blueprint, then use the simulator or Unity adapter to test dialogue, quests, and hints.
 
 For a presenter-friendly walkthrough, use [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
 For a short recording script, use [docs/demo/demo_script.md](docs/demo/demo_script.md).
@@ -226,24 +247,26 @@ For runtime integration, use [docs/integrations/runtime_api.md](docs/integration
 
 Implemented:
 
-- Local document upload and demo GDD loading.
-- Local Chroma retrieval with citations.
-- Blueprint generation and review.
-- Blueprint approval and materialization.
+- Named project workspaces with scoped data isolation.
+- Source ingestion, source-type classification, duplicate prevention, and immutable source revisions.
+- Local Chroma retrieval with citations and exact source-chunk tracing.
+- GDD reviews, decision tracking, and evidence coverage.
+- Multi-source blueprint generation, quality/readiness review, comparison, and Markdown project-brief export.
+- Blueprint approval and optional materialization.
 - NPC, quest, memory, world flag, dialogue, and hint backend flows.
 - Next.js dashboard for the core workflow.
 - Unity C# API client and vertical-slice scene scripts.
 - Alembic migrations and project-scoped database isolation.
-- Backend and frontend verification gates.
+- Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
 
-- Strengthen dashboard workspace exports and onboarding.
-- Add richer blueprint quality checks for weak GDDs.
 - Add a cleaner public demo video/GIF.
-- Package integration docs and sample clients more clearly.
-- Add optional hosted provider implementation behind the existing provider interface.
-- Continue simplifying dashboard pages around the main indie-dev workflow.
+- Add guided first-run onboarding and a deliberate empty-workspace experience.
+- Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
+- Package engine-neutral API examples and integration starter kits more clearly.
+- Add optional NVIDIA-hosted inference behind the provider interface without weakening local mode.
+- Add production deployment hardening: authentication, object storage, rate limits, backups, and CI/CD.
 
 ## Production Notes
 
