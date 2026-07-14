@@ -97,7 +97,13 @@ class BlueprintService:
         objective = self._clean_title(objective)
         return objective[:80] if objective else f"Quest Hook {fallback_index + 1}"
 
-    def generate_blueprint_from_gdd(self, db: Session, document_id: UUID, game_project_id: str) -> GameBlueprint:
+    def generate_blueprint_from_gdd(
+        self,
+        db: Session,
+        document_id: UUID,
+        game_project_id: str,
+        supporting_document_ids: List[UUID] | None = None,
+    ) -> GameBlueprint:
         document = db.query(Document).filter(
             Document.id == document_id,
             Document.game_project_id == game_project_id,
@@ -108,12 +114,33 @@ class BlueprintService:
                 detail="Game Design Document not found or not owned by this project.",
             )
 
-        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
-        if not chunks:
+        primary_chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
+        if not primary_chunks:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target document has no text chunks indexed.",
+                detail="Primary document has no text chunks indexed.",
             )
+
+        supporting_ids = []
+        for candidate_id in supporting_document_ids or []:
+            if candidate_id != document_id and candidate_id not in supporting_ids:
+                supporting_ids.append(candidate_id)
+
+        supporting_documents = []
+        if supporting_ids:
+            supporting_documents = db.query(Document).filter(
+                Document.id.in_(supporting_ids),
+                Document.game_project_id == game_project_id,
+            ).all()
+            if len(supporting_documents) != len(supporting_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="One or more supporting sources were not found or are not owned by this project.",
+                )
+            supporting_by_id = {source.id: source for source in supporting_documents}
+            supporting_documents = [supporting_by_id[source_id] for source_id in supporting_ids]
+
+        chunks = primary_chunks + db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(supporting_ids)).all()
 
         summary = self._parse_summary(document.title, chunks)
         narrative = self._parse_narrative(chunks)
@@ -130,6 +157,7 @@ class BlueprintService:
         blueprint = GameBlueprint(
             title=f"Blueprint: {document.title}",
             document_id=document_id,
+            source_document_ids=[str(document_id), *[str(source.id) for source in supporting_documents]],
             game_project_id=game_project_id,
             summary=summary,
             narrative_direction=narrative,
@@ -328,10 +356,14 @@ class BlueprintService:
         )
 
     def _parse_gameplay_systems(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
-        """Extract explicitly labelled gameplay systems without inventing mechanics."""
+        """Extract explicit gameplay and production requirements without inventing them."""
         categories = {
+            "technical_constraints": (r"\b(?:technical constraints?|performance|frame ?rate|\bfps\b|memory budget|hardware|target device|engine|network(?:ing)?|offline|save system|resolution)\b", []),
+            "accessibility": (r"\b(?:accessibility|subtitles?|captions?|color ?blind|remapp(?:ing|able)|assist mode|difficulty assist|motion sensitiv(?:ity|e))\b", []),
+            "platforms_controls": (r"\b(?:platforms?|controls?|input|keyboard|controller|gamepad|touchscreen|mouse)\b", []),
             "core_loop": (r"\b(?:core loop|gameplay loop|gameplay systems?|mechanics?)\b", []),
             "progression": (r"\b(?:progression|level(?:ling|ing)?|experience|xp|upgrade|unlock|skill tree)\b", []),
+            "economy": (r"\b(?:economy|currency|gold|credits?|loot|rewards?|shop|crafting|trade)\b", []),
             "design_constraints": (r"\b(?:constraints?|restrictions?|limitations?|must not|cannot|can only|requires?)\b", []),
         }
         citations = []
@@ -353,7 +385,16 @@ class BlueprintService:
 
         content = {name: self._unique(values) for name, (_, values) in categories.items()}
         found_systems = any(content.values())
-        warnings = [] if found_systems else ["No explicit gameplay loop, progression, or design constraints were detected in the source document."]
+        labels = {
+            "core_loop": "gameplay loop or mechanics",
+            "progression": "progression rules",
+            "economy": "economy, rewards, or crafting rules",
+            "platforms_controls": "platform or control requirements",
+            "accessibility": "accessibility requirements",
+            "technical_constraints": "technical or performance constraints",
+            "design_constraints": "design constraints",
+        }
+        warnings = [f"No explicit {label} found in the source document." for name, label in labels.items() if not content[name]]
         return self._section(
             content,
             self._unique(citations),

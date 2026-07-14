@@ -58,6 +58,63 @@ def test_generate_blueprint_success(uploaded_document):
         assert "confidence" in data[section]
         assert "warnings" in data[section]
 
+
+def test_generate_blueprint_uses_selected_supporting_sources(db_session):
+    """A supporting NPC sheet may enrich the blueprint without replacing its primary GDD."""
+    rag = RAGService()
+    project_id = f"multi_source_{uuid.uuid4().hex[:8]}"
+    primary = rag.process_document(
+        db=db_session,
+        file_name="main_gdd.md",
+        file_bytes=b"# GDD\nOverview: Explore an ancient observatory.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+    )
+    npc_sheet = rag.process_document(
+        db=db_session,
+        file_name="npc_sheet.md",
+        file_bytes=b"# NPC Profiles\nNPC Lyra: A practical observatory keeper.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        headers={"X-Game-Project-ID": project_id},
+        json={"document_id": str(primary.id), "supporting_document_ids": [str(npc_sheet.id)]},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["document_id"] == str(primary.id)
+    assert data["source_document_ids"] == [str(primary.id), str(npc_sheet.id)]
+    assert data["npc_archetypes"]["content"]["npcs"][0]["name"] == "Lyra"
+
+
+def test_generate_blueprint_rejects_cross_project_supporting_source(db_session):
+    rag = RAGService()
+    primary = rag.process_document(
+        db=db_session,
+        file_name="owner_gdd.md",
+        file_bytes=b"# GDD\nOverview: A private game.",
+        content_type="text/markdown",
+        game_project_id="multi_owner",
+    )
+    foreign = rag.process_document(
+        db=db_session,
+        file_name="foreign_lore.md",
+        file_bytes=b"# Lore\nPrivate world history.",
+        content_type="text/markdown",
+        game_project_id="multi_foreign",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        headers={"X-Game-Project-ID": "multi_owner"},
+        json={"document_id": str(primary.id), "supporting_document_ids": [str(foreign.id)]},
+    )
+    assert response.status_code == 404
+
 def test_approve_blueprint_success(uploaded_document):
     """Test approving a game blueprint updates its status to 'approved'."""
     # 1. Generate
@@ -298,5 +355,40 @@ def test_blueprint_extracts_explicit_gameplay_systems(db_session):
         "core_loop": ["Explore derelict stations, scan artifacts, craft upgrades, and return safely."],
         "progression": ["Players earn research points to unlock navigation modules."],
         "design_constraints": ["The player can carry only two power cells at once."],
+        "technical_constraints": [],
+        "accessibility": [],
+        "platforms_controls": [],
+        "economy": [],
     }
     assert systems["citations"]
+
+
+def test_blueprint_extracts_explicit_production_requirements(db_session):
+    """Practical GDD requirements must stay source-backed and expose missing coverage."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"production_gdd_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Economy\nCredits are earned from contracts and spent on ship repairs.\n\n"
+            b"# Platforms and Controls\nTarget platform: Windows PC. Keyboard, mouse, and controller input are required.\n\n"
+            b"# Accessibility\nInclude subtitles, remappable controls, and color blind safe objective markers.\n\n"
+            b"# Technical Constraints\nMaintain 60 FPS on the target device and support offline saves.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 201
+    systems = response.json()["gameplay_systems"]
+    assert systems["content"]["economy"] == ["Credits are earned from contracts and spent on ship repairs."]
+    assert systems["content"]["platforms_controls"] == ["Target platform: Windows PC. Keyboard, mouse, and controller input are required."]
+    assert systems["content"]["accessibility"] == ["Include subtitles, remappable controls, and color blind safe objective markers."]
+    assert systems["content"]["technical_constraints"] == ["Maintain 60 FPS on the target device and support offline saves."]
+    assert any("gameplay loop" in warning for warning in systems["warnings"])

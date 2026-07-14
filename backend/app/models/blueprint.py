@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, ForeignKey, DateTime
+from sqlalchemy import Column, String, ForeignKey, DateTime, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -11,6 +11,7 @@ class GameBlueprint(Base, ProjectScopedMixin):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(255), nullable=False)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    source_document_ids = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
     
     # Section structure: {"content": {...}, "citations": [...], "confidence": "...", "warnings": [...]}
     summary = Column(JSONB, nullable=False)

@@ -34,9 +34,12 @@ class DocumentResponse(BaseModel):
     id: UUID
     title: str
     content_type: str
+    source_kind: str = "general"
     created_at: datetime
     updated_at: datetime
     chunks_count: int
+    source_document_id: Optional[UUID] = None
+    revision_number: int = 1
 
     model_config = ConfigDict(
         from_attributes=True
@@ -44,6 +47,96 @@ class DocumentResponse(BaseModel):
 
 class DocumentDetailResponse(DocumentResponse):
     chunks: List[ChunkResponse] = []
+
+
+class SourceKindUpdate(BaseModel):
+    source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|general)$")
+
+
+class GddReviewFinding(BaseModel):
+    title: str
+    severity: str
+    message: str
+    guidance: Optional[str] = None
+    citations: List[str] = []
+
+
+class GddReviewSummary(BaseModel):
+    covered: int
+    needs_decision: int
+    conflicts: int
+
+
+class GddReviewResponse(BaseModel):
+    document_id: UUID
+    title: str
+    revision_number: int
+    summary: GddReviewSummary
+    findings: List[GddReviewFinding] = []
+
+
+class DesignDecisionResponse(BaseModel):
+    id: UUID
+    document_id: UUID
+    game_project_id: str
+    category: str
+    title: str
+    guidance: Optional[str] = None
+    severity: str
+    decision: Optional[str] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DecisionCoverageItem(BaseModel):
+    decision_id: UUID
+    title: str
+    decision: Optional[str] = None
+    status: str
+    origin_revision_number: int
+    evidence_status: str
+    citations: List[str] = []
+
+
+class DecisionCoverageSummary(BaseModel):
+    source_backed: int
+    needs_source_evidence: int
+    decision_open: int
+
+
+class DecisionCoverageResponse(BaseModel):
+    document_id: UUID
+    revision_number: int
+    summary: DecisionCoverageSummary
+    items: List[DecisionCoverageItem] = []
+
+
+class BlueprintComparisonSection(BaseModel):
+    section: str
+    status: str
+    before_warnings: int
+    after_warnings: int
+
+
+class BlueprintComparisonResponse(BaseModel):
+    base_blueprint_id: UUID
+    revised_blueprint_id: UUID
+    changed_sections: List[BlueprintComparisonSection] = []
+
+
+class GameProjectCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+
+
+class GameProjectResponse(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 # Query Schemas
 class QueryRequest(BaseModel):
@@ -530,12 +623,14 @@ class BlueprintSectionResponse(BaseModel):
 
 class BlueprintGenerateRequest(BaseModel):
     document_id: UUID = Field(..., description="ID of the GDD document to generate blueprint from")
+    supporting_document_ids: List[UUID] = Field(default_factory=list, description="Optional supporting source documents from the same project")
 
 class BlueprintResponse(BaseModel):
     id: UUID
     game_project_id: str
     title: str
     document_id: Optional[UUID] = None
+    source_document_ids: List[UUID] = []
     summary: BlueprintSectionResponse
     narrative_direction: BlueprintSectionResponse
     art_style_direction: BlueprintSectionResponse
@@ -562,6 +657,35 @@ class BlueprintExportResponse(BaseModel):
     runtime_data: Dict[str, Any]
 
 
+class BlueprintReadinessResponse(BaseModel):
+    status: str
+    can_materialize: bool
+    missing_required: List[str] = []
+    advisories: List[str] = []
+
+
+class BlueprintCitationResponse(BaseModel):
+    chunk_id: UUID
+    document_id: UUID
+    document_title: str
+    revision_number: int
+    chunk_index: int
+
+
+class BlueprintSectionProvenanceResponse(BaseModel):
+    section: str
+    citations: List[BlueprintCitationResponse] = []
+
+
+class BlueprintProvenanceResponse(BaseModel):
+    blueprint_id: UUID
+    sections: List[BlueprintSectionProvenanceResponse] = []
+
+
+class MaterializeBlueprintRequest(BaseModel):
+    confirm_incomplete: bool = False
+
+
 # Phase 3B schemas
 class MaterializationReportSection(BaseModel):
     created: List[str] = []
@@ -584,10 +708,3 @@ class BlueprintRuntimeBundleResponse(BaseModel):
     quests: List[QuestResponse]
     memories: List[NPCMemoryResponse]
     world_flags: List[WorldStateFlagResponse]
-
-
-
-
-
-
-

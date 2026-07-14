@@ -2,6 +2,8 @@ import io
 import uuid
 import logging
 import threading
+import hashlib
+import re
 from sqlalchemy.orm import Session
 from pypdf import PdfReader
 import chromadb
@@ -9,6 +11,15 @@ from app.config import settings
 from app.models.document import Document, DocumentChunk
 
 logger = logging.getLogger(__name__)
+
+
+class DuplicateDocumentError(ValueError):
+    """Raised when a project already contains the same extracted source text."""
+
+    def __init__(self, document: Document):
+        self.document = document
+        super().__init__(f'An identical source is already indexed as "{document.title}".')
+
 
 class RAGService:
     _chroma_client = None
@@ -128,19 +139,54 @@ class RAGService:
                 
         return chunks
 
+    @staticmethod
+    def content_fingerprint(text: str) -> str:
+        """Hash normalized extracted text so renamed copies are not indexed twice."""
+        normalized_text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+        return hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def classify_source_kind(file_name: str, raw_text: str) -> str:
+        """Classify only when a filename or heading makes the source role explicit."""
+        evidence = f"{file_name}\n{raw_text[:4000]}".lower()
+        checks = (
+            ("gdd", r"\b(?:gdd|game design document)\b"),
+            ("npc_sheet", r"\b(?:npc sheet|npc profiles?|character sheet|character profiles?)\b"),
+            ("quest_brief", r"\b(?:quest brief|quest design|quest hooks?|mission design)\b"),
+            ("level_brief", r"\b(?:level brief|level design|level layout|environment design)\b"),
+            ("technical_brief", r"\b(?:technical brief|technical design|performance requirements?|engine constraints?)\b"),
+            ("lore", r"\b(?:lore|world bible|setting bible|codex)\b"),
+        )
+        for source_kind, pattern in checks:
+            if re.search(pattern, evidence, re.IGNORECASE):
+                return source_kind
+        return "general"
+
     def process_document(
         self, 
         db: Session, 
         file_name: str, 
         file_bytes: bytes, 
         content_type: str,
-        game_project_id: str = "default_project"
+        game_project_id: str = "default_project",
+        reject_duplicate: bool = False,
+        source_document: Document | None = None,
+        source_kind: str | None = None,
     ) -> Document:
         """Processes document: extracts, chunks, writes to DB, embeds, writes to ChromaDB."""
         # 1. Extract plain text
         raw_text = self.extract_text(file_bytes, file_name, content_type)
         if not raw_text.strip():
             raise ValueError("Extracted text content is empty.")
+
+        content_hash = self.content_fingerprint(raw_text)
+        if reject_duplicate:
+            existing_document = db.query(Document).filter(
+                Document.game_project_id == game_project_id,
+                Document.content_hash == content_hash,
+            ).first()
+            if existing_document:
+                raise DuplicateDocumentError(existing_document)
 
         # 2. Chunk text
         text_chunks = self.chunk_text(raw_text)
@@ -151,11 +197,25 @@ class RAGService:
         db_doc = Document(
             title=file_name,
             content_type=content_type,
+            source_kind=source_kind or (source_document.source_kind if source_document else self.classify_source_kind(file_name, raw_text)),
+            content_hash=content_hash,
             file_path=None, # For this release we don't save files locally, we process bytes in-memory
             game_project_id=game_project_id
         )
         db.add(db_doc)
         db.flush() # Populate the ID
+
+        if source_document:
+            source_id = source_document.source_document_id or source_document.id
+            latest_revision = db.query(Document.revision_number).filter(
+                Document.source_document_id == source_id,
+                Document.game_project_id == game_project_id,
+            ).order_by(Document.revision_number.desc()).first()
+            db_doc.source_document_id = source_id
+            db_doc.revision_number = (latest_revision[0] if latest_revision else source_document.revision_number) + 1
+        else:
+            db_doc.source_document_id = db_doc.id
+            db_doc.revision_number = 1
 
         # 4. Create DocumentChunk entries in DB & prepare lists for Vector DB
         db_chunks = []

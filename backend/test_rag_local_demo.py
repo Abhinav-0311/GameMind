@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from app.models.document import Document
-from app.services.rag_service import RAGService
+from app.services.rag_service import DuplicateDocumentError, RAGService
 import uuid
 
 client = TestClient(app)
@@ -43,6 +43,88 @@ def test_document_upload_local_demo(db_session):
     )
     assert len(chroma_res["ids"]) > 0
     assert chroma_res["documents"][0] == "This is some local test lore about the Ember Siege."
+
+
+def test_duplicate_document_content_is_not_indexed_twice(db_session):
+    """Renamed copies must not create duplicate relational or vector records."""
+    rag = RAGService()
+    project_id = f"duplicate_source_{uuid.uuid4().hex[:8]}"
+    content = b"The North Gate opens only after the beacon is repaired."
+
+    original = rag.process_document(
+        db=db_session,
+        file_name="gate_notes.md",
+        file_bytes=content,
+        content_type="text/markdown",
+        game_project_id=project_id,
+        reject_duplicate=True,
+    )
+
+    with pytest.raises(DuplicateDocumentError) as error:
+        rag.process_document(
+            db=db_session,
+            file_name="renamed_gate_notes.md",
+            file_bytes=content,
+            content_type="text/markdown",
+            game_project_id=project_id,
+            reject_duplicate=True,
+        )
+
+    assert error.value.document.id == original.id
+    assert db_session.query(Document).filter(Document.game_project_id == project_id).count() == 1
+
+
+def test_upload_endpoint_rejects_renamed_duplicate_content():
+    """The public upload endpoint must protect a project from duplicate source files."""
+    project_id = f"duplicate_api_{uuid.uuid4().hex[:8]}"
+    headers = {"X-Game-Project-ID": project_id}
+    content = b"The observatory opens when the player restores power."
+
+    first = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": ("observatory.md", content, "text/markdown")},
+    )
+    duplicate = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        files={"file": ("observatory-copy.md", content, "text/markdown")},
+    )
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 409
+    assert "identical source" in duplicate.json()["detail"].lower()
+
+    library = client.get("/api/v1/documents/", headers=headers)
+    assert library.status_code == 200
+    assert len(library.json()) == 1
+
+
+def test_document_revision_preserves_source_lineage(db_session):
+    """A changed GDD must become a new revision without replacing prior evidence."""
+    rag = RAGService()
+    project_id = f"revision_source_{uuid.uuid4().hex[:8]}"
+    original = rag.process_document(
+        db=db_session,
+        file_name="gdd-v1.md",
+        file_bytes=b"# Overview\nExplore the observatory.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        reject_duplicate=True,
+    )
+    revised = rag.process_document(
+        db=db_session,
+        file_name="gdd-v2.md",
+        file_bytes=b"# Overview\nExplore the observatory and restore the weather array.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        reject_duplicate=True,
+        source_document=original,
+    )
+
+    assert original.revision_number == 1
+    assert revised.revision_number == 2
+    assert revised.source_document_id == original.source_document_id == original.id
 
 def test_query_returns_citations_local_demo(db_session):
     """Verify query returns citations cleanly with local embeddings."""

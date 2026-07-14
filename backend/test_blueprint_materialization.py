@@ -87,6 +87,28 @@ def test_materialize_draft_rejected(db_session, make_blueprint):
     assert response.status_code == 400
     assert "Only approved blueprints" in response.json()["detail"]
 
+
+def test_incomplete_blueprint_requires_materialization_confirmation(db_session, make_blueprint):
+    """Sparse planning output must not silently become a partial runtime bundle."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "approved")
+    bp.npc_archetypes = {"content": {"npcs": []}, "citations": [], "confidence": "Low", "warnings": ["Missing NPCs"]}
+    db_session.commit()
+
+    readiness = client.get(f"/api/v1/blueprints/{bp.id}/readiness", headers={"X-Game-Project-ID": project_id})
+    blocked = client.post(f"/api/v1/blueprints/{bp.id}/materialize", headers={"X-Game-Project-ID": project_id})
+    confirmed = client.post(
+        f"/api/v1/blueprints/{bp.id}/materialize",
+        headers={"X-Game-Project-ID": project_id},
+        json={"confirm_incomplete": True},
+    )
+
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "planning_only"
+    assert "NPC definitions" in readiness.json()["missing_required"]
+    assert blocked.status_code == 409
+    assert confirmed.status_code == 200
+
 def test_materialize_first_run_creates_records(db_session, make_blueprint):
     """Test first run of materialize creates db rows and updates the manifest column."""
     project_id = f"project_{uuid.uuid4().hex[:6]}"
