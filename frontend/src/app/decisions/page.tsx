@@ -194,9 +194,16 @@ function DecisionsContent() {
                 <article key={decision.id} className={`border-b border-[var(--border)] border-l-2 py-6 pl-5 ${decisionTone(decision)}`}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="page-kicker">{decision.severity === "conflict" ? "Scope conflict" : "Open decision"}</p>
+                      <p className="page-kicker">
+                        {decision.priority} priority · {decision.severity === "conflict" ? "scope conflict" : "open decision"}
+                      </p>
                       <h2 className="mt-2 text-xl font-semibold text-[var(--foreground)]">{decision.title}</h2>
                       {decision.guidance && <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{decision.guidance}</p>}
+                      {decision.recommended_source_kind && (
+                        <p className="mt-3 text-sm font-medium text-[var(--foreground)]">
+                          Next source: <span className="text-[var(--text-secondary)]">{decision.recommended_source_kind.replaceAll("_", " ")}</span>
+                        </p>
+                      )}
                     </div>
                     <span className="shrink-0 text-xs font-semibold text-[var(--text-secondary)]">
                       {coverage?.items.find((item) => item.decision_id === decision.id)?.evidence_status.replaceAll("_", " ") || (decision.status === "resolved" ? "Resolved" : "Open")}

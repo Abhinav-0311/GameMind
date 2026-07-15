@@ -92,3 +92,32 @@ def test_decision_coverage_uses_latest_source_revision(db_session):
     core_loop_coverage = next(item for item in coverage["items"] if item["title"] == "Core gameplay loop")
     assert core_loop_coverage["evidence_status"] == "source_backed"
     assert core_loop_coverage["origin_revision_number"] == 1
+
+
+def test_synced_decisions_keep_review_priority_and_recommended_source_kind(db_session):
+    project_id = f"decision_metadata_{uuid.uuid4().hex[:8]}"
+    document = RAGService().process_document(
+        db=db_session,
+        file_name="delivery_scope.md",
+        file_bytes=(
+            b"# Project\n"
+            b"The PC game includes an Android AR companion and an online leaderboard.\n"
+            b"A story scene includes a suspicious server label.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id=project_id,
+    )
+    headers = {"X-Game-Project-ID": project_id}
+
+    response = client.post(
+        "/api/v1/decisions/sync",
+        headers=headers,
+        json={"document_id": str(document.id)},
+    )
+
+    assert response.status_code == 200
+    decisions = {decision["title"]: decision for decision in response.json()}
+    assert decisions["Multi-platform delivery scope"]["priority"] == "high"
+    assert decisions["Multi-platform delivery scope"]["recommended_source_kind"] == "technical_brief"
+    assert decisions["Online feature boundary"]["priority"] == "high"
+    assert decisions["Online feature boundary"]["recommended_source_kind"] == "technical_brief"

@@ -85,6 +85,8 @@ class DesignDecisionResponse(BaseModel):
     title: str
     guidance: Optional[str] = None
     severity: str
+    priority: str = "medium"
+    recommended_source_kind: Optional[str] = None
     decision: Optional[str] = None
     status: str
     created_at: datetime

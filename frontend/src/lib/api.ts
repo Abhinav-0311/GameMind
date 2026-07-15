@@ -93,6 +93,8 @@ export interface DesignDecision {
   title: string;
   guidance?: string | null;
   severity: "needs_decision" | "conflict";
+  priority: "critical" | "high" | "medium" | "low";
+  recommended_source_kind?: string | null;
   decision?: string | null;
   status: "open" | "resolved";
   created_at: string;

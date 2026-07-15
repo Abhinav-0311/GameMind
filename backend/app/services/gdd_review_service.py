@@ -100,7 +100,19 @@ class GddReviewService:
             })
 
         has_online_feature = bool(re.search(r"\b(?:leaderboard|online|multiplayer|co[ -]?op|pvp)\b", source_text, re.IGNORECASE))
-        has_online_boundary = bool(re.search(r"\b(?:backend|server|service|network(?:ing)?|offline fallback)\b", source_text, re.IGNORECASE))
+        # A narrative can mention a server without defining how an online feature is
+        # delivered. Require an implementation boundary before treating leaderboard
+        # or multiplayer scope as covered.
+        has_online_boundary = bool(re.search(
+            r"\b(?:backend\s+(?:service|api|endpoint|architecture)|"
+            r"server[-\s]?(?:authoritative|hosted|endpoint|api)|"
+            r"network(?:ing)?\s+(?:architecture|service|layer|stack)|"
+            r"online\s+(?:service|backend|api)|"
+            r"(?:offline|local)\s+fallback|"
+            r"leaderboard\s+(?:service|backend|api))\b",
+            source_text,
+            re.IGNORECASE,
+        ))
         if has_online_feature and not has_online_boundary:
             findings.append({
                 "title": "Online feature boundary",

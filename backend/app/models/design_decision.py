@@ -21,6 +21,8 @@ class DesignDecision(Base, ProjectScopedMixin):
     title = Column(String(160), nullable=False)
     guidance = Column(Text, nullable=True)
     severity = Column(String(30), nullable=False, server_default="needs_decision")
+    priority = Column(String(16), nullable=False, server_default="medium")
+    recommended_source_kind = Column(String(32), nullable=True)
     decision = Column(Text, nullable=True)
     status = Column(String(30), nullable=False, server_default="open")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

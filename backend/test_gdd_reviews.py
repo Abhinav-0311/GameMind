@@ -80,3 +80,30 @@ def test_gdd_review_prioritizes_delivery_scope_and_recommends_a_supporting_sourc
     assert findings["Multi-platform delivery scope"]["priority"] == "high"
     assert findings["Multi-platform delivery scope"]["recommended_source_kind"] == "technical_brief"
     assert findings["Online feature boundary"]["priority"] == "high"
+
+
+def test_gdd_review_keeps_online_scope_open_when_server_is_only_narrative_language(db_session):
+    """A story reference to a server must not masquerade as an online architecture decision."""
+    project_id = f"narrative_server_{uuid.uuid4().hex[:8]}"
+    document = RAGService().process_document(
+        db=db_session,
+        file_name="online_story.md",
+        file_bytes=(
+            b"# Narrative\n"
+            b"The player finds suspicious server labels during the investigation.\n"
+            b"# Feature list\n"
+            b"An online leaderboard records weekly challenge scores.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id=project_id,
+    )
+
+    response = client.get(
+        f"/api/v1/reviews/documents/{document.id}",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    findings = {finding["title"]: finding for finding in response.json()["findings"]}
+    assert findings["Online feature boundary"]["severity"] == "needs_decision"
+    assert findings["Online feature boundary"]["recommended_source_kind"] == "technical_brief"

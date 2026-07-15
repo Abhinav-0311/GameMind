@@ -3,6 +3,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.models.design_decision import DesignDecision
@@ -19,10 +20,16 @@ class DesignDecisionService:
         return normalized[:100]
 
     def list_for_document(self, db: Session, document_id: UUID, game_project_id: str) -> List[DesignDecision]:
+        priority_order = case(
+            (DesignDecision.priority == "critical", 0),
+            (DesignDecision.priority == "high", 1),
+            (DesignDecision.priority == "medium", 2),
+            else_=3,
+        )
         return db.query(DesignDecision).filter(
             DesignDecision.document_id == document_id,
             DesignDecision.game_project_id == game_project_id,
-        ).order_by(DesignDecision.status.asc(), DesignDecision.created_at.asc()).all()
+        ).order_by(DesignDecision.status.asc(), priority_order.asc(), DesignDecision.created_at.asc()).all()
 
     def sync_from_review(self, db: Session, document_id: UUID, game_project_id: str) -> List[DesignDecision]:
         review = GddReviewService().review(db, document_id, game_project_id)
@@ -43,6 +50,8 @@ class DesignDecisionService:
                     title=finding["title"],
                     guidance=finding["guidance"] or finding["message"],
                     severity=finding["severity"],
+                    priority=finding["priority"],
+                    recommended_source_kind=finding["recommended_source_kind"],
                 )
                 db.add(decision)
                 continue
@@ -50,6 +59,8 @@ class DesignDecisionService:
             decision.title = finding["title"]
             decision.guidance = finding["guidance"] or finding["message"]
             decision.severity = finding["severity"]
+            decision.priority = finding["priority"]
+            decision.recommended_source_kind = finding["recommended_source_kind"]
 
         db.commit()
         return self.list_for_document(db, document_id, game_project_id)
