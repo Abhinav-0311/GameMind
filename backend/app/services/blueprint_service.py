@@ -542,38 +542,40 @@ class BlueprintService:
             })
             citations.append(str(chunk.id))
 
-        # A story-mode level plan is an explicit mission plan. It is safe to turn a
-        # labeled level plus its stated focus into a proposed quest without inventing
-        # rewards, actors, or objectives that the GDD did not define.
-        seen_level_headings = set()
-        for chunk, line, section, heading in self._iter_chunk_lines_with_context(chunks):
-            if not re.search(r"\b(?:story mode )?(?:level|mission) plan\b", section, re.IGNORECASE):
-                continue
-            level_match = re.match(r"^(?:Level|Mission)\s*(\d+)?\s*:\s*(.+)$", heading, re.IGNORECASE)
-            focus_match = re.match(r"^(?:Focus|Objective)\s*:\s*(.+)$", line, re.IGNORECASE)
-            if not level_match or not focus_match:
-                continue
-            title = self._clean_title(level_match.group(2))
-            objective = self._clean_markdown(focus_match.group(1))
-            heading_key = heading.lower()
-            objective_key = re.sub(r"\s+", " ", objective.lower()).strip()
-            if not title or not objective or heading_key in seen_level_headings or objective_key in seen_objectives:
-                continue
-            seen_level_headings.add(heading_key)
-            seen_objectives.add(objective_key)
-            base_title = title
-            duplicate_index = 2
-            while title.lower() in seen_titles:
-                title = f"{base_title} {duplicate_index}"
-                duplicate_index += 1
-            seen_titles.add(title.lower())
-            found_quests.append({
-                "id": f"q_{len(found_quests)}",
-                "title": title,
-                "objective": objective,
-                "reward": "",
-            })
-            citations.append(str(chunk.id))
+        # A story-mode level plan is an explicit mission plan only when the source
+        # does not already provide dedicated quest records. Dedicated quest tables
+        # and Quest Hook lines are the stronger source of truth and must not be
+        # diluted by inferred level-plan duplicates.
+        if not found_quests:
+            seen_level_headings = set()
+            for chunk, line, section, heading in self._iter_chunk_lines_with_context(chunks):
+                if not re.search(r"\b(?:story mode )?(?:level|mission) plan\b", section, re.IGNORECASE):
+                    continue
+                level_match = re.match(r"^(?:Level|Mission)\s*(\d+)?\s*:\s*(.+)$", heading, re.IGNORECASE)
+                focus_match = re.match(r"^(?:Focus|Objective)\s*:\s*(.+)$", line, re.IGNORECASE)
+                if not level_match or not focus_match:
+                    continue
+                title = self._clean_title(level_match.group(2))
+                objective = self._clean_markdown(focus_match.group(1))
+                heading_key = heading.lower()
+                objective_key = re.sub(r"\s+", " ", objective.lower()).strip()
+                if not title or not objective or heading_key in seen_level_headings or objective_key in seen_objectives:
+                    continue
+                seen_level_headings.add(heading_key)
+                seen_objectives.add(objective_key)
+                base_title = title
+                duplicate_index = 2
+                while title.lower() in seen_titles:
+                    title = f"{base_title} {duplicate_index}"
+                    duplicate_index += 1
+                seen_titles.add(title.lower())
+                found_quests.append({
+                    "id": f"q_{len(found_quests)}",
+                    "title": title,
+                    "objective": objective,
+                    "reward": "",
+                })
+                citations.append(str(chunk.id))
 
         warnings = [] if found_quests else ["No quest chains or reward metrics defined in the source document."]
         return self._section(

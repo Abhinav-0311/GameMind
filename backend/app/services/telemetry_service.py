@@ -47,7 +47,9 @@ class TelemetryService:
         )
         db.add(log)
         db.commit()
-        db.refresh(log)
+        # The caller only needs the write to succeed. Refresh issues an extra
+        # round-trip and can fail under concurrent request load after the commit.
+        # The UUID is assigned in Python, so no refresh is required here.
         return log
 
     @staticmethod
@@ -160,7 +162,8 @@ class TelemetryService:
         )
         db.add(log)
         db.commit()
-        db.refresh(log)
+        # Narrative telemetry is auxiliary. Avoid an extra refresh round-trip so
+        # concurrent metric writes cannot fail a player-facing request.
         return log
 
     @staticmethod
@@ -265,7 +268,8 @@ class TelemetryService:
         )
         db.add(log)
         db.commit()
-        db.refresh(log)
+        # Narrative telemetry is auxiliary. Avoid an extra refresh round-trip so
+        # concurrent metric writes cannot fail a player-facing request.
         return log
 
 
@@ -458,4 +462,3 @@ class TelemetryService:
                 ).scalar() or 0
                 results[m] = int(sum_tokens)
         return results
-

@@ -357,6 +357,41 @@ def test_blueprint_extracts_characters_and_missions_from_explicit_gdd_headings(d
     assert data["npc_archetypes"]["citations"]
     assert data["quest_hooks"]["citations"]
 
+
+def test_explicit_quest_records_override_inferred_level_plan_quests(db_session):
+    """Dedicated quest definitions must win over level-plan fallback extraction."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"explicit_quests_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Story Mode Level Plan\n"
+            b"### Level 1: Signal Yard\n"
+            b"Focus: restore the disabled relay and avoid patrol drones.\n\n"
+            b"# Quest Contracts\n"
+            b"| Quest | Objective | Reward |\n"
+            b"| --- | --- | --- |\n"
+            b"| Restore the Relay | Activate the signal relay | Access key |\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 201
+    quests = response.json()["quest_hooks"]["content"]["quests"]
+    assert quests == [{
+        "id": "q_0",
+        "title": "Restore the Relay",
+        "objective": "Activate the signal relay",
+        "reward": "Access key",
+    }]
+
 def test_blueprint_extracts_explicit_gameplay_systems(db_session):
     """Gameplay sections should remain empty unless the GDD labels actual mechanics or rules."""
     rag = RAGService()

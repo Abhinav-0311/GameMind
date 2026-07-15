@@ -6,6 +6,7 @@ from app.models.npc import NPCProfile
 from app.models.quest import Quest, QuestObjective
 from app.models.memory import NPCMemory
 from app.models.world_state import WorldStateFlag
+from app.models.graph import WorldEntity, WorldEntityVersion
 import uuid
 
 client = TestClient(app)
@@ -127,7 +128,18 @@ def test_materialize_first_run_creates_records(db_session, make_blueprint):
     assert "eldrin" in report["npcs"]["created"]
     assert len(report["quests"]["created"]) == 1
     assert len(report["memories"]["created"]) == 1
-    assert len(report["flags"]["created"]) == 2
+    assert len(report["flags"]["created"]) == 1
+
+    graph_entity = db_session.query(WorldEntity).filter(
+        WorldEntity.slug == "eldrin",
+        WorldEntity.game_project_id == project_id,
+    ).one()
+    graph_version = db_session.query(WorldEntityVersion).filter(
+        WorldEntityVersion.entity_id == graph_entity.id,
+        WorldEntityVersion.valid_to.is_(None),
+    ).one()
+    assert graph_entity.entity_type == "npc"
+    assert graph_version.name == "Eldrin"
 
     # Check manifest is saved to DB
     db_session.refresh(bp)
@@ -136,7 +148,7 @@ def test_materialize_first_run_creates_records(db_session, make_blueprint):
     assert "eldrin" in manifest["npcs"]
     assert len(manifest["quest_ids"]) == 1
     assert len(manifest["memory_ids"]) == 1
-    assert "checkpoint-vent-alpha" in manifest["flag_keys"]
+    assert manifest["flag_keys"] == ["east-gate"]
     assert manifest["last_materialized_at"] is not None
 
 def test_materialize_second_run_idempotent(db_session, make_blueprint):
@@ -168,7 +180,7 @@ def test_materialize_second_run_idempotent(db_session, make_blueprint):
     assert len(report["npcs"]["updated"]) == 1
     assert len(report["quests"]["updated"]) == 1
     assert len(report["memories"]["updated"]) == 1
-    assert len(report["flags"]["updated"]) == 2
+    assert len(report["flags"]["updated"]) == 1
 
 def test_materialize_skips_malformed_npc_fragments(db_session, make_blueprint):
     """Blueprint prose fragments must not become runtime NPC profiles."""
@@ -357,14 +369,7 @@ def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_se
 
     db_session.add(WorldStateFlag(
         game_project_id=project_id,
-        flag_key="checkpoint-vent-alpha",
-        flag_value="unlocked",
-        is_active=True,
-        priority=1
-    ))
-    db_session.add(WorldStateFlag(
-        game_project_id=project_id,
-        flag_key="east-gate-locked",
+        flag_key="east-gate",
         flag_value="unlocked",
         is_active=True,
         priority=1
@@ -392,10 +397,7 @@ def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_se
     assert [npc["slug"] for npc in bundle["npcs"]] == ["eldrin"]
     assert [quest["title"] for quest in bundle["quests"]] == ["Reclaim Ash Pass Objective"]
     assert [memory["memory_text"] for memory in bundle["memories"]] == ["Ember Siege historical memories"]
-    assert sorted(flag["flag_key"] for flag in bundle["world_flags"]) == [
-        "checkpoint-vent-alpha",
-        "east-gate-locked",
-    ]
+    assert [flag["flag_key"] for flag in bundle["world_flags"]] == ["east-gate"]
 
 def test_latest_runtime_bundle_returns_newest_materialized_blueprint(make_blueprint):
     """Unity can auto-load the newest materialized bundle without a pasted blueprint ID."""

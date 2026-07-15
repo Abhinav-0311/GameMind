@@ -24,10 +24,13 @@ def db():
     finally:
         session.close()
 
-def setup_npc_graph_entity(db, slug, name):
-    ent = db.query(WorldEntity).filter(WorldEntity.slug == slug).first()
+def setup_npc_graph_entity(db, slug, name, game_project_id="default_project"):
+    ent = db.query(WorldEntity).filter(
+        WorldEntity.slug == slug,
+        WorldEntity.game_project_id == game_project_id,
+    ).first()
     if not ent:
-        ent = WorldEntity(slug=slug, entity_type="npc")
+        ent = WorldEntity(slug=slug, entity_type="npc", game_project_id=game_project_id)
         db.add(ent)
         db.commit()
         db.refresh(ent)
@@ -196,7 +199,7 @@ def test_gate_d_quest_generation(db):
         "name": "Eldrin",
         "personality_summary": "A seasoned quest giver."
     })
-    setup_npc_graph_entity(db, npc_slug, "Eldrin")
+    setup_npc_graph_entity(db, npc_slug, "Eldrin", project_id)
 
     payload = {
         "npc_slug": npc_slug,
@@ -295,7 +298,7 @@ def test_gate_f_version_stamp_caching(db):
         "name": "Cache Master",
         "personality_summary": "NPC for cache test."
     })
-    setup_npc_graph_entity(db, npc_slug, "Cache Master")
+    setup_npc_graph_entity(db, npc_slug, "Cache Master", project_id)
 
     # Generate first time (Cache Miss)
     payload = {

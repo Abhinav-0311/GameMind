@@ -86,6 +86,21 @@ def test_telemetry_recording_on_chat(db, setup_npc):
     assert log.error is None
 
 
+def test_narrative_metric_write_does_not_require_a_post_commit_refresh(db, monkeypatch):
+    """Telemetry must not turn a successful runtime action into a 500 under load."""
+    def fail_refresh(_):
+        raise AssertionError("Narrative telemetry should not refresh after commit")
+
+    monkeypatch.setattr(db, "refresh", fail_refresh)
+    log = TelemetryService.record_narrative_metric(
+        db,
+        action_type="telemetry_refresh_regression",
+        npc_slug="telemetry-system",
+    )
+
+    assert log.id is not None
+
+
 def test_telemetry_recording_on_summarization_and_error(db, setup_npc):
     # Create conversation
     conv_res = client.post("/api/v1/conversations", json={"npc_slug": setup_npc.slug})

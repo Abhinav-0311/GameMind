@@ -238,8 +238,6 @@ Expected local demo mode:
 6. Only when runtime testing is useful, approve and materialize the blueprint, then use the simulator or Unity adapter to test dialogue, quests, and hints.
 
 For a presenter-friendly walkthrough, use [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
-For a short recording script, use [docs/demo/demo_script.md](docs/demo/demo_script.md).
-For the CyberRakshak case-study narration, use [docs/demo/cyberrakshak_demo_script.md](docs/demo/cyberrakshak_demo_script.md).
 The matching silent browser walkthrough is [assets/demo/gamemind-cyberrakshak-walkthrough.webm](assets/demo/gamemind-cyberrakshak-walkthrough.webm).
 For release readiness, use [docs/demo/mvp_acceptance_checklist.md](docs/demo/mvp_acceptance_checklist.md).
 For dashboard-only usage, use [docs/workflows/dashboard_workspace.md](docs/workflows/dashboard_workspace.md).

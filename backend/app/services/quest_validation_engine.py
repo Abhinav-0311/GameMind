@@ -102,7 +102,12 @@ class QuestValidationEngine:
             logger.error(f"Error caching validation result: {e}")
 
     @classmethod
-    def check_dependency_depth_and_cycles(cls, db: Session, quest_title_slug: str) -> Tuple[bool, Optional[str]]:
+    def check_dependency_depth_and_cycles(
+        cls,
+        db: Session,
+        quest_title_slug: str,
+        game_project_id: str = "default_project",
+    ) -> Tuple[bool, Optional[str]]:
         """DFS traversal checking that quest prerequisite depth is <= 5 and no cycles exist."""
         visited = set()
         rec_stack = set()
@@ -119,7 +124,7 @@ class QuestValidationEngine:
             rec_stack.add(slug)
 
             # Find prerequisites of 'slug' in WorldRelationship (Target is slug, Source is parent/prerequisite)
-            tgt_ent = graph_repo.get_entity_by_slug(db, slug)
+            tgt_ent = graph_repo.get_entity_by_slug(db, slug, game_project_id=game_project_id)
             if tgt_ent:
                 rels = db.query(WorldRelationship).filter(
                     WorldRelationship.rel_type == "prerequisite",
@@ -150,6 +155,7 @@ class QuestValidationEngine:
             (valid: bool, reasons: List[str])
         """
         reasons = []
+        game_project_id = quest_data.get("game_project_id", "default_project")
 
         # Gather involved entities for cache stamp tracking
         npc_slug = quest_data.get("npc_slug")
@@ -214,9 +220,8 @@ class QuestValidationEngine:
 
         # 3. Duplicate Quest Check (Scan last 100 generated quests)
         title = quest_data.get("title", "")
-        project_id = quest_data.get("game_project_id", "default_project")
         last_quests = db.query(GeneratedQuest).filter(
-            GeneratedQuest.game_project_id == project_id
+            GeneratedQuest.game_project_id == game_project_id
         ).order_by(desc(GeneratedQuest.created_at)).limit(MAX_DUPLICATE_SCAN).all()
         for q in last_quests:
             if q.title.strip().lower() == title.strip().lower():
@@ -232,7 +237,11 @@ class QuestValidationEngine:
 
         # 4. Quest Dependency & DAG Validation
         title_slug = title.lower().replace(" ", "_")
-        dep_valid, dep_reason = cls.check_dependency_depth_and_cycles(db, title_slug)
+        dep_valid, dep_reason = cls.check_dependency_depth_and_cycles(
+            db,
+            title_slug,
+            game_project_id=game_project_id,
+        )
         if not dep_valid:
             reasons.append(dep_reason)
 
@@ -264,7 +273,7 @@ class QuestValidationEngine:
         # 7. Faction and World State Validation
         # Verify that npc and targets are active and faction exists
         if npc_slug:
-            npc_entity = graph_repo.get_entity_by_slug(db, npc_slug)
+            npc_entity = graph_repo.get_entity_by_slug(db, npc_slug, game_project_id=game_project_id)
             if not npc_entity:
                 reasons.append(f"Faction/World validation error: NPC '{npc_slug}' does not exist in world graph.")
 

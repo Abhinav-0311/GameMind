@@ -164,19 +164,15 @@ def run_concurrent_workloads(concurrency: int) -> dict:
     }
 
 
-def test_load_10_users():
-    res = run_concurrent_workloads(10)
-    assert res["errors_count"] == 0
-    assert res["memory_growth_bytes"] < 100 * 1024 * 1024
+def test_load_scaling_thresholds():
+    """Exercise each supported load tier within one stable app/database lifecycle."""
+    thresholds = [
+        (10, 100 * 1024 * 1024),
+        (25, 100 * 1024 * 1024),
+        (50, 150 * 1024 * 1024),
+    ]
 
-
-def test_load_25_users():
-    res = run_concurrent_workloads(25)
-    assert res["errors_count"] == 0
-    assert res["memory_growth_bytes"] < 100 * 1024 * 1024
-
-
-def test_load_50_users():
-    res = run_concurrent_workloads(50)
-    assert res["errors_count"] == 0
-    assert res["memory_growth_bytes"] < 150 * 1024 * 1024
+    for concurrency, max_memory_growth in thresholds:
+        result = run_concurrent_workloads(concurrency)
+        assert result["errors_count"] == 0, result
+        assert result["memory_growth_bytes"] < max_memory_growth, result

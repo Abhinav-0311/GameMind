@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.npc import NPCProfile
-from app.models.quest import GeneratedQuest
+from app.models.quest import GeneratedQuest, Quest, QuestObjective
 from app.services.graph_cache import graph_cache
 from app.services.telemetry_service import TelemetryService
 from app.services.quest_template_engine import QuestTemplateEngine
@@ -17,6 +17,38 @@ from app.models.world_state import WorldStateFlag
 logger = logging.getLogger("gamemind.dynamic_quest_generator")
 
 class DynamicQuestGenerator:
+    @classmethod
+    def _resolve_project_quest_context(
+        cls,
+        db: Session,
+        npc_slug: str,
+        game_project_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Use a materialized quest as local-only generation context when available."""
+        rows = db.query(Quest, QuestObjective).join(
+            QuestObjective,
+            QuestObjective.quest_id == Quest.id,
+        ).filter(
+            Quest.npc_slug == npc_slug,
+            Quest.game_project_id == game_project_id,
+        ).order_by(Quest.created_at.asc(), QuestObjective.objective_index.asc()).all()
+
+        if not rows:
+            return None
+
+        # Retrieval and action objectives produce the clearest follow-up quest in
+        # local mode. Fall back to the first source-backed objective if necessary.
+        quest, objective = next(
+            ((candidate_quest, candidate_objective) for candidate_quest, candidate_objective in rows
+             if candidate_objective.target_type in {"retrieve", "kill"}),
+            rows[0],
+        )
+        return {
+            "title": quest.title,
+            "target_type": objective.target_type,
+            "quantity": objective.quantity_required,
+        }
+
     @classmethod
     def get_cached_quest(
         cls,
@@ -138,6 +170,18 @@ class DynamicQuestGenerator:
         location = "Shadow Forest"
         target_id = "void_slime"
         quantity = 3
+        target_type = "kill"
+
+        source_quest = cls._resolve_project_quest_context(db, npc_slug, game_project_id)
+        if source_quest:
+            target_name = source_quest["title"]
+            target_id = "".join(
+                character if character.isalnum() else "_"
+                for character in target_name.lower()
+            ).strip("_") or "source_quest"
+            quantity = max(1, source_quest["quantity"])
+            target_type = source_quest["target_type"]
+            location = npc.name
 
         # Consume forecast trends
         try:
@@ -168,8 +212,8 @@ class DynamicQuestGenerator:
             logger.warning(f"Failed to query active world state flags: {e}")
 
         # 3. Template Selection
-        # Choose a template based on world state target type (default to "kill")
-        target_type = "kill"
+        # Use a project-backed objective type when available; otherwise retain the
+        # established generic fallback for projects with no materialized quests.
         template = QuestTemplateEngine.select_template(target_type)
 
         # 4. Reward scaling

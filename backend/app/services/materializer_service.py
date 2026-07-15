@@ -12,6 +12,8 @@ from app.models.npc import NPCProfile
 from app.models.quest import Quest, QuestObjective
 from app.models.memory import NPCMemory
 from app.models.world_state import WorldStateFlag
+from app.models.graph import WorldEntity, WorldEntityVersion
+from app.services.graph_cache import graph_cache
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,67 @@ class BlueprintMaterializerService:
         slug = re.sub(r"-{2,}", "-", slug).strip("-_")
         return slug[:100]
 
+    def _derive_world_state_flag(self, element: Any) -> Optional[tuple[str, str]]:
+        """Convert explicit stateful level elements into runtime flags.
+
+        Level interaction data also contains neutral objects such as checkpoints and
+        terminals. Those belong in level presentation, not mutable world state.
+        """
+        raw_value = self._clean_runtime_text(element)
+        if not raw_value:
+            return None
+
+        lowered = raw_value.lower()
+        state_map = (
+            ("unlocked", "unlocked"),
+            ("locked", "locked"),
+            ("enabled", "enabled"),
+            ("disabled", "disabled"),
+            ("activated", "activated"),
+            ("deactivated", "deactivated"),
+            ("opened", "opened"),
+            ("closed", "closed"),
+            ("completed", "completed"),
+        )
+        for marker, value in state_map:
+            if marker in lowered:
+                key = self._slugify_runtime_id(re.sub(rf"(?:^|[-\\s]){marker}(?:$|[-\\s])", " ", raw_value, flags=re.IGNORECASE))
+                return (key or self._slugify_runtime_id(raw_value), value)
+        return None
+
+    def _ensure_npc_graph_entity(
+        self,
+        db: Session,
+        npc: NPCProfile,
+        game_project_id: str,
+    ) -> None:
+        """Mirror a materialized NPC into the scoped narrative graph for quest validation."""
+        entity = db.query(WorldEntity).filter(
+            WorldEntity.slug == npc.slug,
+            WorldEntity.game_project_id == game_project_id,
+        ).first()
+        if entity:
+            return
+
+        entity = WorldEntity(
+            id=uuid.uuid4(),
+            slug=npc.slug,
+            entity_type="npc",
+            game_project_id=game_project_id,
+        )
+        db.add(entity)
+        db.flush()
+        db.add(WorldEntityVersion(
+            id=uuid.uuid4(),
+            entity_id=entity.id,
+            version=1,
+            name=npc.name,
+            description=npc.personality_summary,
+            importance_score=5,
+            properties={"npc_slug": npc.slug, "source": "blueprint_materialization"},
+        ))
+        graph_cache.increment_entity_stamp(npc.slug)
+
     def _resolve_fallback_runtime_records(
         self,
         db: Session,
@@ -100,10 +163,10 @@ class BlueprintMaterializerService:
         memory_subjects = [subject for subject in memory_subjects if subject]
 
         flag_keys = [
-            self._slugify_runtime_id(str(element))
+            state_flag[0]
             for element in blueprint.level_design_suggestions.get("content", {}).get("interactive_elements", [])
+            if (state_flag := self._derive_world_state_flag(element))
         ]
-        flag_keys = [flag_key for flag_key in flag_keys if flag_key]
 
         npcs = []
         if npc_slugs:
@@ -255,6 +318,17 @@ class BlueprintMaterializerService:
 
         db.flush()
 
+        # Dynamic quest validation resolves NPCs through the narrative graph, so every
+        # NPC this blueprint owns must have a project-scoped graph entity as well.
+        for npc_slug in materialized_npc_slugs:
+            profile = db.query(NPCProfile).filter(
+                NPCProfile.slug == npc_slug,
+                NPCProfile.game_project_id == game_project_id,
+            ).first()
+            if profile:
+                self._ensure_npc_graph_entity(db, profile, game_project_id)
+        db.flush()
+
         # 4. Materialize Quests
         quest_data = blueprint.quest_hooks.get("content", {}).get("quests", [])
         # Determine a default quest giver NPC
@@ -404,22 +478,29 @@ class BlueprintMaterializerService:
 
         # 6. Materialize World State Flags
         flag_data = blueprint.level_design_suggestions.get("content", {}).get("interactive_elements", [])
-        layout_text = blueprint.level_design_suggestions.get("content", {}).get("level_layout", "")
+        desired_flags = {
+            state_flag[0]: state_flag[1]
+            for element in flag_data
+            if (state_flag := self._derive_world_state_flag(element))
+        }
 
-        for element in flag_data:
-            # Key cleanup
-            flag_key = self._slugify_runtime_id(str(element))
-            if not flag_key:
-                continue
+        # Remove only stale flags that this blueprint previously owned. This keeps
+        # re-materialization idempotent when source parsing becomes more precise.
+        stale_flag_keys = set(manifest["flag_keys"]) - set(desired_flags)
+        if stale_flag_keys:
+            db.query(WorldStateFlag).filter(
+                WorldStateFlag.flag_key.in_(stale_flag_keys),
+                WorldStateFlag.game_project_id == game_project_id,
+            ).delete(synchronize_session=False)
+            manifest["flag_keys"] = [key for key in manifest["flag_keys"] if key not in stale_flag_keys]
+            report["warnings"].append("Removed stale blueprint-owned world-state flags that are not explicit source states.")
+
+        for flag_key, flag_val in desired_flags.items():
 
             existing_flag = db.query(WorldStateFlag).filter(
                 WorldStateFlag.flag_key == flag_key,
                 WorldStateFlag.game_project_id == game_project_id
             ).first()
-
-            flag_val = "locked"
-            if "unlock" in layout_text.lower():
-                flag_val = "unlocked"
 
             if existing_flag:
                 # Provenance verification

@@ -243,6 +243,86 @@ def test_gate_f_faction_world_state_validation(db):
     assert any("does not exist" in r for r in reasons)
 
 
+def test_graph_validation_uses_the_quest_project_scope(db):
+    project_id = f"scoped_graph_{uuid.uuid4().hex[:6]}"
+    npc = NPCProfile(
+        id=uuid.uuid4(),
+        slug="scoped-guide",
+        name="Scoped Guide",
+        personality_summary="A project-scoped quest guide.",
+        game_project_id=project_id,
+    )
+    db.add(npc)
+    entity = WorldEntity(
+        id=uuid.uuid4(),
+        slug="scoped-guide",
+        entity_type="npc",
+        game_project_id=project_id,
+    )
+    db.add(entity)
+    db.flush()
+    db.add(WorldEntityVersion(
+        id=uuid.uuid4(),
+        entity_id=entity.id,
+        version=1,
+        name="Scoped Guide",
+        description="A project-scoped quest guide.",
+        importance_score=5,
+    ))
+    db.commit()
+
+    valid, reasons = QuestValidationEngine.validate_quest(db, {
+        "npc_slug": "scoped-guide",
+        "game_project_id": project_id,
+        "title": "Scoped Relay",
+        "description": "Restore the scoped relay.",
+        "difficulty": "Medium",
+        "objectives": [{
+            "objective_index": 0,
+            "description": "Retrieve the relay key.",
+            "target_type": "retrieve",
+            "target_id": "relay-key",
+            "quantity_required": 1,
+        }],
+        "rewards": {"gold": 20, "xp": 20, "items": []},
+    })
+
+    assert not any("does not exist in world graph" in reason for reason in reasons)
+
+
+def test_generation_uses_materialized_project_quest_context(db):
+    setup_npc_helper(db, name="Jay", slug="jay")
+    source_quest = Quest(
+        id=uuid.uuid4(),
+        npc_slug="jay",
+        title="Password Vault Evidence",
+        description="Retrieve the protected training evidence.",
+        difficulty="Medium",
+    )
+    db.add(source_quest)
+    db.flush()
+    db.add(QuestObjective(
+        id=uuid.uuid4(),
+        quest_id=source_quest.id,
+        objective_index=0,
+        description="Retrieve the password vault evidence.",
+        target_type="retrieve",
+        target_id="password_vault_evidence",
+        quantity_required=1,
+    ))
+    db.commit()
+
+    quest = DynamicQuestGenerator.generate_quest(
+        db=db,
+        npc_slug="jay",
+        player_id="project_context_player",
+        player_level=1,
+    )
+
+    assert "Password Vault Evidence" in quest["title"]
+    assert quest["objectives"][0]["target_id"] == "password_vault_evidence"
+
+
 # ----------------------------------------------------
 # Gate G: Telemetry Persistence
 # ----------------------------------------------------
@@ -342,4 +422,3 @@ def test_gate_i_api_validation(db):
     res = client.get("/api/v1/quests/generated?npc_slug=eldrin")
     assert res.status_code == 200
     assert len(res.json()) >= 1
-
