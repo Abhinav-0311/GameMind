@@ -95,6 +95,7 @@ export interface DesignDecision {
   severity: "needs_decision" | "conflict";
   priority: "critical" | "high" | "medium" | "low";
   recommended_source_kind?: string | null;
+  evidence_document_id?: string | null;
   decision?: string | null;
   status: "open" | "resolved";
   created_at: string;
@@ -108,6 +109,7 @@ export interface DecisionCoverageResponse {
     source_backed: number;
     needs_source_evidence: number;
     decision_open: number;
+    evidence_attached: number;
   };
   items: Array<{
     decision_id: string;
@@ -115,9 +117,16 @@ export interface DecisionCoverageResponse {
     decision?: string | null;
     status: "open" | "resolved";
     origin_revision_number: number;
-    evidence_status: "source_backed" | "needs_source_evidence" | "decision_open";
+    evidence_status: "source_backed" | "needs_source_evidence" | "decision_open" | "evidence_attached";
+    evidence_document_id?: string | null;
+    evidence_document_title?: string | null;
     citations: string[];
   }>;
+}
+
+export interface TechnicalBriefTemplateResponse {
+  filename: string;
+  content: string;
 }
 
 export interface QueryResult {
@@ -283,6 +292,28 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.detail || "Could not save design decision");
+    }
+    return res.json();
+  },
+
+  async attachDecisionEvidence(id: string, evidenceDocumentId: string): Promise<DesignDecision> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/decisions/${id}/evidence`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ evidence_document_id: evidenceDocumentId }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not attach the evidence source");
+    }
+    return res.json();
+  },
+
+  async getTechnicalBriefTemplate(documentId: string): Promise<TechnicalBriefTemplateResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}/templates/technical-brief`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not prepare the technical brief template");
     }
     return res.json();
   },

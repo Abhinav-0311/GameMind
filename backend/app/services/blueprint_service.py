@@ -466,6 +466,7 @@ class BlueprintService:
             bucket = heading_to_bucket[heading_match.group(1).lower()]
             item = self._clean_markdown(line)
             normalized_item = item.lower()
+            scope_labels = re.findall(r"\b(?:must|should|could)[-\s]?have\b", normalized_item)
             seen_items = [existing.lower() for values in scope.values() for existing in values]
             # Chunk overlap can repeat a Must-have item directly after the
             # Should-have heading, sometimes after the first word was truncated.
@@ -476,7 +477,11 @@ class BlueprintService:
                 or (len(existing) >= 12 and existing in normalized_item)
                 for existing in seen_items
             )
-            if not item or is_overlap:
+            # The chunker can split a parent heading such as
+            # "Must-have, should-have, could-have" across chunks. Once the
+            # next category heading is seen, its trailing fragment is not a
+            # scope item and must not become a fabricated deliverable.
+            if not item or len(scope_labels) >= 2 or is_overlap:
                 continue
             scope[bucket].append(item)
             citations.append(str(chunk.id))

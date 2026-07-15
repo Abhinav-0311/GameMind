@@ -2,9 +2,11 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.schemas import DocumentResponse, DocumentDetailResponse, SourceKindUpdate
+from app.schemas import DocumentResponse, DocumentDetailResponse, SourceKindUpdate, TechnicalBriefTemplateResponse
 from app.models.document import Document, DocumentChunk
 from app.services.rag_service import DuplicateDocumentError, RAGService
+from app.services.design_decision_service import DesignDecisionService
+from app.services.technical_brief_template_service import TechnicalBriefTemplateService
 from app.dependencies import get_game_project_id
 import uuid
 from typing import List
@@ -150,6 +152,23 @@ def get_documents(
 ):
     """Retrieve all documents metadata."""
     return db.query(Document).filter(Document.game_project_id == game_project_id).order_by(Document.created_at.desc()).all()
+
+
+@router.get("/{document_id}/templates/technical-brief", response_model=TechnicalBriefTemplateResponse)
+def get_technical_brief_template(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+):
+    """Return an editable local template for unresolved technical decisions on a GDD."""
+    source = db.query(Document).filter(
+        Document.id == document_id,
+        Document.game_project_id == game_project_id,
+    ).first()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source document not found.")
+    decisions = DesignDecisionService().list_for_document(db, document_id, game_project_id)
+    return TechnicalBriefTemplateService().build(source, decisions)
 
 @router.get("/{document_id}", response_model=DocumentDetailResponse)
 def get_document(

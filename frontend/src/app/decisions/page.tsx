@@ -28,9 +28,12 @@ function DecisionsContent() {
   const [decisions, setDecisions] = useState<DesignDecision[]>([]);
   const [coverage, setCoverage] = useState<DecisionCoverageResponse | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [evidenceSelections, setEvidenceSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [attachingId, setAttachingId] = useState<string | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -39,6 +42,9 @@ function DecisionsContent() {
     [documents, selectedDocumentId]
   );
   const openCount = decisions.filter((decision) => decision.status === "open").length;
+  const hasOpenTechnicalDecision = decisions.some(
+    (decision) => decision.status === "open" && decision.recommended_source_kind === "technical_brief"
+  );
 
   useEffect(() => {
     let active = true;
@@ -65,6 +71,7 @@ function DecisionsContent() {
       Promise.resolve().then(() => {
         setDecisions([]);
         setDrafts({});
+        setEvidenceSelections({});
         setCoverage(null);
       });
       return;
@@ -75,6 +82,7 @@ function DecisionsContent() {
         if (!active) return;
         setDecisions(loaded);
         setDrafts(Object.fromEntries(loaded.map((decision) => [decision.id, decision.decision || ""])));
+        setEvidenceSelections(Object.fromEntries(loaded.map((decision) => [decision.id, decision.evidence_document_id || ""])));
         setCoverage(assessed);
       })
       .catch(() => active && setError("Could not load decisions for this source."));
@@ -92,6 +100,7 @@ function DecisionsContent() {
       const assessed = await api.getDecisionCoverage(selectedDocumentId);
       setDecisions(updated);
       setDrafts(Object.fromEntries(updated.map((decision) => [decision.id, decision.decision || ""])));
+      setEvidenceSelections(Object.fromEntries(updated.map((decision) => [decision.id, decision.evidence_document_id || ""])));
       setCoverage(assessed);
       setNotice(updated.length === 0 ? "The source review found no unresolved decisions." : "Open decisions are ready to resolve.");
     } catch (reason) {
@@ -117,6 +126,43 @@ function DecisionsContent() {
       setError(reason instanceof Error ? reason.message : "Could not save this decision.");
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const attachEvidence = async (decision: DesignDecision) => {
+    const evidenceDocumentId = evidenceSelections[decision.id];
+    if (!evidenceDocumentId) return;
+    setAttachingId(decision.id);
+    setError(null);
+    try {
+      const updated = await api.attachDecisionEvidence(decision.id, evidenceDocumentId);
+      setDecisions((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedDocumentId) setCoverage(await api.getDecisionCoverage(selectedDocumentId));
+      setNotice("Evidence attached. Resolve the decision once the source records the final choice.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not attach the evidence source.");
+    } finally {
+      setAttachingId(null);
+    }
+  };
+
+  const downloadTechnicalBriefTemplate = async () => {
+    if (!selectedDocumentId) return;
+    setDownloadingTemplate(true);
+    setError(null);
+    try {
+      const template = await api.getTechnicalBriefTemplate(selectedDocumentId);
+      const url = URL.createObjectURL(new Blob([template.content], { type: "text/markdown" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = template.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      setNotice("Technical brief template downloaded. Complete the placeholders, then upload it as a technical brief.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not prepare the technical brief template.");
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -161,6 +207,11 @@ function DecisionsContent() {
           <button type="button" onClick={syncFromReview} disabled={!selectedDocumentId || syncing} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50">
             {syncing ? "Checking source" : "Find open decisions"}
           </button>
+          {hasOpenTechnicalDecision && (
+            <button type="button" onClick={downloadTechnicalBriefTemplate} disabled={downloadingTemplate} className="btn-secondary mt-3 w-full disabled:cursor-not-allowed disabled:opacity-50">
+              {downloadingTemplate ? "Preparing template" : "Download technical brief template"}
+            </button>
+          )}
           {coverage && coverage.items.length > 0 && (
             <div className="mt-6 border-t border-[var(--border)] pt-5 text-sm">
               <p className="page-kicker">Evidence in this revision</p>
@@ -168,6 +219,7 @@ function DecisionsContent() {
                 <div className="flex justify-between gap-3"><dt>Source-backed</dt><dd className="font-semibold text-[var(--foreground)]">{coverage.summary.source_backed}</dd></div>
                 <div className="flex justify-between gap-3"><dt>Needs evidence</dt><dd className="font-semibold text-[var(--foreground)]">{coverage.summary.needs_source_evidence}</dd></div>
                 <div className="flex justify-between gap-3"><dt>Still open</dt><dd className="font-semibold text-[var(--foreground)]">{coverage.summary.decision_open}</dd></div>
+                {coverage.summary.evidence_attached > 0 && <div className="flex justify-between gap-3"><dt>Evidence attached</dt><dd className="font-semibold text-[var(--foreground)]">{coverage.summary.evidence_attached}</dd></div>}
               </dl>
             </div>
           )}
@@ -223,6 +275,27 @@ function DecisionsContent() {
                       className="mt-2 min-h-28 w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-secondary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
                     />
                   </label>
+                  {decision.recommended_source_kind && (
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <label className="min-w-0 flex-1 text-sm font-semibold text-[var(--foreground)]" htmlFor={`evidence-${decision.id}`}>
+                        Supporting {decision.recommended_source_kind.replaceAll("_", " ")}
+                        <select
+                          id={`evidence-${decision.id}`}
+                          value={evidenceSelections[decision.id] || ""}
+                          onChange={(event) => setEvidenceSelections((current) => ({ ...current, [decision.id]: event.target.value }))}
+                          className="mt-2 min-h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+                        >
+                          <option value="">Choose an uploaded source</option>
+                          {documents
+                            .filter((document) => document.id !== selectedDocumentId && document.source_kind === decision.recommended_source_kind)
+                            .map((document) => <option key={document.id} value={document.id}>{document.title} · revision {document.revision_number}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" onClick={() => attachEvidence(decision)} disabled={!evidenceSelections[decision.id] || attachingId === decision.id} className="btn-secondary shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
+                        {attachingId === decision.id ? "Attaching" : "Attach source"}
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button type="button" onClick={() => saveDecision(decision)} disabled={savingId === decision.id} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                       {savingId === decision.id ? "Saving" : "Save"}

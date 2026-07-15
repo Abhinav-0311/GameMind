@@ -22,6 +22,10 @@ class DecisionUpdateRequest(BaseModel):
     status: Optional[str] = Field(default=None, pattern="^(open|resolved)$")
 
 
+class DecisionEvidenceRequest(BaseModel):
+    evidence_document_id: UUID
+
+
 @router.get("/", response_model=List[DesignDecisionResponse])
 def list_decisions(
     document_id: UUID,
@@ -59,3 +63,19 @@ def update_decision(
     game_project_id: str = Depends(get_game_project_id),
 ):
     return DesignDecisionService().update(db, decision_id, game_project_id, request.decision, request.status)
+
+
+@router.put("/{decision_id}/evidence", response_model=DesignDecisionResponse)
+def attach_decision_evidence(
+    decision_id: UUID,
+    request: DecisionEvidenceRequest,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+):
+    """Attach a project-owned supporting source without silently resolving the decision."""
+    return DesignDecisionService().attach_evidence(
+        db,
+        decision_id,
+        request.evidence_document_id,
+        game_project_id,
+    )

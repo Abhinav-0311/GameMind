@@ -60,7 +60,7 @@ Workspace -> Sources -> GDD review -> Decisions -> Blueprint -> Evidence -> Proj
 1. Create or select a **workspace**. A workspace scopes documents, decisions, blueprints, and runtime data to one game.
 2. In **Sources**, add a GDD or supporting notes. GameMind identifies the source type, rejects exact duplicate content, and preserves later uploads as revisions instead of overwriting evidence.
 3. Open the source review to see what is specified, what conflicts, and which product decisions still need an answer.
-4. Use **Decisions** to resolve those questions in one place.
+4. Use **Decisions** to resolve those questions in one place. When a decision needs a technical brief, download the local template, complete its placeholders, upload it as a **Technical brief**, attach it to the decision, and then mark the decision resolved.
 5. In **Blueprints**, choose a primary GDD and, when useful, add supporting source documents. Review structured sections, warnings, readiness, and citations before approving anything.
 6. Open a citation to inspect the exact source chunk, then export the blueprint as a Markdown project brief for a teammate, portfolio review, or implementation handoff.
 
@@ -196,7 +196,7 @@ http://localhost:8000/docs
 Run backend tests:
 
 ```bash
-docker exec gamemind_backend pytest
+docker exec gamemind_backend pytest -q
 ```
 
 Run frontend checks:
@@ -231,7 +231,7 @@ Expected local demo mode:
 ## Demo Flow
 
 1. Create a workspace, then open **Sources** and click **Load Frostpeak demo**. You can also upload `docs/demo/sample_gdd_frostpeak.md`.
-2. Inspect the source review and open **Decisions** to resolve the extracted open questions.
+2. Inspect the source review and open **Decisions** to resolve the extracted open questions. For an implementation question, download the technical-brief template, complete it, upload it as a **Technical brief**, and attach it before resolving the decision.
 3. Open **Blueprints**, select the primary GDD, and optionally add supporting sources.
 4. Generate the blueprint, inspect its readiness and section citations, and use **View source** to verify any important claim.
 5. Export a **Project brief** when you want a portable Markdown handoff.
@@ -250,7 +250,7 @@ Implemented:
 - Named project workspaces with scoped data isolation.
 - Source ingestion, source-type classification, duplicate prevention, and immutable source revisions.
 - Local Chroma retrieval with citations and exact source-chunk tracing.
-- GDD reviews, decision tracking, and evidence coverage.
+- GDD reviews, decision tracking, evidence attachment, and source-coverage checks.
 - Multi-source blueprint generation, quality/readiness review, comparison, and Markdown project-brief export.
 - Blueprint approval and optional materialization.
 - NPC, quest, memory, world flag, dialogue, and hint backend flows.

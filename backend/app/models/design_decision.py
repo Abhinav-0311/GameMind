@@ -23,6 +23,7 @@ class DesignDecision(Base, ProjectScopedMixin):
     severity = Column(String(30), nullable=False, server_default="needs_decision")
     priority = Column(String(16), nullable=False, server_default="medium")
     recommended_source_kind = Column(String(32), nullable=True)
+    evidence_document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
     decision = Column(Text, nullable=True)
     status = Column(String(30), nullable=False, server_default="open")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

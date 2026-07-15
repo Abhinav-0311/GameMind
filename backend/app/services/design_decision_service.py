@@ -89,6 +89,40 @@ class DesignDecisionService:
         db.refresh(decision)
         return decision
 
+    def attach_evidence(
+        self,
+        db: Session,
+        decision_id: UUID,
+        evidence_document_id: UUID,
+        game_project_id: str,
+    ) -> DesignDecision:
+        decision = db.query(DesignDecision).filter(
+            DesignDecision.id == decision_id,
+            DesignDecision.game_project_id == game_project_id,
+        ).first()
+        if not decision:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Design decision not found or not owned by this project.")
+
+        evidence_document = db.query(Document).filter(
+            Document.id == evidence_document_id,
+            Document.game_project_id == game_project_id,
+        ).first()
+        if not evidence_document:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence source not found or not owned by this project.")
+        if (
+            decision.recommended_source_kind
+            and evidence_document.source_kind != decision.recommended_source_kind
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This decision requires a {decision.recommended_source_kind} source.",
+            )
+
+        decision.evidence_document_id = evidence_document.id
+        db.commit()
+        db.refresh(decision)
+        return decision
+
     def coverage(self, db: Session, document_id: UUID, game_project_id: str) -> dict:
         """Assess the latest decision per category against one source revision."""
         document = db.query(Document).filter(
@@ -122,11 +156,26 @@ class DesignDecisionService:
             self._category(finding["title"]): finding
             for finding in review["findings"]
         }
+        evidence_ids = {decision.evidence_document_id for decision, _ in candidates if decision.evidence_document_id}
+        evidence_documents = {
+            document.id: document
+            for document in db.query(Document).filter(
+                Document.id.in_(evidence_ids),
+                Document.game_project_id == game_project_id,
+            ).all()
+        } if evidence_ids else {}
         items = []
         for category, (decision, origin_revision) in latest_by_category.items():
             finding = review_by_category.get(category)
-            if decision.status == "open":
+            evidence_document = evidence_documents.get(decision.evidence_document_id)
+            if decision.status == "open" and evidence_document:
+                evidence_status = "evidence_attached"
+                citations = []
+            elif decision.status == "open":
                 evidence_status = "decision_open"
+                citations = []
+            elif evidence_document:
+                evidence_status = "source_backed"
                 citations = []
             elif finding and finding["severity"] == "covered":
                 evidence_status = "source_backed"
@@ -141,6 +190,8 @@ class DesignDecisionService:
                 "status": decision.status,
                 "origin_revision_number": origin_revision,
                 "evidence_status": evidence_status,
+                "evidence_document_id": decision.evidence_document_id,
+                "evidence_document_title": evidence_document.title if evidence_document else None,
                 "citations": citations,
             })
 
@@ -148,6 +199,7 @@ class DesignDecisionService:
             "source_backed": sum(item["evidence_status"] == "source_backed" for item in items),
             "needs_source_evidence": sum(item["evidence_status"] == "needs_source_evidence" for item in items),
             "decision_open": sum(item["evidence_status"] == "decision_open" for item in items),
+            "evidence_attached": sum(item["evidence_status"] == "evidence_attached" for item in items),
         }
         return {
             "document_id": document.id,

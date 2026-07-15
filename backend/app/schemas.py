@@ -53,6 +53,11 @@ class SourceKindUpdate(BaseModel):
     source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|general)$")
 
 
+class TechnicalBriefTemplateResponse(BaseModel):
+    filename: str
+    content: str
+
+
 class GddReviewFinding(BaseModel):
     title: str
     severity: str
@@ -87,6 +92,7 @@ class DesignDecisionResponse(BaseModel):
     severity: str
     priority: str = "medium"
     recommended_source_kind: Optional[str] = None
+    evidence_document_id: Optional[UUID] = None
     decision: Optional[str] = None
     status: str
     created_at: datetime
@@ -102,6 +108,8 @@ class DecisionCoverageItem(BaseModel):
     status: str
     origin_revision_number: int
     evidence_status: str
+    evidence_document_id: Optional[UUID] = None
+    evidence_document_title: Optional[str] = None
     citations: List[str] = []
 
 
@@ -109,6 +117,7 @@ class DecisionCoverageSummary(BaseModel):
     source_backed: int
     needs_source_evidence: int
     decision_open: int
+    evidence_attached: int
 
 
 class DecisionCoverageResponse(BaseModel):

@@ -121,3 +121,77 @@ def test_synced_decisions_keep_review_priority_and_recommended_source_kind(db_se
     assert decisions["Multi-platform delivery scope"]["recommended_source_kind"] == "technical_brief"
     assert decisions["Online feature boundary"]["priority"] == "high"
     assert decisions["Online feature boundary"]["recommended_source_kind"] == "technical_brief"
+
+
+def test_attached_evidence_becomes_source_backed_only_after_resolution(db_session):
+    project_id = f"decision_evidence_{uuid.uuid4().hex[:8]}"
+    rag = RAGService()
+    primary = rag.process_document(
+        db=db_session,
+        file_name="main_gdd.md",
+        file_bytes=b"The PC game includes an Android AR companion and an online leaderboard.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="gdd",
+    )
+    technical = rag.process_document(
+        db=db_session,
+        file_name="technical_brief.md",
+        file_bytes=b"# Technical brief\nThe MVP ships on PC. Android AR and online leaderboard work are deferred.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="technical_brief",
+    )
+    headers = {"X-Game-Project-ID": project_id}
+    decisions = client.post("/api/v1/decisions/sync", headers=headers, json={"document_id": str(primary.id)}).json()
+    target = next(item for item in decisions if item["title"] == "Multi-platform delivery scope")
+
+    attached = client.put(
+        f"/api/v1/decisions/{target['id']}/evidence",
+        headers=headers,
+        json={"evidence_document_id": str(technical.id)},
+    )
+    assert attached.status_code == 200
+    assert attached.json()["evidence_document_id"] == str(technical.id)
+
+    coverage = client.get(f"/api/v1/decisions/coverage?document_id={primary.id}", headers=headers).json()
+    target_coverage = next(item for item in coverage["items"] if item["decision_id"] == target["id"])
+    assert target_coverage["evidence_status"] == "evidence_attached"
+
+    resolved = client.put(
+        f"/api/v1/decisions/{target['id']}",
+        headers=headers,
+        json={"decision": "Ship PC first; defer Android AR to a later milestone.", "status": "resolved"},
+    )
+    assert resolved.status_code == 200
+    coverage = client.get(f"/api/v1/decisions/coverage?document_id={primary.id}", headers=headers).json()
+    target_coverage = next(item for item in coverage["items"] if item["decision_id"] == target["id"])
+    assert target_coverage["evidence_status"] == "source_backed"
+    assert target_coverage["evidence_document_title"] == "technical_brief.md"
+
+
+def test_technical_brief_template_preserves_unknowns_as_placeholders(db_session):
+    project_id = f"technical_template_{uuid.uuid4().hex[:8]}"
+    source = RAGService().process_document(
+        db=db_session,
+        file_name="scope_gdd.md",
+        file_bytes=b"The PC game has an Android AR mode and a weekly online leaderboard.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="gdd",
+    )
+    headers = {"X-Game-Project-ID": project_id}
+    client.post("/api/v1/decisions/sync", headers=headers, json={"document_id": str(source.id)})
+
+    response = client.get(
+        f"/api/v1/documents/{source.id}/templates/technical-brief",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    template = response.json()
+    assert template["filename"] == "scope_gdd_md_technical_brief.md"
+    assert "## Decisions to resolve" in template["content"]
+    assert "### Multi-platform delivery scope" in template["content"]
+    assert "### Online feature boundary" in template["content"]
+    assert "[Choose and explain the MVP boundary]" in template["content"]
