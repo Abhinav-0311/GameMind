@@ -136,6 +136,12 @@ export default function KnowledgeBasePage() {
   }, [fetchDocuments]);
 
   useEffect(() => {
+    const requestedSourceKind = new URLSearchParams(window.location.search).get("source_kind");
+    if (!requestedSourceKind || !sourceKinds.includes(requestedSourceKind as (typeof sourceKinds)[number])) return;
+    Promise.resolve().then(() => setUploadSourceKind(requestedSourceKind));
+  }, []);
+
+  useEffect(() => {
     if (!documents.length || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const documentId = params.get("document");

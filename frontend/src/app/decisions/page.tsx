@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { api, type DecisionCoverageResponse, type DesignDecision, type DocumentResponse } from "@/lib/api";
@@ -200,9 +201,12 @@ function DecisionsContent() {
                       <h2 className="mt-2 text-xl font-semibold text-[var(--foreground)]">{decision.title}</h2>
                       {decision.guidance && <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{decision.guidance}</p>}
                       {decision.recommended_source_kind && (
-                        <p className="mt-3 text-sm font-medium text-[var(--foreground)]">
-                          Next source: <span className="text-[var(--text-secondary)]">{decision.recommended_source_kind.replaceAll("_", " ")}</span>
-                        </p>
+                        <Link
+                          href={`/knowledge?source_kind=${encodeURIComponent(decision.recommended_source_kind)}`}
+                          className="mt-3 inline-flex text-sm font-semibold text-[var(--accent)] underline-offset-4 transition hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                        >
+                          Add {decision.recommended_source_kind.replaceAll("_", " ")}
+                        </Link>
                       )}
                     </div>
                     <span className="shrink-0 text-xs font-semibold text-[var(--text-secondary)]">
