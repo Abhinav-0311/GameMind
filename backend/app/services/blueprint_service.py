@@ -47,6 +47,25 @@ class BlueprintService:
                 if cleaned:
                     yield chunk, cleaned, heading
 
+    def _iter_chunk_lines_with_context(
+        self, chunks: List[DocumentChunk]
+    ) -> Iterable[Tuple[DocumentChunk, str, str, str]]:
+        """Preserve section context across chunk boundaries in long Markdown GDDs."""
+        section = ""
+        heading = ""
+        for chunk in sorted(chunks, key=lambda item: item.chunk_index):
+            for raw_line in chunk.content.split("\n"):
+                heading_match = re.match(r"^\s*(#+)\s+(.+)$", raw_line)
+                if heading_match:
+                    level = len(heading_match.group(1))
+                    heading = self._clean_markdown(heading_match.group(2))
+                    if level <= 2:
+                        section = heading
+                    continue
+                cleaned = self._clean_markdown(raw_line)
+                if cleaned:
+                    yield chunk, cleaned, section, heading
+
     def _iter_table_rows(self, chunks: List[DocumentChunk]) -> Iterable[Tuple[DocumentChunk, List[str], List[str]]]:
         """Yield Markdown table rows with their header cells when a supported table is present."""
         for chunk in chunks:
@@ -114,7 +133,9 @@ class BlueprintService:
                 detail="Game Design Document not found or not owned by this project.",
             )
 
-        primary_chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).all()
+        primary_chunks = db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id
+        ).order_by(DocumentChunk.chunk_index).all()
         if not primary_chunks:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -140,7 +161,9 @@ class BlueprintService:
             supporting_by_id = {source.id: source for source in supporting_documents}
             supporting_documents = [supporting_by_id[source_id] for source_id in supporting_ids]
 
-        chunks = primary_chunks + db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(supporting_ids)).all()
+        chunks = primary_chunks + db.query(DocumentChunk).filter(
+            DocumentChunk.document_id.in_(supporting_ids)
+        ).order_by(DocumentChunk.document_id, DocumentChunk.chunk_index).all()
 
         summary = self._parse_summary(document.title, chunks)
         narrative = self._parse_narrative(chunks)
@@ -294,6 +317,26 @@ class BlueprintService:
                 "name": name,
                 "archetype": self._clean_markdown(archetype),
                 "dialogue_style": self._clean_markdown(description),
+            })
+            citations.append(str(chunk.id))
+
+        # Many complete GDDs define characters as subheadings under a cast section,
+        # rather than using an "NPC Name:" line or a table. Accept only that explicit
+        # structure, so unrelated headings cannot become fabricated runtime NPCs.
+        for chunk, line, section, heading in self._iter_chunk_lines_with_context(chunks):
+            if not re.search(r"\b(?:main characters|characters|character profiles|npc profiles|npc cast|cast)\b", section, re.IGNORECASE):
+                continue
+            if heading.lower() == section.lower() or not re.search(r"\b(?:is|are)\b", line, re.IGNORECASE):
+                continue
+            name = self._clean_title(heading)
+            if not name or name.lower() in seen_names:
+                continue
+            description = self._clean_markdown(line)
+            seen_names.add(name.lower())
+            found_npcs.append({
+                "name": name,
+                "archetype": description.split(".")[0].strip() or "Character profile",
+                "dialogue_style": description,
             })
             citations.append(str(chunk.id))
 
@@ -453,6 +496,39 @@ class BlueprintService:
                 "title": title,
                 "objective": objective,
                 "reward": self._clean_markdown(row.get("reward", "")),
+            })
+            citations.append(str(chunk.id))
+
+        # A story-mode level plan is an explicit mission plan. It is safe to turn a
+        # labeled level plus its stated focus into a proposed quest without inventing
+        # rewards, actors, or objectives that the GDD did not define.
+        seen_level_headings = set()
+        for chunk, line, section, heading in self._iter_chunk_lines_with_context(chunks):
+            if not re.search(r"\b(?:story mode )?(?:level|mission) plan\b", section, re.IGNORECASE):
+                continue
+            level_match = re.match(r"^(?:Level|Mission)\s*(\d+)?\s*:\s*(.+)$", heading, re.IGNORECASE)
+            focus_match = re.match(r"^(?:Focus|Objective)\s*:\s*(.+)$", line, re.IGNORECASE)
+            if not level_match or not focus_match:
+                continue
+            title = self._clean_title(level_match.group(2))
+            objective = self._clean_markdown(focus_match.group(1))
+            heading_key = heading.lower()
+            objective_key = re.sub(r"\s+", " ", objective.lower()).strip()
+            if not title or not objective or heading_key in seen_level_headings or objective_key in seen_objectives:
+                continue
+            seen_level_headings.add(heading_key)
+            seen_objectives.add(objective_key)
+            base_title = title
+            duplicate_index = 2
+            while title.lower() in seen_titles:
+                title = f"{base_title} {duplicate_index}"
+                duplicate_index += 1
+            seen_titles.add(title.lower())
+            found_quests.append({
+                "id": f"q_{len(found_quests)}",
+                "title": title,
+                "objective": objective,
+                "reward": "",
             })
             citations.append(str(chunk.id))
 

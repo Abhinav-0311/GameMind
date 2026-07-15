@@ -324,6 +324,39 @@ def test_blueprint_extracts_npcs_and_quests_from_markdown_tables(db_session):
     assert data["npc_archetypes"]["citations"]
     assert data["quest_hooks"]["citations"]
 
+
+def test_blueprint_extracts_characters_and_missions_from_explicit_gdd_headings(db_session):
+    """Long-form GDD headings should yield source-backed runtime candidates."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"long_form_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Narrative\nA grounded security adventure.\n\n"
+            b"## Main Characters\n"
+            b"### Ada\nAda is the player character and a careful systems apprentice.\n\n"
+            b"### Beacon\nBeacon is Ada's guide and gives concise warnings.\n\n"
+            b"## Story Mode Level Plan\n"
+            b"### Level 1: Signal Yard\nFocus: restore the disabled relay and avoid patrol drones.\n\n"
+            b"### Level 2: Archive Gate\nFocus: solve the access-control puzzle and recover the audit record.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert [npc["name"] for npc in data["npc_archetypes"]["content"]["npcs"]] == ["Ada", "Beacon"]
+    assert [quest["title"] for quest in data["quest_hooks"]["content"]["quests"]] == ["Signal Yard", "Archive Gate"]
+    assert data["npc_archetypes"]["citations"]
+    assert data["quest_hooks"]["citations"]
+
 def test_blueprint_extracts_explicit_gameplay_systems(db_session):
     """Gameplay sections should remain empty unless the GDD labels actual mechanics or rules."""
     rag = RAGService()
