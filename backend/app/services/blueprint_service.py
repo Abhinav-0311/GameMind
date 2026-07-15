@@ -427,6 +427,10 @@ class BlueprintService:
                 break
 
         content = {name: self._unique(values) for name, (_, values) in categories.items()}
+        mvp_scope, scope_citations = self._parse_mvp_scope(chunks)
+        if any(mvp_scope.values()):
+            content["mvp_scope"] = mvp_scope
+            citations.extend(scope_citations)
         found_systems = any(content.values())
         labels = {
             "core_loop": "gameplay loop or mechanics",
@@ -444,6 +448,40 @@ class BlueprintService:
             "High" if found_systems else "Low",
             warnings,
         )
+
+    def _parse_mvp_scope(self, chunks: List[DocumentChunk]) -> Tuple[Dict[str, List[str]], List[str]]:
+        """Read explicit Must/Should/Could headings without assigning our own priorities."""
+        scope = {"must_have": [], "should_have": [], "could_have": []}
+        citations = []
+        heading_to_bucket = {
+            "must": "must_have",
+            "should": "should_have",
+            "could": "could_have",
+        }
+
+        for chunk, line, _, heading in self._iter_chunk_lines_with_context(chunks):
+            heading_match = re.fullmatch(r"(must|should|could)[-\s]?have", heading, re.IGNORECASE)
+            if not heading_match:
+                continue
+            bucket = heading_to_bucket[heading_match.group(1).lower()]
+            item = self._clean_markdown(line)
+            normalized_item = item.lower()
+            seen_items = [existing.lower() for values in scope.values() for existing in values]
+            # Chunk overlap can repeat a Must-have item directly after the
+            # Should-have heading, sometimes after the first word was truncated.
+            # The first, more complete category is the source of truth.
+            is_overlap = any(
+                normalized_item == existing
+                or (len(normalized_item) >= 12 and normalized_item in existing)
+                or (len(existing) >= 12 and existing in normalized_item)
+                for existing in seen_items
+            )
+            if not item or is_overlap:
+                continue
+            scope[bucket].append(item)
+            citations.append(str(chunk.id))
+
+        return {key: self._unique(values) for key, values in scope.items()}, self._unique(citations)
 
     def _parse_quest_hooks(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
         found_quests = []

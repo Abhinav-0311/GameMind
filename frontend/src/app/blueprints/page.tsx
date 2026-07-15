@@ -317,7 +317,7 @@ export default function BlueprintsDashboard() {
       ...(activeBlueprint.gameplay_systems ? [{
         id: "systems",
         title: "Gameplay systems",
-        description: "Gameplay loop, progression, economy, controls, accessibility, and technical constraints.",
+        description: "Gameplay loop, MVP scope, progression, economy, controls, accessibility, and technical constraints.",
         section: activeBlueprint.gameplay_systems,
       }] : []),
       {

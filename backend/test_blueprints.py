@@ -425,3 +425,36 @@ def test_blueprint_extracts_explicit_production_requirements(db_session):
     assert systems["content"]["accessibility"] == ["Include subtitles, remappable controls, and color blind safe objective markers."]
     assert systems["content"]["technical_constraints"] == ["Maintain 60 FPS on the target device and support offline saves."]
     assert any("gameplay loop" in warning for warning in systems["warnings"])
+
+
+def test_blueprint_extracts_explicit_must_should_could_scope_without_reprioritizing(db_session):
+    """MVP scope must preserve the GDD's own categories rather than inventing a roadmap."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"scope_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Production scope\n"
+            b"## Must-have, should-have, could-have\n"
+            b"### Must-have\n- One polished story level\n- Scripted companion dialogue\n"
+            b"### Should-have\n- Polished story level\n- Weekly challenge mode\n"
+            b"### Could-have\n- Optional VR challenge\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 201
+    systems = response.json()["gameplay_systems"]
+    assert systems["content"]["mvp_scope"] == {
+        "must_have": ["One polished story level", "Scripted companion dialogue"],
+        "should_have": ["Weekly challenge mode"],
+        "could_have": ["Optional VR challenge"],
+    }
+    assert systems["citations"]
