@@ -145,8 +145,14 @@ function readableValue(value: unknown): string {
   return value === undefined || value === null || value === "" ? "Not detected" : String(value);
 }
 
+function hasMeaningfulValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).some(hasMeaningfulValue);
+  return value !== undefined && value !== null && value !== "";
+}
+
 function previewEntries(section: BlueprintSectionResponse) {
-  return Object.entries(section.content).slice(0, 5);
+  return Object.entries(section.content).filter(([, value]) => hasMeaningfulValue(value)).slice(0, 5);
 }
 
 function reportCount(section?: { created: string[]; updated: string[]; skipped: string[] }) {
@@ -607,13 +613,13 @@ export default function BlueprintsDashboard() {
         </section>
       )}
 
-      <section className="mt-8 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <section className="mt-8 grid gap-8 xl:grid-cols-[284px_minmax(0,1fr)]">
         <aside className="space-y-5">
-          <section className="panel rounded-3xl p-5">
+          <section className="panel rounded-2xl p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="page-kicker">Source</p>
-                <h2 className="mt-3 text-xl font-semibold text-[var(--foreground)]">Choose source truth</h2>
+                <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">Choose source</h2>
               </div>
               <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">$0 local</span>
             </div>
@@ -649,7 +655,7 @@ export default function BlueprintsDashboard() {
                     ))}
                   </select>
 
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--card-muted)] p-4">
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4">
                     <p className="break-words text-sm font-semibold text-[var(--foreground)]">{selectedDocument?.title || "Selected document"}</p>
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">{selectedDocument?.chunks_count || 0} searchable chunks</p>
                     {selectedDocument && (
@@ -746,23 +752,16 @@ export default function BlueprintsDashboard() {
             </section>
           )}
 
-          <section className="panel overflow-hidden rounded-3xl">
-            <div className="border-b border-[var(--border)] p-5">
-              <p className="page-kicker">Saved</p>
-              <h2 className="mt-3 text-xl font-semibold text-[var(--foreground)]">Blueprints</h2>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-3 p-4">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-16 animate-pulse rounded-2xl bg-[var(--card-muted)]" />
-                ))}
-              </div>
-            ) : blueprints.length === 0 ? (
-              <div className="p-5 text-sm leading-6 text-[var(--text-secondary)]">No generated blueprints yet.</div>
-            ) : (
-              <div className="max-h-[24rem] overflow-y-auto p-2">
-                {blueprints.map((blueprint) => {
+          <details className="border-t border-[var(--border)] pt-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-[var(--foreground)] marker:hidden">
+              Blueprint history
+              <span className="text-xs font-medium text-[var(--text-secondary)]">{isLoading ? "Loading" : `${blueprints.length} saved`}</span>
+            </summary>
+            <div className="mt-4 max-h-64 space-y-1 overflow-y-auto pr-1">
+              {blueprints.length === 0 ? (
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">No generated blueprints yet.</p>
+              ) : (
+                blueprints.map((blueprint) => {
                   const selected = activeBlueprint?.id === blueprint.id;
                   return (
                     <button
@@ -777,23 +776,18 @@ export default function BlueprintsDashboard() {
                         setCompareTargetId("");
                         setComparison(null);
                       }}
-                      className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
+                      className={`block w-full rounded-xl px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                         selected ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--card-muted)]"
                       }`}
                     >
                       <p className="truncate text-sm font-semibold text-[var(--foreground)]">{blueprint.title}</p>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-xs text-[var(--text-secondary)]">{formatDate(blueprint.created_at)}</span>
-                        <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
-                          {statusLabel(blueprint)}
-                        </span>
-                      </div>
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">{formatDate(blueprint.created_at)} - {statusLabel(blueprint)}</p>
                     </button>
                   );
-                })}
-              </div>
-            )}
-          </section>
+                })
+              )}
+            </div>
+          </details>
         </aside>
 
         <section className="min-w-0">
@@ -842,12 +836,16 @@ export default function BlueprintsDashboard() {
                         )}
                       </div>
                       <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                        Review section by section. Approval is the point where draft design becomes runtime intent.
+                        Review one design area at a time. Approval is the point where draft design becomes runtime intent.
                       </p>
                       {comparableBlueprints.length > 0 && (
-                        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <details className="mt-5 border-t border-[var(--border)] pt-4">
+                          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
+                            Compare with an earlier blueprint
+                          </summary>
+                          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                           <label className="min-w-0 flex-1 text-sm font-semibold text-[var(--foreground)]" htmlFor="compare-blueprint">
-                            Compare with earlier blueprint
+                            Snapshot
                             <select
                               id="compare-blueprint"
                               value={compareTargetId}
@@ -868,7 +866,8 @@ export default function BlueprintsDashboard() {
                           <button type="button" onClick={handleCompare} disabled={!compareTargetId || isComparing} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                             {isComparing ? "Comparing" : "Compare changes"}
                           </button>
-                        </div>
+                          </div>
+                        </details>
                       )}
                     </div>
 
@@ -888,9 +887,9 @@ export default function BlueprintsDashboard() {
                   </div>
                 </div>
 
-                <div className="grid min-h-[34rem] lg:grid-cols-[220px_minmax(0,1fr)]">
-                  <nav className="border-b border-[var(--border)] bg-[var(--card-muted)] p-3 lg:border-b-0 lg:border-r" aria-label="Blueprint sections">
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <div>
+                  <nav className="border-b border-[var(--border)] bg-[var(--card-muted)] px-4 py-3 sm:px-6" aria-label="Blueprint sections">
+                    <div className="flex flex-wrap gap-2">
                       {reviewSections.map((section) => {
                         const selected = activeSection?.id === section.id;
                         return (
@@ -898,7 +897,7 @@ export default function BlueprintsDashboard() {
                             key={section.id}
                             type="button"
                             onClick={() => setActiveSectionId(section.id)}
-                            className={`min-h-12 rounded-xl px-3 text-left text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
+                            className={`min-h-10 rounded-full px-4 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                               selected ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm" : "text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
                             }`}
                           >
@@ -1037,9 +1036,13 @@ function SectionBrief({
   const guidance = sectionGuidance[section.id];
   const entries = previewEntries(section.section);
   const hasWarnings = section.section.warnings.length > 0;
+  const npcProfiles = Array.isArray(section.section.content.npcs)
+    ? section.section.content.npcs.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    : [];
+  const usesEditorialLayout = section.id === "summary" || section.id === "narrative" || section.id === "art";
 
   return (
-    <article className="min-w-0 p-5 sm:p-6">
+    <article className="min-w-0 p-5 sm:p-7">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="page-kicker">Section brief</p>
@@ -1050,67 +1053,65 @@ function SectionBrief({
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${confidenceTone(section.section.confidence)}`}>
             {section.section.confidence} confidence
           </span>
-          <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
-            {section.section.citations.length} citations
-          </span>
+          {section.section.citations.length > 0 && (
+            <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+              {section.section.citations.length} citations
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-5">
-        <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <p className="page-kicker">What GameMind found</p>
-          </div>
+      {hasWarnings && (
+        <p className="mt-5 border-l-2 border-amber-500 px-3 text-sm leading-6 text-[var(--text-secondary)]">
+          {section.section.warnings[0]}
+        </p>
+      )}
 
-          {entries.length === 0 ? (
-            <div className="px-5 py-12 text-center">
-              <p className="text-sm font-semibold text-[var(--foreground)]">No usable section data yet</p>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-                Add more detail to the source document, then regenerate.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--border)]">
-              {entries.map(([key, value]) => (
-                <div key={key} className="p-5">
-                  <p className="page-kicker">{key.replaceAll("_", " ")}</p>
-                  <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--foreground)]">{readableValue(value)}</p>
-                </div>
-              ))}
-            </div>
-          )}
+      {entries.length === 0 ? (
+        <section className="mt-8 border-y border-[var(--border)] py-14 text-center">
+          <p className="text-base font-semibold text-[var(--foreground)]">No source detail found for {section.title.toLowerCase()}.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+            Add a specific rule, event, or profile to the source document, then generate a new blueprint revision.
+          </p>
+          <Link href="/knowledge" className="btn-secondary mt-5">Review source</Link>
         </section>
+      ) : npcProfiles.length > 0 ? (
+        <NpcProfiles profiles={npcProfiles} />
+      ) : usesEditorialLayout ? (
+        <EditorialBrief entries={entries} />
+      ) : (
+        <section className="mt-8 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+          {entries.map(([key, value]) => (
+            <div key={key} className="grid gap-2 py-5 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6">
+              <p className="page-kicker pt-1">{key.replaceAll("_", " ")}</p>
+              <p className="max-w-3xl text-sm leading-7 text-[var(--foreground)]">{readableValue(value)}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
-        <aside className="grid gap-4 lg:grid-cols-3">
-          <InfoPanel title="How to use this" body={guidance?.use ?? "Review this as a design decision before runtime use."} />
-          <InfoPanel title="Runtime impact" body={guidance?.runtime ?? "This section contributes to runtime data and exports."} />
-          <section
-            className={`rounded-2xl border p-5 ${
-              hasWarnings ? "border-amber-500/25 bg-amber-500/10" : "border-emerald-500/20 bg-emerald-500/10"
-            }`}
-          >
-            <p className="text-sm font-semibold text-[var(--foreground)]">{hasWarnings ? "Needs source detail" : "No blocking gaps"}</p>
-            {hasWarnings ? (
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
-                {section.section.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">This section has enough detail for the MVP workflow.</p>
-            )}
-          </section>
-        </aside>
-      </div>
+      {entries.length > 0 && guidance && (
+        <details className="mt-7 border-t border-[var(--border)] pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)] focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+            Implementation notes
+          </summary>
+          <div className="mt-3 grid gap-4 text-sm leading-6 text-[var(--text-secondary)] sm:grid-cols-2">
+            <p>{guidance?.use ?? "Review this as a design decision before runtime use."}</p>
+            <p>{guidance?.runtime ?? "This section contributes to runtime data and exports."}</p>
+          </div>
+        </details>
+      )}
 
-      <details className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--accent)] outline-none transition hover:text-[var(--accent-hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
-          Structured data
-        </summary>
-        <pre className="max-h-80 overflow-auto border-t border-[var(--border)] p-4 text-xs leading-5 text-[var(--text-secondary)]">
-          {JSON.stringify(section.section.content, null, 2)}
-        </pre>
-      </details>
+      {entries.length > 0 && (
+        <details className="mt-4 border-t border-[var(--border)] pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)] focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+            View structured data
+          </summary>
+          <pre className="mt-3 max-h-80 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--card-muted)] p-4 text-xs leading-5 text-[var(--text-secondary)]">
+            {JSON.stringify(section.section.content, null, 2)}
+          </pre>
+        </details>
+      )}
 
       {citations.length > 0 && (
         <details className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
@@ -1136,11 +1137,38 @@ function SectionBrief({
   );
 }
 
-function InfoPanel({ title, body }: { title: string; body: string }) {
+function EditorialBrief({ entries }: { entries: [string, unknown][] }) {
   return (
-    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-      <p className="page-kicker">{title}</p>
-      <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{body}</p>
+    <section className="mt-8 grid gap-x-10 divide-y divide-[var(--border)] border-y border-[var(--border)] md:grid-cols-2 md:divide-y-0">
+      {entries.map(([key, value]) => (
+        <div key={key} className="py-5 md:odd:border-r md:odd:pr-10 md:even:pl-10">
+          <p className="page-kicker">{key.replaceAll("_", " ")}</p>
+          <p className="mt-3 text-sm leading-7 text-[var(--foreground)]">{readableValue(value)}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function NpcProfiles({ profiles }: { profiles: Record<string, unknown>[] }) {
+  return (
+    <section className="mt-8 grid gap-4 lg:grid-cols-2">
+      {profiles.map((profile, index) => {
+        const name = readableValue(profile.name);
+        const archetype = readableValue(profile.archetype);
+        const dialogueStyle = readableValue(profile.dialogue_style);
+        const hasDistinctRole = archetype !== "Not detected" && archetype !== dialogueStyle && !dialogueStyle.startsWith(archetype);
+        return (
+          <article key={`${name}-${index}`} className="border border-[var(--border)] bg-[var(--surface)] p-5">
+            <p className="page-kicker">NPC {String(index + 1).padStart(2, "0")}</p>
+            <h4 className="mt-3 text-xl font-semibold text-[var(--foreground)]">{name}</h4>
+            {hasDistinctRole && <p className="mt-2 text-sm font-medium text-[var(--accent)]">{archetype}</p>}
+            {dialogueStyle !== "Not detected" && (
+              <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm leading-6 text-[var(--text-secondary)]">{dialogueStyle}</p>
+            )}
+          </article>
+        );
+      })}
     </section>
   );
 }
