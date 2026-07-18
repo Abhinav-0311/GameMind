@@ -202,7 +202,7 @@ def test_graph_aware_memory_boosting_unit(db):
     class MockCollection:
         def count(self):
             return 2
-        def query(self, query_texts, where, n_results):
+        def query(self, query_texts, where, n_results, **kwargs):
             # Return m1 first, then m2, to verify that score boosting re-ranks m2 above m1
             return {
                 "ids": [[str(m1.id), str(m2.id)]],

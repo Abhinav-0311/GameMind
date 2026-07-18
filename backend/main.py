@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.documents import router as documents_router
 from app.api.v1.query import router as query_router
@@ -17,7 +17,9 @@ from app.api.v1.blueprints import router as blueprints_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.decisions import router as decisions_router
-from app.config import settings
+from app.api.v1.auth import router as auth_router
+from app.config import settings, validate_production_settings
+from app.middleware import SecurityHeadersMiddleware
 import logging
 
 # Setup standard logging
@@ -30,6 +32,7 @@ from app.workers.cleanup_worker import cleanup_worker_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_production_settings()
     # Startup logic: Start cleanup worker loop in the background
     logger.info("Starting background cleanup worker task inside lifespan context...")
     stop_event = asyncio.Event()
@@ -73,11 +76,12 @@ app = FastAPI(
 # Enable CORS so the Next.js frontend can query this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production deployments
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Register endpoints under /api/v1
 app.include_router(documents_router, prefix="/api/v1")
@@ -97,6 +101,7 @@ app.include_router(blueprints_router, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
 app.include_router(reviews_router, prefix="/api/v1")
 app.include_router(decisions_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/health")
@@ -134,3 +139,15 @@ def health_check():
         "vector_collection": "lore_chunks_local",
         "vector_dimension": 384
     }
+
+
+@app.get("/ready")
+def readiness_check():
+    """Return success only when required runtime dependencies are available."""
+    health = health_check()
+    if health["status"] != "healthy":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=health,
+        )
+    return health

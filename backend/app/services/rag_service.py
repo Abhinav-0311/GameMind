@@ -3,6 +3,7 @@ import uuid
 import logging
 import threading
 import hashlib
+import math
 import re
 from sqlalchemy.orm import Session
 from pypdf import PdfReader
@@ -101,6 +102,31 @@ class RAGService:
                 except Exception as e:
                     logger.error(f"Failed to decode text file: {e}")
                     raise ValueError("Could not decode text file. Ensure it is UTF-8 or Latin-1 encoded.")
+
+    @staticmethod
+    def _test_embeddings(texts: list[str], dimensions: int = 384) -> list[list[float]]:
+        """Create deterministic lexical vectors for tests without downloading a model.
+
+        Production uses Chroma's configured embedding function or a future provider.
+        These vectors exist only when GAMEMIND_TESTING=1, so unit tests stay offline
+        while still exercising Chroma's add/query contracts.
+        """
+        embeddings: list[list[float]] = []
+        for text in texts:
+            vector = [0.0] * dimensions
+            for token in re.findall(r"[a-z0-9]+", text.lower()):
+                digest = hashlib.sha256(token.encode("utf-8")).digest()
+                index = int.from_bytes(digest[:4], "big") % dimensions
+                vector[index] += 1.0 if digest[4] % 2 == 0 else -1.0
+
+            magnitude = math.sqrt(sum(value * value for value in vector))
+            embeddings.append([value / magnitude for value in vector] if magnitude else vector)
+        return embeddings
+
+    def _vector_arguments(self, texts: list[str], argument_name: str) -> dict:
+        if not settings.is_testing:
+            return {}
+        return {argument_name: self._test_embeddings(texts)}
 
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
         """Split text into overlapping chunks, attempting to break on word/newline boundaries."""
@@ -251,7 +277,8 @@ class RAGService:
                 self.collection.add(
                     ids=chroma_ids,
                     documents=chroma_texts,
-                    metadatas=chroma_metadatas
+                    metadatas=chroma_metadatas,
+                    **self._vector_arguments(chroma_texts, "embeddings"),
                 )
             except Exception as e:
                 db.rollback()
@@ -279,7 +306,8 @@ class RAGService:
             results = self.collection.query(
                 query_texts=[query_text],
                 n_results=n_results,
-                where={"game_project_id": game_project_id}
+                where={"game_project_id": game_project_id},
+                **self._vector_arguments([query_text], "query_embeddings"),
             )
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")

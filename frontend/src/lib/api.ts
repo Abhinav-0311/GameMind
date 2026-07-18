@@ -8,6 +8,17 @@ export interface GameProject {
   created_at: string;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+export interface AuthSession {
+  auth_required: boolean;
+  user: AuthUser | null;
+}
+
 function activeProjectId() {
   if (typeof window === "undefined") return "default_project";
   return window.localStorage.getItem(activeProjectStorageKey) || "default_project";
@@ -38,7 +49,7 @@ async function projectFetch(input: RequestInfo | URL, init: RequestInit = {}) {
     headers.set("X-Game-Project-ID", activeProjectId());
   }
 
-  return globalThis.fetch(input, { ...init, headers });
+  return globalThis.fetch(input, { ...init, headers, credentials: init.credentials ?? "include" });
 }
 
 // API calls are project-scoped unless an individual request supplies its own header.
@@ -157,6 +168,66 @@ export interface HealthResponse {
 }
 
 export const api = {
+  async getAuthSession(): Promise<AuthSession> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/session`, { credentials: "include" });
+    if (res.status === 401) return { auth_required: true, user: null };
+    if (!res.ok) throw new Error("Could not verify your session.");
+    return res.json();
+  },
+
+  async register(email: string, password: string): Promise<AuthUser> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || "Could not create your account.");
+    }
+    return res.json();
+  },
+
+  async login(email: string, password: string): Promise<AuthUser> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || "Invalid email or password.");
+    }
+    return res.json();
+  },
+
+  async logout(): Promise<void> {
+    await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include" });
+  },
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/password-reset/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    if (!res.ok) throw new Error("Could not request a password reset.");
+  },
+
+  async confirmPasswordReset(token: string, password: string): Promise<void> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/password-reset/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.detail || "This reset link is invalid or expired."); }
+  },
+
+  async confirmEmailVerification(token: string): Promise<void> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/email-verification/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.detail || "This verification link is invalid or expired."); }
+  },
+
+  async acceptInvitation(token: string): Promise<GameProject> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/projects/invitations/accept`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.detail || "This invitation is invalid or expired."); }
+    return res.json();
+  },
+
   async getProjects(): Promise<GameProject[]> {
     const res = await fetch(`${API_BASE_URL}/api/v1/projects/`);
     if (!res.ok) throw new Error("Failed to fetch workspaces");

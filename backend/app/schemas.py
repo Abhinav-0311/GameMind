@@ -151,6 +151,57 @@ class GameProjectResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class AuthRegisterRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=320)
+    password: str = Field(..., min_length=12, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        email = value.strip().lower()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            raise ValueError("Use a valid email address.")
+        return email
+
+
+class AuthLoginRequest(AuthRegisterRequest):
+    pass
+
+
+class AuthUserResponse(BaseModel):
+    id: UUID
+    email: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuthSessionResponse(BaseModel):
+    auth_required: bool
+    user: Optional[AuthUserResponse] = None
+
+
+class EmailRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=320)
+
+
+class TokenConfirmationRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=512)
+
+
+class PasswordResetConfirmationRequest(TokenConfirmationRequest):
+    password: str = Field(..., min_length=12, max_length=128)
+
+
+class WorkspaceInvitationCreate(BaseModel):
+    email: str = Field(..., min_length=5, max_length=320)
+    role: str = Field(..., pattern="^(editor|viewer)$")
+
+
+class WorkspaceInvitationAccept(TokenConfirmationRequest):
+    pass
+
 # Query Schemas
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Lore search query text")

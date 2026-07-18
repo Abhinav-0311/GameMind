@@ -166,6 +166,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
 
+  useEffect(() => {
+    if (pathname === "/login") return;
+    let active = true;
+
+    api.getAuthSession()
+      .then((session) => {
+        if (active && session.auth_required && !session.user) router.replace("/login");
+      })
+      .catch(() => {
+        // Existing connection states handle backend availability independently.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [pathname, router]);
+
   const currentPage = useMemo(
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
     [pathname]
@@ -204,6 +221,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [theme]);
 
   useEffect(() => {
+    if (pathname === "/login") return;
     let active = true;
 
     api
@@ -225,7 +243,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => {
       active = false;
     };
-  }, [activeProjectId]);
+  }, [activeProjectId, pathname]);
 
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
@@ -297,6 +315,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     filteredCommands[index]?.action();
     setPaletteOpen(false);
   };
+
+  if (["/login", "/forgot-password", "/reset-password", "/verify-email", "/accept-invitation"].includes(pathname)) return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)] antialiased">

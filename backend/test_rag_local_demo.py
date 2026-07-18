@@ -177,8 +177,8 @@ def test_query_empty_local_collection(db_session):
     assert "message" in data
     assert "No matching lore fragments" in data["message"]
 
-def test_chroma_default_embedding_path():
-    """Verify that Chroma can generate local embeddings and dimension conflicts are avoided."""
+def test_local_vector_index_health_metadata():
+    """Verify local vector indexing reports stable metadata without network model downloads."""
     rag = RAGService()
     
     assert rag.collection_name == "lore_chunks_local"

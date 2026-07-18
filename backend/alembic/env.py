@@ -26,6 +26,7 @@ from app.models.graph import (
     PendingIngest,
     ConsistencyOverride
 )
+from app.models.user import User, ProjectMembership
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

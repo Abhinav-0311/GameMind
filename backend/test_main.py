@@ -18,6 +18,44 @@ def test_health_endpoint():
     assert data["vector_collection"] == "lore_chunks_local"
     assert "llm_provider" in data
 
+
+def test_config_uses_explicit_cors_origins():
+    from app.config import settings
+
+    assert "*" not in settings.cors_origins
+    assert "http://localhost:3000" in settings.cors_origins
+
+
+def test_security_headers_are_present():
+    response = client.get("/health")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_production_settings_reject_unsafe_jwt_secret():
+    from app.config import settings, validate_production_settings
+
+    original_environment = settings.ENVIRONMENT
+    original_auth_required = settings.AUTH_REQUIRED
+    original_jwt_secret = settings.JWT_SECRET
+    original_cors_origins = settings.CORS_ORIGINS
+    try:
+        settings.ENVIRONMENT = "production"
+        settings.AUTH_REQUIRED = True
+        settings.JWT_SECRET = "development-only-change-me"
+        settings.CORS_ORIGINS = "https://app.example.com"
+        try:
+            validate_production_settings()
+            assert False, "unsafe production settings should be rejected"
+        except RuntimeError as error:
+            assert "JWT_SECRET" in str(error)
+    finally:
+        settings.ENVIRONMENT = original_environment
+        settings.AUTH_REQUIRED = original_auth_required
+        settings.JWT_SECRET = original_jwt_secret
+        settings.CORS_ORIGINS = original_cors_origins
+
 def test_chunker_logic():
     """Verify that chunking divides text within bounds and handles overlap correctly."""
     rag = RAGService()

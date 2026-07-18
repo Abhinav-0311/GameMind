@@ -164,6 +164,7 @@ def run_concurrent_workloads(concurrency: int) -> dict:
     }
 
 
+@pytest.mark.load
 def test_load_scaling_thresholds():
     """Exercise each supported load tier within one stable app/database lifecycle."""
     thresholds = [

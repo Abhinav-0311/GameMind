@@ -1,0 +1,7 @@
+"use client";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { api } from "@/lib/api";
+function ResetPasswordContent() { const token = useSearchParams().get("token") || ""; const [password, setPassword] = useState(""); const [text, setText] = useState(""); const submit = async (e: React.FormEvent) => { e.preventDefault(); try { await api.confirmPasswordReset(token, password); setText("Password updated. Sign in with your new password."); } catch (error) { setText(error instanceof Error ? error.message : "Reset failed."); } }; return <main className="grid min-h-dvh place-items-center bg-[var(--background)] p-6"><form onSubmit={submit} className="w-full max-w-md"><p className="text-xs uppercase tracking-[.16em] text-[var(--accent)]">Account recovery</p><h1 className="mt-3 font-serif text-4xl">Choose a new password.</h1><input className="mt-8 h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3" type="password" minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} required /><button className="btn-primary mt-4 h-12 w-full" disabled={!token}>Update password</button>{text && <p className="mt-4 text-sm" role="status">{text}</p>}<Link className="mt-6 inline-block text-sm text-[var(--accent)]" href="/login">Sign in</Link></form></main>; }
+export default function ResetPasswordPage() { return <Suspense><ResetPasswordContent /></Suspense>; }

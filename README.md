@@ -270,6 +270,8 @@ Remaining product work:
 
 ## Production Notes
 
-Local development runs migrations automatically in the backend container. Production deployments should run `alembic upgrade head` as a separate migration job before application replicas start.
+Local development runs migrations automatically in the backend container. Production deployments use `docker-compose.production.yml`, which runs `alembic upgrade head` as a one-off migration service before the API starts. See [docs/deployment.md](docs/deployment.md) for environment configuration, deployment, rollback boundaries, and backups.
+
+Authentication is optional in local demo mode and enabled in production through `AUTH_REQUIRED=true`. Production sessions use secure HTTP-only cookies and workspace membership roles. Configure a unique `JWT_SECRET` through deployment secrets before exposing the dashboard.
 
 The main demo path is intentionally local-first and works without paid API usage. Future hosted model integrations, such as NVIDIA API support, should be added through the provider interface without changing the dashboard workflow. Do not put real API keys in Git; use local `.env` values or deployment secrets.

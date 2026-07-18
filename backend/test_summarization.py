@@ -197,15 +197,15 @@ def test_summarization_failure_resiliency(db):
                     "selected_chunk_ids": []
                 })
             
-            # The 5th turn triggers the background task which raises the exception.
-            # In TestClient, this exception propagates back to the caller.
-            with pytest.raises(Exception, match="Provider Rate Limit Exceeded"):
-                client.post("/api/v1/dialogue/chat", json={
-                    "npc_slug": npc_slug,
-                    "player_message": "Mage turn 4",
-                    "conversation_id": conv_id,
-                    "selected_chunk_ids": []
-                })
+            # The 5th turn triggers summarization. Provider failure must be contained
+            # so the player still receives the dialogue response.
+            response = client.post("/api/v1/dialogue/chat", json={
+                "npc_slug": npc_slug,
+                "player_message": "Mage turn 4",
+                "conversation_id": conv_id,
+                "selected_chunk_ids": []
+            })
+            assert response.status_code == 200
             
             db.expire_all()
             conv = db.query(Conversation).filter(Conversation.id == conv_id).first()

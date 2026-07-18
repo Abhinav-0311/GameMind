@@ -97,7 +97,8 @@ class MemoryService:
         self.memory_collection.add(
             ids=[str(memory.id)],
             documents=[memory.memory_text],
-            metadatas=[chroma_metadata]
+            metadatas=[chroma_metadata],
+            **self.rag_service._vector_arguments([memory.memory_text], "embeddings"),
         )
 
         memory.chroma_indexed = True
@@ -167,7 +168,8 @@ class MemoryService:
             results = self.memory_collection.query(
                 query_texts=[query_text],
                 where={"$and": [{"npc_id": str(npc_id)}, {"game_project_id": game_project_id}]},
-                n_results=n_results
+                n_results=n_results,
+                **self.rag_service._vector_arguments([query_text], "query_embeddings"),
             )
         except Exception as e:
             logger.error(f"Failed to query Chroma memory index: {e}")
