@@ -202,6 +202,13 @@ class WorkspaceInvitationCreate(BaseModel):
 class WorkspaceInvitationAccept(TokenConfirmationRequest):
     pass
 
+
+class WorkspaceMemberResponse(BaseModel):
+    id: UUID
+    email: str
+    role: str
+    joined_at: datetime
+
 # Query Schemas
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Lore search query text")

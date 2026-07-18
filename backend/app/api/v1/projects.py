@@ -7,7 +7,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.project import GameProject
 from app.models.user import ProjectMembership, User
-from app.schemas import GameProjectCreate, GameProjectResponse, WorkspaceInvitationAccept, WorkspaceInvitationCreate
+from app.schemas import GameProjectCreate, GameProjectResponse, WorkspaceInvitationAccept, WorkspaceInvitationCreate, WorkspaceMemberResponse
 from app.services.account_action_service import AccountActionService
 from app.services.email_delivery_service import send_account_link
 
@@ -79,6 +79,39 @@ def _require_owner(db: Session, project_id: str, current_user: User | None) -> N
     ).first()
     if membership is None or membership.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only workspace owners can manage invitations.")
+
+
+def _require_membership(db: Session, project_id: str, current_user: User | None) -> None:
+    if current_user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in is required.")
+    membership = db.query(ProjectMembership).filter(
+        ProjectMembership.user_id == current_user.id,
+        ProjectMembership.game_project_id == project_id,
+    ).first()
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this workspace.")
+
+
+@router.get("/{project_id}/members", response_model=list[WorkspaceMemberResponse])
+def list_project_members(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
+    if db.get(GameProject, project_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found.")
+    _require_membership(db, project_id, current_user)
+    memberships = (
+        db.query(ProjectMembership)
+        .join(User, ProjectMembership.user_id == User.id)
+        .filter(ProjectMembership.game_project_id == project_id)
+        .order_by(ProjectMembership.created_at.asc())
+        .all()
+    )
+    return [
+        WorkspaceMemberResponse(id=membership.user.id, email=membership.user.email, role=membership.role, joined_at=membership.created_at)
+        for membership in memberships
+    ]
 
 
 @router.post("/{project_id}/invitations", status_code=status.HTTP_202_ACCEPTED)

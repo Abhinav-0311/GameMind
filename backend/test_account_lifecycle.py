@@ -60,3 +60,10 @@ def test_owner_can_invite_matching_account_to_workspace(monkeypatch, auth_requir
     accepted = invitee_client.post("/api/v1/projects/invitations/accept", json={"token": invitation_token})
     assert accepted.status_code == 200
     assert accepted.json()["id"] == workspace.json()["id"]
+
+    roster = owner_client.get(f"/api/v1/projects/{workspace.json()['id']}/members")
+    assert roster.status_code == 200
+    assert [(member["email"], member["role"]) for member in roster.json()] == [
+        (owner_email, "owner"),
+        (invitee_email, "editor"),
+    ]

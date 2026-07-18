@@ -113,6 +113,7 @@ const navigationItems: NavigationItem[] = [
   { name: "Sources", href: "/knowledge", section: "Build", icon: <IconArchive /> },
   { name: "Decisions", href: "/decisions", section: "Build", icon: <IconDecisions /> },
   { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
+  { name: "Workspace", href: "/workspace", section: "Build", icon: <IconPeople /> },
   { name: "Lore Search", href: "/query", section: "Test", icon: <IconSearch /> },
   { name: "Runtime Test", href: "/vertical-slice", section: "Test", icon: <IconPlay /> },
 ];

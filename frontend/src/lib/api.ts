@@ -19,6 +19,13 @@ export interface AuthSession {
   user: AuthUser | null;
 }
 
+export interface WorkspaceMember {
+  id: string;
+  email: string;
+  role: "owner" | "editor" | "viewer";
+  joined_at: string;
+}
+
 function activeProjectId() {
   if (typeof window === "undefined") return "default_project";
   return window.localStorage.getItem(activeProjectStorageKey) || "default_project";
@@ -245,6 +252,27 @@ export const api = {
       throw new Error(errData.detail || "Failed to create workspace");
     }
     return res.json();
+  },
+
+  async getWorkspaceMembers(projectId: string): Promise<WorkspaceMember[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/members`);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || "Could not load workspace members.");
+    }
+    return res.json();
+  },
+
+  async inviteWorkspaceMember(projectId: string, email: string, role: "editor" | "viewer"): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/invitations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || "Could not create the invitation.");
+    }
   },
 
   async getHealth(): Promise<HealthResponse> {
