@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { api, getActiveProjectId, setActiveProjectId, subscribeToProjectChange, type GameProject } from "@/lib/api";
+import { api, getActiveProjectId, setActiveProjectId, subscribeToProjectChange, type AuthUser, type GameProject } from "@/lib/api";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -166,6 +166,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   useEffect(() => {
     if (pathname === "/login") return;
@@ -173,7 +175,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     api.getAuthSession()
       .then((session) => {
-        if (active && session.auth_required && !session.user) router.replace("/login");
+        if (!active) return;
+        setSessionUser(session.user);
+        if (session.auth_required && !session.user) router.replace("/login");
       })
       .catch(() => {
         // Existing connection states handle backend availability independently.
@@ -275,6 +279,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     } finally {
       setCreatingProject(false);
     }
+  };
+
+  const signOut = async () => {
+    setAccountMenuOpen(false);
+    await api.logout();
+    setSessionUser(null);
+    router.replace("/login");
   };
 
   useEffect(() => {
@@ -398,6 +409,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
                 Connected
               </div>
+              {sessionUser && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAccountMenuOpen((open) => !open)}
+                    aria-expanded={accountMenuOpen}
+                    aria-haspopup="menu"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2.5 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                  >
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)]" aria-hidden="true">
+                      {sessionUser.email.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="hidden max-w-36 truncate md:block">{sessionUser.email}</span>
+                  </button>
+                  {accountMenuOpen && (
+                    <div className="absolute right-0 z-40 mt-2 w-56 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl" role="menu">
+                      <p className="truncate px-3 py-2 text-xs text-[var(--text-secondary)]">{sessionUser.email}</p>
+                      <button
+                        type="button"
+                        onClick={signOut}
+                        className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        role="menuitem"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </header>
 
