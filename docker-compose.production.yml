@@ -23,6 +23,11 @@ services:
       ANONYMIZED_TELEMETRY: "False"
     volumes:
       - gamemind_chroma_production:/chroma/chroma
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8000/api/v2/heartbeat > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   migrate:
     build:
@@ -70,7 +75,7 @@ services:
       migrate:
         condition: service_completed_successfully
       chromadb:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8000/ready')"]
       interval: 15s

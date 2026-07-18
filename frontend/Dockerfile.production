@@ -2,7 +2,7 @@ FROM node:20-alpine AS dependencies
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000
 
 FROM dependencies AS builder
 
@@ -20,7 +20,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --fetch-retries=5 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=30000
 
 EXPOSE 3000
 CMD ["npm", "run", "start"]
