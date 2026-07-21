@@ -59,6 +59,27 @@ def test_generate_blueprint_success(uploaded_document):
         assert "warnings" in data[section]
 
 
+def test_list_blueprints_returns_latest_snapshot_first(uploaded_document):
+    first = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    ).json()
+    second = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    ).json()
+
+    response = client.get(
+        "/api/v1/blueprints/",
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()[:2]] == [second["id"], first["id"]]
+
+
 def test_generate_blueprint_uses_selected_supporting_sources(db_session):
     """A supporting NPC sheet may enrich the blueprint without replacing its primary GDD."""
     rag = RAGService()

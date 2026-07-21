@@ -75,8 +75,13 @@ def list_blueprints(
     db: Session = Depends(get_db),
     game_project_id: str = Depends(get_game_project_id)
 ):
-    """Lists all game blueprints scoped to the active project."""
-    return db.query(GameBlueprint).filter(GameBlueprint.game_project_id == game_project_id).all()
+    """List project blueprints newest first so the dashboard opens the latest draft."""
+    return (
+        db.query(GameBlueprint)
+        .filter(GameBlueprint.game_project_id == game_project_id)
+        .order_by(GameBlueprint.created_at.desc())
+        .all()
+    )
 
 @router.get("/{blueprint_id}", response_model=BlueprintResponse)
 def get_blueprint(
