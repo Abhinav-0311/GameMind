@@ -22,7 +22,7 @@ def test_document_upload_local_demo(db_session):
     """Verify document upload writes to the local vector collection."""
     rag = RAGService()
     
-    assert rag.collection_name == "lore_chunks_local"
+    assert rag.collection_name == "lore_chunks_local_lexical_v1"
     assert rag.collection is not None
     
     file_name = f"test_lore_{uuid.uuid4().hex[:6]}.txt"
@@ -181,7 +181,7 @@ def test_local_vector_index_health_metadata():
     """Verify local vector indexing reports stable metadata without network model downloads."""
     rag = RAGService()
     
-    assert rag.collection_name == "lore_chunks_local"
+    assert rag.collection_name == "lore_chunks_local_lexical_v1"
     
     count = rag.collection.count()
     assert isinstance(count, int)
@@ -190,7 +190,8 @@ def test_local_vector_index_health_metadata():
     assert response.status_code == 200
     health_data = response.json()
     assert health_data["ai_mode"] == "local_demo"
-    assert health_data["vector_collection"] == "lore_chunks_local"
+    assert health_data["embedding_provider"] == "local_lexical"
+    assert health_data["vector_collection"] == "lore_chunks_local_lexical_v1"
     # Assert vector_dimension from health metadata directly
     assert "vector_dimension" in health_data
 

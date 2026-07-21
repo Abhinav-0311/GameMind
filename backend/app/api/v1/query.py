@@ -17,7 +17,7 @@ def query_lore(
     rag_service: RAGService = Depends(get_rag_service),
     game_project_id: str = Depends(get_game_project_id)
 ):
-    """Query the vector database (ChromaDB) for semantic matches against uploaded lore scoped by project."""
+    """Query the local lore index for grounded matches scoped by project."""
     # Chroma unavailable -> return 503 with "Vector index unavailable"
     if not rag_service.chroma_client or not rag_service.collection:
         raise HTTPException(
@@ -36,7 +36,7 @@ def query_lore(
         if not results:
             message = "No matching lore fragments found. Ensure documents are uploaded."
         else:
-            message = "Retrieved matches using local Chroma embeddings."
+            message = "Retrieved matches using the local offline lore index."
 
         return {
             "query": request.query,

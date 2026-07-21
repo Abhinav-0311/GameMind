@@ -135,8 +135,8 @@ def health_check():
         "chromadb": chroma_status,
         "ai_mode": "local_demo",
         "llm_provider": settings.LLM_PROVIDER,
-        "embedding_provider": "chroma_default",
-        "vector_collection": "lore_chunks_local",
+        "embedding_provider": "local_lexical",
+        "vector_collection": "lore_chunks_local_lexical_v1",
         "vector_dimension": 384
     }
 

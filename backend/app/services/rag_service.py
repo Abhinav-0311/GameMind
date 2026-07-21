@@ -30,7 +30,10 @@ class RAGService:
     def __init__(self):
         self.chroma_client = None
         self.collection = None
-        self.collection_name = "lore_chunks_local"
+        # This collection deliberately uses GameMind's offline lexical embedding.
+        # A new name prevents mixing it with vectors previously created by Chroma's
+        # downloadable default embedding model.
+        self.collection_name = "lore_chunks_local_lexical_v1"
         self._init_chroma()
 
     def _init_chroma(self):
@@ -104,12 +107,12 @@ class RAGService:
                     raise ValueError("Could not decode text file. Ensure it is UTF-8 or Latin-1 encoded.")
 
     @staticmethod
-    def _test_embeddings(texts: list[str], dimensions: int = 384) -> list[list[float]]:
-        """Create deterministic lexical vectors for tests without downloading a model.
+    def _local_embeddings(texts: list[str], dimensions: int = 384) -> list[list[float]]:
+        """Create deterministic, offline lexical vectors for the local demo mode.
 
-        Production uses Chroma's configured embedding function or a future provider.
-        These vectors exist only when GAMEMIND_TESTING=1, so unit tests stay offline
-        while still exercising Chroma's add/query contracts.
+        This prevents Chroma from downloading a model during a user's first upload.
+        It provides grounded keyword and terminology retrieval at zero cost; a future
+        configured provider can replace it when stronger semantic retrieval is needed.
         """
         embeddings: list[list[float]] = []
         for text in texts:
@@ -124,9 +127,7 @@ class RAGService:
         return embeddings
 
     def _vector_arguments(self, texts: list[str], argument_name: str) -> dict:
-        if not settings.is_testing:
-            return {}
-        return {argument_name: self._test_embeddings(texts)}
+        return {argument_name: self._local_embeddings(texts)}
 
     def chunk_text(self, text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
         """Split text into overlapping chunks, attempting to break on word/newline boundaries."""
@@ -290,7 +291,7 @@ class RAGService:
         return db_doc
 
     def query_lore(self, query_text: str, limit: int = 5, game_project_id: str = "default_project") -> list[dict]:
-        """Queries ChromaDB, maps to source records, returns citation and confidence score."""
+        """Queries the local lexical vector index and returns grounded citations."""
         if not self.collection:
             raise ValueError("ChromaDB vector collection is unavailable.")
 
@@ -354,7 +355,7 @@ class RAGService:
     def backfill_local_collection(self, db: Session):
         """
         Read existing DocumentChunk rows from relational DB and add them
-        to the local collection (lore_chunks_local) if they aren't already indexed.
+        to the local lexical collection if they are not already indexed.
         Uses batching and handles individual chunk indexing failures gracefully.
         """
         if not self.chroma_client:
@@ -362,13 +363,13 @@ class RAGService:
             return
 
         try:
-            # Always ensure lore_chunks_local is created
+            # Always ensure the current local lexical collection is created.
             local_collection = self.chroma_client.get_or_create_collection(
-                name="lore_chunks_local",
+                name=self.collection_name,
                 metadata={"hnsw:space": "cosine"}
             )
         except Exception as e:
-            logger.error(f"Failed to retrieve or create lore_chunks_local collection: {e}")
+            logger.error(f"Failed to retrieve or create {self.collection_name}: {e}")
             return
 
         from app.models.document import DocumentChunk
@@ -402,7 +403,7 @@ class RAGService:
             missing_chunks = [c for c in batch if str(c.id) not in existing_ids]
 
             if missing_chunks:
-                logger.info(f"Backfilling {len(missing_chunks)} chunks to lore_chunks_local (batch offset {offset})...")
+                logger.info(f"Backfilling {len(missing_chunks)} chunks to {self.collection_name} (batch offset {offset})...")
                 # Add chunks one-by-one or in a sub-batch, handling individual failures gracefully so we do not crash startup
                 for chunk in missing_chunks:
                     try:
@@ -418,7 +419,8 @@ class RAGService:
                                 "title": doc_title,
                                 "chunk_index": chunk.chunk_index,
                                 "game_project_id": doc_project
-                            }]
+                            }],
+                            **self._vector_arguments([chunk.content], "embeddings"),
                         )
                     except Exception as add_err:
                         logger.error(f"Failed to index individual chunk {chunk.id} in lore_chunks_local: {add_err}")

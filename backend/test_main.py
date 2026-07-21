@@ -14,8 +14,8 @@ def test_health_endpoint():
     assert "database" in data
     assert "chromadb" in data
     assert data["ai_mode"] == "local_demo"
-    assert data["embedding_provider"] == "chroma_default"
-    assert data["vector_collection"] == "lore_chunks_local"
+    assert data["embedding_provider"] == "local_lexical"
+    assert data["vector_collection"] == "lore_chunks_local_lexical_v1"
     assert "llm_provider" in data
 
 
