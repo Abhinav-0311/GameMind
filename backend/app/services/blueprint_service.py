@@ -109,6 +109,23 @@ class BlueprintService:
                 seen.add(key)
         return result
 
+    def _prefer_complete_lines(self, values: Iterable[str]) -> List[str]:
+        """Remove chunk-overlap fragments while preserving source order."""
+        unique = self._unique(values)
+        result: List[str] = []
+        for candidate in unique:
+            candidate_key = re.sub(r"\s+", " ", candidate.lower()).strip()
+            if any(
+                len(candidate_key) >= 16
+                and candidate_key != other_key
+                and candidate_key in other_key
+                for other in unique
+                for other_key in [re.sub(r"\s+", " ", other.lower()).strip()]
+            ):
+                continue
+            result.append(candidate)
+        return result
+
     def _objective_to_title(self, objective: str, fallback_index: int) -> str:
         objective = self._clean_markdown(objective)
         objective = re.sub(r"^Objective:\s*", "", objective, flags=re.IGNORECASE)
@@ -371,6 +388,30 @@ class BlueprintService:
     def _parse_level_design(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
         lines = []
         citations = []
+        level_records: Dict[int, Dict[str, Any]] = {}
+        active_level: tuple[int, str, DocumentChunk] | None = None
+
+        for chunk in sorted(chunks, key=lambda item: item.chunk_index):
+            for raw_line in chunk.content.split("\n"):
+                heading_match = re.match(r"^\s*#+\s+Level\s+(\d+)\s*:\s*(.+?)\s*$", raw_line, re.IGNORECASE)
+                if heading_match:
+                    active_level = (
+                        int(heading_match.group(1)),
+                        self._clean_title(heading_match.group(2)),
+                        chunk,
+                    )
+                    continue
+
+                focus_match = re.match(r"^\s*(?:[-*]\s*)?Focus\s*:\s*(.+?)\s*$", raw_line, re.IGNORECASE)
+                if focus_match and active_level:
+                    number, title, heading_chunk = active_level
+                    focus = self._clean_markdown(focus_match.group(1))
+                    existing = level_records.get(number)
+                    if not existing or len(focus) > len(str(existing["focus"])):
+                        level_records[number] = {"number": number, "title": title, "focus": focus}
+                    citations.extend([str(heading_chunk.id), str(chunk.id)])
+                    active_level = None
+
         for chunk, line in self._iter_chunk_lines(chunks):
             if re.search(r"\b(?:level design|starting layout|level|map|dungeon|zone|area)\b", line, re.IGNORECASE):
                 if len(line) > 30:
@@ -389,10 +430,14 @@ class BlueprintService:
                 re.IGNORECASE,
             ))
         interactive_elements = self._unique(elements)
-        has_source_level = bool(level_layout or interactive_elements)
+        has_source_level = bool(level_records or level_layout or interactive_elements)
         warnings = [] if has_source_level else ["No level design suggestions or zone outlines found in the source document."]
         return self._section(
-            {"level_layout": level_layout, "interactive_elements": interactive_elements},
+            {
+                "levels": [level_records[number] for number in sorted(level_records)],
+                "level_layout": level_layout,
+                "interactive_elements": interactive_elements,
+            },
             self._unique(citations),
             "High" if has_source_level else "Low",
             warnings,
@@ -400,33 +445,70 @@ class BlueprintService:
 
     def _parse_gameplay_systems(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
         """Extract explicit gameplay and production requirements without inventing them."""
-        categories = {
-            "technical_constraints": (r"\b(?:technical constraints?|performance|frame ?rate|\bfps\b|memory budget|hardware|target device|engine|network(?:ing)?|offline|save system|resolution)\b", []),
-            "accessibility": (r"\b(?:accessibility|subtitles?|captions?|color ?blind|remapp(?:ing|able)|assist mode|difficulty assist|motion sensitiv(?:ity|e))\b", []),
-            "platforms_controls": (r"\b(?:platforms?|controls?|input|keyboard|controller|gamepad|touchscreen|mouse)\b", []),
-            "core_loop": (r"\b(?:core loop|gameplay loop|gameplay systems?|mechanics?)\b", []),
-            "progression": (r"\b(?:progression|level(?:ling|ing)?|experience|xp|upgrade|unlock|skill tree)\b", []),
-            "economy": (r"\b(?:economy|currency|gold|credits?|loot|rewards?|shop|crafting|trade)\b", []),
-            "design_constraints": (r"\b(?:constraints?|restrictions?|limitations?|must not|cannot|can only|requires?)\b", []),
+        categories: Dict[str, Tuple[str, List[str]]] = {
+            "technical_constraints": (r"\b(?:technical constraints?|performance targets?|online feature boundary)\b", []),
+            "accessibility": (r"\baccessibility(?: baseline| requirements?)?\b", []),
+            "platforms_controls": (r"\b(?:target platforms?|platforms? and controls?|combined unity package plan|vr controls?)\b", []),
+            "core_loop": (r"\b(?:core gameplay loop|gameplay loop)\b", []),
+            "player_approaches": (r"\bplayer approaches\b", []),
+            "failure_feedback": (r"\bwrong interaction mechanic\b", []),
+            "game_modes": (r"\bpowerrush mode\b", []),
+            "progression": (r"\b(?:progression|rating system|runtime world state)\b", []),
+            "economy": (r"\b(?:economy|scoring|power-ups?|rewards?)\b", []),
+            "design_constraints": (r"\b(?:design constraints?|constraints?|risks? and controls|defensive content boundary)\b", []),
         }
         citations = []
-        for chunk, line, heading in self._iter_chunk_lines_with_heading(chunks):
-            context = f"{heading} {line}"
-            for name, (pattern, values) in categories.items():
-                if not re.search(pattern, context, re.IGNORECASE):
+        for chunk in sorted(chunks, key=lambda item: item.chunk_index):
+            section = ""
+            heading = ""
+            for raw_line in chunk.content.split("\n"):
+                heading_match = re.match(r"^\s*(#+)\s+(.+)$", raw_line)
+                if heading_match:
+                    level = len(heading_match.group(1))
+                    heading = self._clean_markdown(heading_match.group(2))
+                    if level <= 2:
+                        section = heading
                     continue
+
+                line = self._clean_markdown(raw_line)
+                if not line:
+                    continue
+                normalized_heading = re.sub(r"^\d+\.\s*", "", heading).strip()
+                normalized_section = re.sub(r"^\d+\.\s*", "", section).strip()
+                category_name = None
+                for name, (pattern, values) in categories.items():
+                    if re.search(pattern, normalized_heading, re.IGNORECASE):
+                        category_name = name
+                        break
+                if category_name is None:
+                    for name, (pattern, values) in categories.items():
+                        if re.search(pattern, normalized_section, re.IGNORECASE):
+                            category_name = name
+                            break
+                if category_name is None:
+                    continue
+
+                cleaned_line = line.strip()
+                if cleaned_line.startswith("|"):
+                    cells = [self._clean_markdown(cell) for cell in cleaned_line.strip("|").split("|")]
+                    if not cells or all(re.fullmatch(r"[-:\s]+", cell or "") for cell in cells):
+                        continue
+                    if {cell.lower() for cell in cells} in ({"risk", "control"}, {"field", "details"}):
+                        continue
+                    cleaned_line = ": ".join(cell for cell in cells if cell)
+
                 cleaned_line = re.sub(
-                    rf"^(?:{pattern})\s*[:\-]\s*",
+                    r"^(?:core loop|gameplay loop|progression|economy|accessibility|technical constraints?)\s*:\s*",
                     "",
-                    line,
+                    cleaned_line,
                     flags=re.IGNORECASE,
                 ).strip()
-                if cleaned_line and cleaned_line.lower() != heading.lower():
-                    values.append(cleaned_line)
-                    citations.append(str(chunk.id))
-                break
 
-        content = {name: self._unique(values) for name, (_, values) in categories.items()}
+                if cleaned_line and cleaned_line.lower() not in {normalized_heading.lower(), normalized_section.lower()}:
+                    categories[category_name][1].append(cleaned_line)
+                    citations.append(str(chunk.id))
+
+        content = {name: self._prefer_complete_lines(values) for name, (_, values) in categories.items()}
         mvp_scope, scope_citations = self._parse_mvp_scope(chunks)
         if any(mvp_scope.values()):
             content["mvp_scope"] = mvp_scope

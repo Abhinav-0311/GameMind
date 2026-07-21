@@ -270,6 +270,7 @@ def test_blueprint_leaves_unsupported_sections_empty(db_session):
     assert data["npc_archetypes"]["content"]["npcs"] == []
     assert data["npc_memory_design"]["content"]["memory_nodes"] == []
     assert data["level_design_suggestions"]["content"] == {
+        "levels": [],
         "level_layout": None,
         "interactive_elements": [],
     }
@@ -354,6 +355,10 @@ def test_blueprint_extracts_characters_and_missions_from_explicit_gdd_headings(d
     data = response.json()
     assert [npc["name"] for npc in data["npc_archetypes"]["content"]["npcs"]] == ["Ada", "Beacon"]
     assert [quest["title"] for quest in data["quest_hooks"]["content"]["quests"]] == ["Signal Yard", "Archive Gate"]
+    assert data["level_design_suggestions"]["content"]["levels"] == [
+        {"number": 1, "title": "Signal Yard", "focus": "restore the disabled relay and avoid patrol drones."},
+        {"number": 2, "title": "Archive Gate", "focus": "solve the access-control puzzle and recover the audit record."},
+    ]
     assert data["npc_archetypes"]["citations"]
     assert data["quest_hooks"]["citations"]
 
@@ -420,8 +425,11 @@ def test_blueprint_extracts_explicit_gameplay_systems(db_session):
 
     assert systems["confidence"] == "High"
     assert systems["content"] == {
-        "core_loop": ["Explore derelict stations, scan artifacts, craft upgrades, and return safely."],
-        "progression": ["Players earn research points to unlock navigation modules."],
+            "core_loop": ["Explore derelict stations, scan artifacts, craft upgrades, and return safely."],
+            "player_approaches": [],
+            "failure_feedback": [],
+            "game_modes": [],
+            "progression": ["Players earn research points to unlock navigation modules."],
         "design_constraints": ["The player can carry only two power cells at once."],
         "technical_constraints": [],
         "accessibility": [],
@@ -493,3 +501,38 @@ def test_blueprint_extracts_explicit_must_should_could_scope_without_reprioritiz
         "could_have": ["Optional VR challenge"],
     }
     assert systems["citations"]
+
+
+def test_level_focus_lines_do_not_leak_into_gameplay_systems(db_session):
+    """A numbered level plan belongs in Levels, not in broad gameplay categories."""
+    rag = RAGService()
+    document = rag.process_document(
+        db=db_session,
+        file_name=f"level_plan_{uuid.uuid4().hex[:6]}.md",
+        file_bytes=(
+            b"# Core Gameplay Loop\n1. Enter a mission.\n2. Retrieve evidence.\n\n"
+            b"# Story Mode Level Plan\n"
+            b"### Level 1: Training Sandbox\nFocus: learn movement and scanner controls.\n\n"
+            b"### Level 2: Password Vault\nFocus: solve password-token gates.\n\n"
+            b"# Rating System\nRatings use detection count and completion time.\n"
+        ),
+        content_type="text/markdown",
+        game_project_id="test_project_alpha",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert [level["title"] for level in data["level_design_suggestions"]["content"]["levels"]] == [
+        "Training Sandbox",
+        "Password Vault",
+    ]
+    systems = data["gameplay_systems"]["content"]
+    assert systems["core_loop"] == ["1. Enter a mission.", "2. Retrieve evidence."]
+    assert systems["progression"] == ["Ratings use detection count and completion time."]
+    assert all("Focus:" not in item for values in systems.values() if isinstance(values, list) for item in values)

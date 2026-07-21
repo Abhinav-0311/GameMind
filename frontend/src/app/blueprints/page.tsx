@@ -42,6 +42,12 @@ interface DecisionCoverageState {
   value: DecisionCoverageResponse;
 }
 
+interface BlueprintLevel {
+  number: number;
+  title: string;
+  focus: string;
+}
+
 interface ProvenanceState {
   blueprintId: string;
   value: BlueprintProvenanceResponse;
@@ -153,6 +159,19 @@ function hasMeaningfulValue(value: unknown): boolean {
 
 function previewEntries(section: BlueprintSectionResponse) {
   return Object.entries(section.content).filter(([, value]) => hasMeaningfulValue(value)).slice(0, 5);
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
+function asBlueprintLevels(value: unknown): BlueprintLevel[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is BlueprintLevel => {
+    if (!item || typeof item !== "object") return false;
+    const record = item as Record<string, unknown>;
+    return typeof record.number === "number" && typeof record.title === "string" && typeof record.focus === "string";
+  });
 }
 
 function reportCount(section?: { created: string[]; updated: string[]; skipped: string[] }) {
@@ -1077,6 +1096,10 @@ function SectionBrief({
         </section>
       ) : npcProfiles.length > 0 ? (
         <NpcProfiles profiles={npcProfiles} />
+      ) : section.id === "levels" ? (
+        <LevelPlan content={section.section.content} />
+      ) : section.id === "systems" ? (
+        <GameplaySystems content={section.section.content} />
       ) : usesEditorialLayout ? (
         <EditorialBrief entries={entries} />
       ) : (
@@ -1134,6 +1157,134 @@ function SectionBrief({
         </details>
       )}
     </article>
+  );
+}
+
+function LevelPlan({ content }: { content: Record<string, unknown> }) {
+  const levels = asBlueprintLevels(content.levels);
+  const interactiveElements = asStringArray(content.interactive_elements);
+
+  if (levels.length === 0) {
+    return (
+      <section className="mt-8 border-y border-[var(--border)] py-6">
+        <p className="page-kicker">Level direction</p>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--foreground)]">{readableValue(content.level_layout)}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-8">
+      <div className="flex flex-col gap-2 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="page-kicker">Story progression</p>
+          <h4 className="mt-2 text-lg font-semibold text-[var(--foreground)]">{levels.length} playable chapters</h4>
+        </div>
+        <p className="text-sm text-[var(--text-secondary)]">Onboarding through final response</p>
+      </div>
+
+      <ol className="grid gap-x-10 md:grid-cols-2">
+        {levels.map((level) => (
+          <li key={`${level.number}-${level.title}`} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 border-b border-[var(--border)] py-5">
+            <span className="font-mono text-sm font-semibold text-[var(--accent)]">{String(level.number).padStart(2, "0")}</span>
+            <div>
+              <h5 className="text-base font-semibold text-[var(--foreground)]">{level.title}</h5>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{level.focus}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      {interactiveElements.length > 0 && (
+        <div className="mt-8">
+          <p className="page-kicker">Recurring level elements</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {interactiveElements.map((element) => (
+              <span key={element} className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]">
+                {element}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+const gameplayGroups = [
+  ["core_loop", "Core loop"],
+  ["player_approaches", "Player approaches"],
+  ["failure_feedback", "Mistakes and feedback"],
+  ["game_modes", "Game modes"],
+  ["progression", "Progression"],
+  ["economy", "Rewards and economy"],
+  ["platforms_controls", "Platforms and controls"],
+  ["accessibility", "Accessibility"],
+  ["technical_constraints", "Technical constraints"],
+  ["design_constraints", "Design boundaries"],
+] as const;
+
+function GameplaySystems({ content }: { content: Record<string, unknown> }) {
+  const scope = content.mvp_scope && typeof content.mvp_scope === "object"
+    ? content.mvp_scope as Record<string, unknown>
+    : null;
+  const populatedGroups = gameplayGroups
+    .map(([key, label]) => ({ key, label, items: asStringArray(content[key]) }))
+    .filter((group) => group.items.length > 0);
+
+  return (
+    <section className="mt-8 space-y-10">
+      {scope && (
+        <div>
+          <p className="page-kicker">Delivery priorities</p>
+          <div className="mt-4 grid border-y border-[var(--border)] md:grid-cols-3 md:divide-x md:divide-[var(--border)]">
+            {([
+              ["must_have", "Must ship"],
+              ["should_have", "Next priority"],
+              ["could_have", "Optional"],
+            ] as const).map(([key, label]) => (
+              <div key={key} className="py-5 md:px-6 md:first:pl-0 md:last:pr-0">
+                <h5 className="text-sm font-semibold text-[var(--foreground)]">{label}</h5>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  {asStringArray(scope[key]).map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="page-kicker">System map</p>
+        <div className="mt-4 grid gap-x-12 border-t border-[var(--border)] md:grid-cols-2">
+          {populatedGroups.map((group) => (
+            <details key={group.key} className="group border-b border-[var(--border)]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 outline-none transition hover:text-[var(--accent)] focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+                <h5 className="text-base font-semibold text-[var(--foreground)] group-open:text-[var(--accent)]">{group.label}</h5>
+                <span className="shrink-0 text-xs font-semibold text-[var(--text-secondary)]">{group.items.length} items</span>
+              </summary>
+              <div className="pb-5"><SystemList items={group.items} /></div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SystemList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-2.5 text-sm leading-6 text-[var(--text-secondary)]">
+      {items.map((item) => {
+        const isNumbered = /^\d+[.)]\s/.test(item);
+        return (
+          <li key={item} className={isNumbered ? "pl-0" : "grid grid-cols-[0.4rem_minmax(0,1fr)] gap-3"}>
+            {!isNumbered && <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden="true" />}
+            <span>{item}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
