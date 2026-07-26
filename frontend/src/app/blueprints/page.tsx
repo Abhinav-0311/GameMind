@@ -102,7 +102,7 @@ function formatDate(value: string) {
 
 function statusLabel(blueprint: BlueprintResponse | null) {
   if (!blueprint) return "No blueprint";
-  if (blueprint.materialization_manifest) return "Runtime ready";
+  if (blueprint.materialization_manifest) return "Materialized";
   if (blueprint.status === "approved") return "Approved";
   return "Draft";
 }
@@ -111,6 +111,7 @@ function readinessLabel(readiness: BlueprintReadinessResponse | null) {
   if (!readiness) return "Checking runtime";
   if (readiness.status === "runtime_ready") return "Runtime ready";
   if (readiness.status === "runtime_review") return "Runtime review";
+  if (readiness.status === "runtime_blocked") return "Approval blocked";
   return "Planning only";
 }
 
@@ -588,8 +589,14 @@ export default function BlueprintsDashboard() {
             Add source
           </Link>
           {activeBlueprint && activeBlueprint.status === "draft" && (
-            <button type="button" onClick={handleApprove} disabled={isApproving} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
-              {isApproving ? "Approving" : "Approve"}
+            <button
+              type="button"
+              onClick={handleApprove}
+              disabled={isApproving || !readiness?.can_approve}
+              title={readiness && !readiness.can_approve ? "Resolve the blueprint quality blockers before approval." : undefined}
+              className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isApproving ? "Approving" : !readiness ? "Checking quality" : readiness.can_approve ? "Approve" : "Resolve blockers"}
             </button>
           )}
           {activeBlueprint && blueprintIsApproved && !blueprintIsMaterialized && (
@@ -841,8 +848,8 @@ export default function BlueprintsDashboard() {
                           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                             readiness?.status === "runtime_ready"
                               ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--foreground)]"
-                              : readiness?.status === "planning_only"
-                                ? "border-amber-500/25 bg-amber-500/10 text-[var(--foreground)]"
+                              : readiness?.status === "planning_only" || readiness?.status === "runtime_blocked"
+                                ? "border-rose-500/30 bg-rose-500/10 text-[var(--foreground)]"
                                 : "border-[var(--border)] bg-[var(--card-muted)] text-[var(--text-secondary)]"
                           }`}>
                             {readinessLabel(readiness)}
@@ -857,6 +864,20 @@ export default function BlueprintsDashboard() {
                       <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
                         Review one design area at a time. Approval is the point where draft design becomes runtime intent.
                       </p>
+                      {readiness && (readiness.missing_required.length > 0 || readiness.blockers.length > 0) && (
+                        <div className="mt-5 max-w-3xl border-l-2 border-rose-500/60 pl-4" role="alert">
+                          <p className="text-sm font-semibold text-[var(--foreground)]">Resolve before approval</p>
+                          <ul className="mt-2 space-y-1 text-sm leading-6 text-[var(--text-secondary)]">
+                            {readiness.missing_required.map((item) => <li key={item}>Missing: {item}</li>)}
+                            {readiness.blockers.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {readiness && readiness.can_approve && readiness.advisories.length > 0 && (
+                        <p className="mt-4 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                          Review recommended: {readiness.advisories[0]}
+                        </p>
+                      )}
                       {comparableBlueprints.length > 0 && (
                         <details className="mt-5 border-t border-[var(--border)] pt-4">
                           <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
@@ -927,7 +948,13 @@ export default function BlueprintsDashboard() {
                     </div>
                   </nav>
 
-                  {activeSection && <SectionBrief section={activeSection} citations={provenance?.sections.find((item) => item.section === activeSection.id)?.citations || []} />}
+                  {activeSection && (
+                    <SectionBrief
+                      section={activeSection}
+                      citations={provenance?.sections.find((item) => item.section === activeSection.id)?.citations || []}
+                      reviewStatus={activeBlueprint.status}
+                    />
+                  )}
                 </div>
               </section>
 
@@ -1025,6 +1052,7 @@ export default function BlueprintsDashboard() {
             </p>
             <ul className="mt-5 space-y-2 text-sm text-[var(--foreground)]">
               {readiness.missing_required.map((item) => <li key={item}>Missing: {item}</li>)}
+              {readiness.blockers.map((item) => <li key={item}>Blocked: {item}</li>)}
               {readiness.advisories.map((item) => <li key={item} className="text-[var(--text-secondary)]">Review: {item}</li>)}
             </ul>
             <p className="mt-5 text-sm leading-6 text-[var(--text-secondary)]">
@@ -1048,9 +1076,11 @@ export default function BlueprintsDashboard() {
 function SectionBrief({
   section,
   citations,
+  reviewStatus,
 }: {
   section: ReviewSection;
   citations: BlueprintProvenanceResponse["sections"][number]["citations"];
+  reviewStatus: string;
 }) {
   const guidance = sectionGuidance[section.id];
   const entries = previewEntries(section.section);
@@ -1059,12 +1089,23 @@ function SectionBrief({
     ? section.section.content.npcs.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
     : [];
   const usesEditorialLayout = section.id === "summary" || section.id === "narrative" || section.id === "art";
+  const originLabel = section.section.citations.length > 0
+    ? "Extracted from source"
+    : entries.length > 0
+      ? "Proposed by GameMind"
+      : "Source detail missing";
 
   return (
     <article className="min-w-0 p-5 sm:p-7">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <p className="page-kicker">Section brief</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="page-kicker">Section brief</p>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">{originLabel}</span>
+            {reviewStatus === "approved" && (
+              <span className="text-xs font-semibold text-[var(--green)]">Developer confirmed</span>
+            )}
+          </div>
           <h3 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--foreground)]">{section.title}</h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{section.description}</p>
         </div>

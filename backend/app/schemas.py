@@ -730,8 +730,10 @@ class BlueprintExportResponse(BaseModel):
 
 class BlueprintReadinessResponse(BaseModel):
     status: str
+    can_approve: bool
     can_materialize: bool
     missing_required: List[str] = []
+    blockers: List[str] = []
     advisories: List[str] = []
 
 

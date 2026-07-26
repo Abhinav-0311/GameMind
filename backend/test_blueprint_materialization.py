@@ -22,7 +22,7 @@ def make_blueprint(db_session):
             document_id=None,
             game_project_id=game_project_id,
             summary={
-                "content": {"title": "Frostpeak", "description": "Frost game"},
+                "content": {"title": "Frostpeak", "description": "A frozen fantasy exploration game."},
                 "citations": [], "confidence": "High", "warnings": []
             },
             narrative_direction={
@@ -109,6 +109,71 @@ def test_incomplete_blueprint_requires_materialization_confirmation(db_session, 
     assert "NPC definitions" in readiness.json()["missing_required"]
     assert blocked.status_code == 409
     assert confirmed.status_code == 200
+
+
+def test_readiness_blocks_truncated_npc_dialogue(db_session, make_blueprint):
+    """A populated NPC array is not ready when a character profile is visibly truncated."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "draft")
+    bp.npc_archetypes = {
+        "content": {
+            "npcs": [
+                {
+                    "name": "Adi",
+                    "archetype": "First-time ethical-hacking intern",
+                    "dialogue_style": "Adi is curious and focused on learning. His",
+                }
+            ]
+        },
+        "citations": [str(uuid.uuid4())],
+        "confidence": "High",
+        "warnings": [],
+    }
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/blueprints/{bp.id}/readiness",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    readiness = response.json()
+    assert readiness["status"] == "runtime_blocked"
+    assert readiness["can_approve"] is False
+    assert readiness["can_materialize"] is False
+    assert any("Adi" in item and "mid-sentence" in item for item in readiness["blockers"])
+
+
+def test_optional_art_and_memory_gaps_require_review_but_allow_approval(db_session, make_blueprint):
+    """A small runtime slice may proceed without art or memory after showing clear advisories."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    bp = make_blueprint(project_id, "draft")
+    bp.art_style_direction = {
+        "content": {"visual_theme": None, "color_palette": [], "visual_notes": []},
+        "citations": [],
+        "confidence": "Low",
+        "warnings": ["Missing art direction"],
+    }
+    bp.npc_memory_design = {
+        "content": {"memory_nodes": []},
+        "citations": [],
+        "confidence": "Low",
+        "warnings": ["Missing memory rules"],
+    }
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/blueprints/{bp.id}/readiness",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    readiness = response.json()
+    assert readiness["status"] == "runtime_review"
+    assert readiness["can_approve"] is True
+    assert readiness["can_materialize"] is True
+    assert any("Art direction" in item for item in readiness["advisories"])
+    assert any("NPC memory" in item for item in readiness["advisories"])
 
 def test_materialize_first_run_creates_records(db_session, make_blueprint):
     """Test first run of materialize creates db rows and updates the manifest column."""

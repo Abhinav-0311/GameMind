@@ -17,6 +17,8 @@ def uploaded_document(db_session):
     file_bytes = (
         b"# GDD Summary\n"
         b"Overview: A game about exploring cold towers.\n"
+        b"# Narrative\n"
+        b"Narrative: The story follows a librarian defending the last archive from an approaching winter.\n"
         b"# Art Style\n"
         b"Visual Theme: Stylized dark fantasy visual elements.\n"
         b"# NPC Profiles\n"
@@ -153,6 +155,38 @@ def test_approve_blueprint_success(uploaded_document):
     )
     assert app_response.status_code == 200
     assert app_response.json()["status"] == "approved"
+
+
+def test_approve_blueprint_rejects_malformed_required_content(uploaded_document, db_session):
+    """High confidence metadata must not hide malformed narrative output."""
+    generated = client.post(
+        "/api/v1/blueprints/generate",
+        json={"document_id": str(uploaded_document.id)},
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    ).json()
+    blueprint = db_session.query(GameBlueprint).filter(GameBlueprint.id == generated["id"]).one()
+    blueprint.narrative_direction = {
+        "content": {
+            "themes": [],
+            "lore_background": "| Quest | Objective | Reward | duplicated table fragment |",
+        },
+        "citations": [str(uuid.uuid4())],
+        "confidence": "High",
+        "warnings": [],
+    }
+    db_session.commit()
+
+    response = client.put(
+        f"/api/v1/blueprints/{blueprint.id}/approve",
+        headers={"X-Game-Project-ID": "test_project_alpha"},
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["readiness"]["status"] == "runtime_blocked"
+    assert any("raw table fragment" in item for item in detail["readiness"]["blockers"])
+    db_session.refresh(blueprint)
+    assert blueprint.status == "draft"
 
 def test_export_blueprint_success(uploaded_document):
     """Test exporting a game blueprint yields valid Unity runtime JSON."""

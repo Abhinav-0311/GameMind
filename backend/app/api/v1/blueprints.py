@@ -105,9 +105,10 @@ def get_blueprint(
 def approve_blueprint(
     blueprint_id: UUID,
     db: Session = Depends(get_db),
-    game_project_id: str = Depends(get_game_project_id)
+    game_project_id: str = Depends(get_game_project_id),
+    readiness_service: BlueprintReadinessService = Depends(get_readiness_service),
 ):
-    """Approves a game blueprint, updating its status to 'approved'."""
+    """Approve only a coherent blueprint whose required runtime content passed review."""
     blueprint = db.query(GameBlueprint).filter(
         GameBlueprint.id == blueprint_id,
         GameBlueprint.game_project_id == game_project_id
@@ -116,6 +117,15 @@ def approve_blueprint(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Blueprint not found or not owned by this project."
+        )
+    readiness = readiness_service.assess(blueprint)
+    if not readiness["can_approve"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Blueprint approval is blocked until required content issues are resolved.",
+                "readiness": readiness,
+            },
         )
     blueprint.status = "approved"
     db.commit()

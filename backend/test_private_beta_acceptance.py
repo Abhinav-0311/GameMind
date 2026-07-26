@@ -50,12 +50,15 @@ def test_private_beta_workspace_journey(monkeypatch, auth_required):
     CyberRakshak is a story-driven ethical-hacking game. The player investigates a breach at a student innovation lab.
     ## Narrative
     Mentor Aanya guides the player through evidence gathering while the antagonist, GhostWire, manipulates public systems.
+    ## NPC profiles
+    NPC Aanya: Patient incident-response mentor who explains evidence clearly and challenges reckless decisions.
+    NPC GhostWire: Calculating social engineer who speaks in controlled threats and misleading technical clues.
     ## Gameplay
     Players inspect terminals, correlate evidence, and choose whether to report or contain a compromised service.
     ## Levels
     The first level is the innovation lab. The second is a simulated city network with escalating incident response.
     ## Quest
-    Restore the campus network by finding the compromised relay and preserving the evidence chain.
+    Quest 1: Objective: Restore the campus network by finding the compromised relay and preserving the evidence chain. Reward: Unlock the forensic analyst badge.
     ## Art direction
     Clean cyber-noir interfaces, restrained neon cyan, and readable high-contrast mission spaces.
     """
@@ -71,7 +74,8 @@ def test_private_beta_workspace_journey(monkeypatch, auth_required):
     assert blueprint.status_code == 201, blueprint.text
     blueprint_id = blueprint.json()["id"]
 
-    assert owner.put(f"/api/v1/blueprints/{blueprint_id}/approve", headers=headers).status_code == 200
+    approval = owner.put(f"/api/v1/blueprints/{blueprint_id}/approve", headers=headers)
+    assert approval.status_code == 200, approval.text
     materialized = owner.post(
         f"/api/v1/blueprints/{blueprint_id}/materialize",
         headers=headers,

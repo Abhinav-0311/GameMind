@@ -255,7 +255,9 @@ export const api = {
   },
 
   async getWorkspaceMembers(projectId: string): Promise<WorkspaceMember[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/members`);
+    const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/members`, {
+      credentials: "include",
+    });
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       throw new Error(error.detail || "Could not load workspace members.");
@@ -267,6 +269,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/invitations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, role }),
     });
     if (!res.ok) {
@@ -626,7 +629,16 @@ export const api = {
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.detail || "Failed to approve blueprint");
+      const detail = errData.detail;
+      if (detail && typeof detail === "object") {
+        const readiness = detail.readiness as BlueprintReadinessResponse | undefined;
+        const issues = [
+          ...(readiness?.missing_required || []).map((item) => `Missing: ${item}.`),
+          ...(readiness?.blockers || []),
+        ];
+        throw new Error([detail.message, ...issues.slice(0, 2)].filter(Boolean).join(" ") || "Failed to approve blueprint");
+      }
+      throw new Error(detail || "Failed to approve blueprint");
     }
     return res.json();
   },
@@ -901,9 +913,11 @@ export interface BlueprintResponse {
 }
 
 export interface BlueprintReadinessResponse {
-  status: "planning_only" | "runtime_review" | "runtime_ready";
+  status: "planning_only" | "runtime_blocked" | "runtime_review" | "runtime_ready";
+  can_approve: boolean;
   can_materialize: boolean;
   missing_required: string[];
+  blockers: string[];
   advisories: string[];
 }
 

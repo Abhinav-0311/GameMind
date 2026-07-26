@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api, getActiveProjectId, subscribeToProjectChange, type WorkspaceMember } from "@/lib/api";
 
@@ -24,16 +25,30 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
   const [isInviting, setIsInviting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string | null>(null);
+  const [isAnonymousLocalMode, setIsAnonymousLocalMode] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    Promise.all([api.getWorkspaceMembers(projectId), api.getAuthSession()])
-      .then(([result, session]) => {
-        if (!active) return;
+    const loadWorkspace = async () => {
+      const session = await api.getAuthSession();
+      if (!active) return;
+
+      setCurrentEmail(session.user?.email ?? null);
+      if (!session.user) {
+        setMembers([]);
+        setIsAnonymousLocalMode(!session.auth_required);
+        return;
+      }
+
+      const result = await api.getWorkspaceMembers(projectId);
+      if (active) {
         setMembers(result);
-        setCurrentEmail(session.user?.email ?? null);
-      })
+        setIsAnonymousLocalMode(false);
+      }
+    };
+
+    loadWorkspace()
       .catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "Could not load workspace members."))
       .finally(() => active && setIsLoading(false));
 
@@ -83,6 +98,13 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
           </div>
           {isLoading ? (
             <div className="px-6 py-10 text-sm text-[var(--text-secondary)]">Loading members...</div>
+          ) : isAnonymousLocalMode ? (
+            <div className="px-6 py-10">
+              <p className="font-medium text-[var(--foreground)]">Local workspace</p>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-[var(--text-secondary)]">
+                Sources and blueprints remain available without an account. Sign in when you want to invite collaborators and assign access levels.
+              </p>
+            </div>
           ) : members.length === 0 ? (
             <div className="px-6 py-10 text-sm text-[var(--text-secondary)]">No members are available yet.</div>
           ) : (
@@ -129,9 +151,15 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
               {isInviting ? "Creating invitation..." : "Send invitation"}
             </button>
           </form>
-          : <div className="mt-6 rounded-2xl bg-[var(--card-muted)] p-4 text-sm leading-6 text-[var(--text-secondary)]">
-            Your access is {currentMember?.role ?? "not yet available"}. Ask a workspace owner to manage collaborators.
-          </div>}
+          : isAnonymousLocalMode ? (
+            <div className="mt-6">
+              <Link href="/login" className="btn-secondary w-full justify-center">Sign in to collaborate</Link>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl bg-[var(--card-muted)] p-4 text-sm leading-6 text-[var(--text-secondary)]">
+              Your access is {currentMember?.role ?? "not yet available"}. Ask a workspace owner to manage collaborators.
+            </div>
+          )}
           {notice && <p className="mt-4 text-sm text-emerald-700 dark:text-emerald-300" role="status">{notice}</p>}
           {error && <p className="mt-4 text-sm text-rose-700 dark:text-rose-300" role="alert">{error}</p>}
         </aside>
