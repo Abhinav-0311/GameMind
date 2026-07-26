@@ -27,6 +27,14 @@ from app.models.graph import (
     ConsistencyOverride
 )
 from app.models.user import User, ProjectMembership
+from app.models.design_agent import (
+    DesignAgentArtifact,
+    DesignAgentCritique,
+    DesignAgentEvidenceSnapshot,
+    DesignAgentNodeExecution,
+    DesignAgentReviewEvent,
+    DesignAgentRun,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

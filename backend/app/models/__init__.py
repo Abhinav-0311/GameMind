@@ -14,3 +14,11 @@ from app.models.graph import (
     RelationshipTypeRule, PendingIngest, ConsistencyOverride
 )
 from app.models.user import AccountActionToken, ProjectMembership, User
+from app.models.design_agent import (
+    DesignAgentArtifact,
+    DesignAgentCritique,
+    DesignAgentEvidenceSnapshot,
+    DesignAgentNodeExecution,
+    DesignAgentReviewEvent,
+    DesignAgentRun,
+)

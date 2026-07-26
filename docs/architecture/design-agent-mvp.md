@@ -1,6 +1,6 @@
 # GameMind Design Agent MVP Contract
 
-Status: Accepted for Phase 0 baseline
+Status: Phase 1 implemented; Phases 2-4 pending
 Case study: CyberRakshak
 Last reviewed: 2026-07-26
 
@@ -47,7 +47,7 @@ evidence.
 
 ## Included in the flagship MVP
 
-- One CyberRakshak design-agent workflow.
+- One generic GameMind design-agent workflow, validated with CyberRakshak.
 - Explicit LangGraph state and conditional routing.
 - Durable checkpointing and restart-safe resume.
 - A real human-review interrupt.
@@ -140,3 +140,22 @@ The flagship MVP is accepted only when:
 New work that is not required by an acceptance gate must be recorded as
 post-MVP work. It may not enter the flagship implementation without an explicit
 scope review.
+
+## Delivery status
+
+| Capability | Status |
+| --- | --- |
+| LangGraph plan, retrieve, generate, critique, review, revise, finalize graph | Implemented in Phase 1 |
+| PostgreSQL checkpoints managed by Alembic | Implemented in Phase 1 |
+| Restart-safe review resume | Implemented and tested in Phase 1 |
+| Evidence snapshot reuse after rejection | Implemented and tested in Phase 1 |
+| Project-scoped run records, artifacts, critiques, reviews, and traces | Implemented in Phase 1 |
+| Deterministic zero-cost MockProvider | Implemented in Phase 1 |
+| Immutable final artifact and existing GameBlueprint export bridge | Implemented in Phase 1 |
+| NVIDIA provider, retry, timeout, JSON repair, and explicit fallback | Pending Phase 2 |
+| Minimal review and trace console | Pending Phase 3 |
+| Five-metric CyberRakshak evaluation | Pending Phase 4 |
+
+Phase 1 is a backend capability. It does not add another dashboard screen or
+change the Unity adapter. The workflow API is available under
+`/api/v1/design-agent`.

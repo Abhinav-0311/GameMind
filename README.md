@@ -6,7 +6,10 @@
 
 GameMind is a local-first AI game design and runtime intelligence platform for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard, exported for a team, or consumed by a game runtime.
 
-The project combines a FastAPI backend, PostgreSQL, ChromaDB vector search, a Next.js developer dashboard, and Unity C# runtime scripts. It is designed to run in a zero-cost local demo mode without mandatory paid AI APIs, while keeping the AI provider layer optional and swappable.
+The project combines a FastAPI backend, LangGraph orchestration, PostgreSQL,
+ChromaDB vector search, a Next.js developer dashboard, and Unity C# runtime
+scripts. It is designed to run in a zero-cost local demo mode without mandatory
+paid AI APIs, while keeping the AI provider layer optional and swappable.
 
 **Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and engine-ready runtime data.
 
@@ -87,6 +90,9 @@ Unity is included as one proof-of-integration adapter. It is not the whole produ
 - Generate source-grounded, multi-source game blueprints with local rules, templates, and schema validation.
 - Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, gameplay systems, quest hooks, and runtime previews.
 - Turn missing or conflicting GDD details into visible, resolvable design decisions.
+- Run a durable design-agent workflow that plans, retrieves evidence, generates,
+  critiques, pauses for approval, revises after rejection, and finalizes an
+  immutable blueprint.
 - Trace each generated section to its source chunks and export a team-facing Markdown brief.
 - Manage NPC profiles, quests, world state, memory, dialogue assembly, progressive hints, and analytics.
 - Export structured JSON that Unity or another game client can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
@@ -106,7 +112,7 @@ Generic AI agents help write code or brainstorm. GameMind demonstrates how an AI
 ## Tech Stack
 
 - **Frontend:** Next.js, TypeScript
-- **Backend:** FastAPI, Python, SQLAlchemy, Alembic
+- **Backend:** FastAPI, Python, LangGraph, LangChain Core, SQLAlchemy, Alembic
 - **Database:** PostgreSQL
 - **Vector Search:** ChromaDB
 - **Game Runtime:** Unity, C#
@@ -119,6 +125,7 @@ Generic AI agents help write code or brainstorm. GameMind demonstrates how an AI
 Next.js Dashboard
   -> FastAPI REST API
     -> PostgreSQL for durable project data
+    -> LangGraph for checkpointed design-agent workflows and human review
     -> ChromaDB for local document retrieval
     -> Local rule/template providers for zero-cost generation
     -> Optional future hosted provider interface
@@ -131,6 +138,8 @@ Core backend areas:
 
 - **Document ingestion:** stores source documents and chunks.
 - **RAG retrieval:** searches local vector indexes and returns citations.
+- **Design agent:** orchestrates plan, retrieval, generation, critique, human
+  review, revision, and immutable finalization with PostgreSQL checkpoints.
 - **Blueprint generation:** extracts structured game design sections from source evidence.
 - **Materialization:** converts approved blueprints into NPCs, quests, memories, and world flags.
 - **Runtime APIs:** provide dialogue, quest, hint, and Unity bundle responses.

@@ -18,6 +18,7 @@ from app.api.v1.projects import router as projects_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.decisions import router as decisions_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.design_agent import router as design_agent_router
 from app.config import settings, validate_production_settings
 from app.middleware import SecurityHeadersMiddleware
 import logging
@@ -102,6 +103,7 @@ app.include_router(projects_router, prefix="/api/v1")
 app.include_router(reviews_router, prefix="/api/v1")
 app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(design_agent_router, prefix="/api/v1")
 
 
 @app.get("/health")

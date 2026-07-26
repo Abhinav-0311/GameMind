@@ -290,7 +290,13 @@ class RAGService:
         db.refresh(db_doc)
         return db_doc
 
-    def query_lore(self, query_text: str, limit: int = 5, game_project_id: str = "default_project") -> list[dict]:
+    def query_lore(
+        self,
+        query_text: str,
+        limit: int = 5,
+        game_project_id: str = "default_project",
+        document_ids: list[str] | None = None,
+    ) -> list[dict]:
         """Queries the local lexical vector index and returns grounded citations."""
         if not self.collection:
             raise ValueError("ChromaDB vector collection is unavailable.")
@@ -304,10 +310,19 @@ class RAGService:
                     return []
                 n_results = min(limit, int(collection_count))
             
+            where = {"game_project_id": game_project_id}
+            if document_ids:
+                where = {
+                    "$and": [
+                        {"game_project_id": game_project_id},
+                        {"document_id": {"$in": [str(document_id) for document_id in document_ids]}},
+                    ]
+                }
+
             results = self.collection.query(
                 query_texts=[query_text],
                 n_results=n_results,
-                where={"game_project_id": game_project_id},
+                where=where,
                 **self._vector_arguments([query_text], "query_embeddings"),
             )
         except Exception as e:
