@@ -28,6 +28,8 @@ jobs:
       run:
         working-directory: backend
     env:
+      GAMEMIND_TESTING: "1"
+      ENVIRONMENT: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gamemind_test
       CHROMA_HOST: localhost
       CHROMA_PORT: 8000

@@ -2,7 +2,9 @@ import os
 import sys
 from pathlib import Path
 
-# 1. Force loading of .env.test BEFORE importing any app modules
+# Load the local test file when present. CI supplies the same settings through
+# explicit environment variables because secret-style .env files are not
+# committed to the repository.
 backend_dir = Path(__file__).resolve().parent
 project_root = backend_dir.parent
 
@@ -12,12 +14,20 @@ if not env_test_path.exists():
 
 if env_test_path.exists():
     from dotenv import load_dotenv
-    # override=True ensures we override the default system or pre-loaded env variables
     load_dotenv(dotenv_path=env_test_path, override=True)
-    # Also set an explicit environment flag so we can assert we are in test mode
     os.environ["GAMEMIND_TESTING"] = "1"
-else:
-    raise RuntimeError(f"Required test configuration file .env.test not found at {env_test_path}")
+elif os.getenv("GAMEMIND_TESTING") != "1":
+    raise RuntimeError(
+        "Tests require either backend/.env.test or explicit CI test "
+        "environment variables with GAMEMIND_TESTING=1."
+    )
+
+database_url = os.getenv("DATABASE_URL", "")
+if "gamemind_test" not in database_url:
+    raise RuntimeError(
+        "Refusing to initialize tests because DATABASE_URL does not target "
+        f"gamemind_test: {database_url or '<unset>'}"
+    )
 
 # Now add backend_dir to sys.path if not present
 if str(backend_dir) not in sys.path:
@@ -30,8 +40,10 @@ from app.database import Base, get_db
 from app.config import settings
 from main import app
 
-# Verify that settings indeed resolved to the test database
-assert "gamemind_test" in settings.DATABASE_URL, f"Database URL does not point to test database: {settings.DATABASE_URL}"
+# Verify that Pydantic resolved the same safe database after application import.
+assert "gamemind_test" in settings.DATABASE_URL, (
+    f"Database URL does not point to test database: {settings.DATABASE_URL}"
+)
 
 # Create the test engine
 test_engine = create_engine(settings.DATABASE_URL)
