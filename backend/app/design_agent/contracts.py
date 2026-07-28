@@ -1,6 +1,6 @@
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 BLUEPRINT_SECTION_KEYS = (
@@ -14,12 +14,37 @@ BLUEPRINT_SECTION_KEYS = (
     "quest_hooks",
     "unity_runtime_preview",
 )
+BlueprintSectionKey = Literal[
+    "summary",
+    "narrative_direction",
+    "art_style_direction",
+    "npc_archetypes",
+    "npc_memory_design",
+    "level_design_suggestions",
+    "gameplay_systems",
+    "quest_hooks",
+    "unity_runtime_preview",
+]
 
 
 class ResearchPlan(BaseModel):
     objective: str
     retrieval_query: str
-    required_sections: list[str] = Field(default_factory=lambda: list(BLUEPRINT_SECTION_KEYS))
+    required_sections: list[BlueprintSectionKey] = Field(
+        default_factory=lambda: list(BLUEPRINT_SECTION_KEYS)
+    )
+
+    @field_validator("required_sections")
+    @classmethod
+    def require_complete_blueprint_scope(
+        cls,
+        value: list[BlueprintSectionKey],
+    ) -> list[BlueprintSectionKey]:
+        if set(value) != set(BLUEPRINT_SECTION_KEYS):
+            raise ValueError(
+                "Research plans must include every GameMind blueprint section."
+            )
+        return list(BLUEPRINT_SECTION_KEYS)
 
 
 class BlueprintSection(BaseModel):

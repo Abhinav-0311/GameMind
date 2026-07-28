@@ -5,9 +5,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.design_agent import get_design_agent_service
 from app.config import settings
+from app.design_agent.llm_provider import NvidiaProvider
 from app.design_agent.nvidia_provider import (
     NvidiaDesignAgentProvider,
-    NvidiaNodeConfig,
     ResilientDesignAgentProvider,
 )
 from app.design_agent.provider import MockDesignAgentProvider
@@ -299,23 +299,16 @@ def test_run_is_project_scoped_and_rejection_requires_reason(db_session):
 def test_unavailable_nvidia_fallback_is_visible_in_run_and_trace(db_session):
     project_id = f"agent_fallback_{uuid.uuid4().hex[:8]}"
     document, chunks = create_source(db_session, project_id)
-    node_configs = {
-        node_name: NvidiaNodeConfig(
-            model_name=f"test-{node_name}-model",
-            temperature=0.0,
-            max_tokens=1000,
-        )
-        for node_name in ("plan", "generate", "critique", "revise")
-    }
     provider = ResilientDesignAgentProvider(
         primary=NvidiaDesignAgentProvider(
-            api_key=None,
-            base_url="https://integrate.api.nvidia.com/v1",
-            node_configs=node_configs,
-            timeout_seconds=1,
-            max_retries=0,
-            retry_backoff_seconds=0,
-            repair_enabled=True,
+            llm_provider=NvidiaProvider(
+                base_url="https://integrate.api.nvidia.com/v1",
+                timeout_seconds=1,
+                retry_backoff_seconds=0,
+                repair_enabled=True,
+                key_reader=lambda _name: None,
+                sleep=lambda _seconds: None,
+            )
         ),
         fallback=MockDesignAgentProvider(),
     )
@@ -331,7 +324,10 @@ def test_unavailable_nvidia_fallback_is_visible_in_run_and_trace(db_session):
         persisted_run = db_session.query(DesignAgentRun).filter(
             DesignAgentRun.id == uuid.UUID(run["id"])
         ).one()
-        assert persisted_run.model_config["models"]["plan"]["model"] == "test-plan-model"
+        assert (
+            persisted_run.model_config["models"]["plan"]["model"]
+            == "nvidia/llama-3.1-nemotron-nano-8b-v1"
+        )
         assert "api_key" not in persisted_run.model_config
 
         trace_response = client.get(

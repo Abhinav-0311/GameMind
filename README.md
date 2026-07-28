@@ -177,14 +177,18 @@ configured; it is never presented as a fabricated `$0`.
 To opt into NVIDIA locally, set these values only in `.env`:
 
 ```env
-DESIGN_AGENT_PROVIDER=nvidia
+LLM_PROVIDER=nvidia
 DESIGN_AGENT_FALLBACK_TO_MOCK=true
-NVIDIA_API_KEY=your-local-secret
+NVIDIA_NANO_API_KEY=your-local-nano-key
+NVIDIA_SUPER_API_KEY=your-local-super-key
 ```
 
-Planner, generator, critic, and revision model names can be configured
-independently using the optional `NVIDIA_*_MODEL_NAME` settings documented in
-`.env.example`. Never commit a real API key.
+The planner uses `nvidia/llama-3.1-nemotron-nano-8b-v1`. Blueprint generation,
+critique, and revision use `nvidia/llama-3.3-nemotron-super-49b-v1.5`. These
+assignments are fixed per workflow node so the two keys and model
+responsibilities cannot be mixed accidentally. GameMind validates only the
+visible response content; provider reasoning fields are discarded and never
+stored in workflow artifacts or traces. Never commit a real API key.
 
 ## Local Setup
 
