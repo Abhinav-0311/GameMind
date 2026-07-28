@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.design_agent.contracts import ResumeDecision
-from app.design_agent.provider import MockDesignAgentProvider
+from app.design_agent.provider_factory import build_design_agent_provider
 from app.design_agent.schemas import (
     DesignAgentArtifactResponse,
     DesignAgentCritiqueResponse,
@@ -40,7 +40,7 @@ class DesignAgentService:
             self._workflow = DesignAgentWorkflow(
                 database_url=settings.DATABASE_URL,
                 session_factory=SessionLocal,
-                provider=MockDesignAgentProvider(),
+                provider=build_design_agent_provider(),
             )
         return self._workflow
 
@@ -75,6 +75,7 @@ class DesignAgentService:
             status=run.status,
             current_node=run.current_node,
             provider_name=run.provider_name,
+            degraded=bool((run.model_config or {}).get("degraded")),
             retrieval_revision=run.retrieval_revision,
             revision_count=run.revision_count,
             max_revisions=run.max_revisions,
@@ -114,7 +115,11 @@ class DesignAgentService:
             objective=payload.objective.strip(),
             document_ids=[str(document_id) for document_id in document_ids],
             provider_name=self.workflow.provider.name,
-            model_config={"phase": "phase_1", "provider": self.workflow.provider.name},
+            model_config={
+                "phase": "phase_2",
+                **self.workflow.provider.configuration(),
+                "degraded": False,
+            },
             max_revisions=payload.max_revisions,
         )
         db.add(run)

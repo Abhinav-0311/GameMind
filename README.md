@@ -165,9 +165,26 @@ The default project mode is local-first:
 - No paid hosted model key is required.
 - ChromaDB local embeddings are used for the demo retrieval path.
 - Rule/template generation is used for blueprint and runtime behavior in the MVP.
-- NVIDIA API settings exist only as future optional placeholders.
+- The durable design-agent workflow uses its deterministic mock provider by default.
+- NVIDIA-hosted design-agent inference is optional and disabled by default.
 
-If a hosted provider is added later, it should remain optional and should not break the local demo workflow.
+Selecting NVIDIA never changes the retrieval or workflow architecture. If NVIDIA
+is unavailable and fallback is enabled, the run continues through the mock
+provider and is explicitly marked as degraded in its run response and trace.
+Hosted-provider cost is reported as unavailable unless an authoritative price is
+configured; it is never presented as a fabricated `$0`.
+
+To opt into NVIDIA locally, set these values only in `.env`:
+
+```env
+DESIGN_AGENT_PROVIDER=nvidia
+DESIGN_AGENT_FALLBACK_TO_MOCK=true
+NVIDIA_API_KEY=your-local-secret
+```
+
+Planner, generator, critic, and revision model names can be configured
+independently using the optional `NVIDIA_*_MODEL_NAME` settings documented in
+`.env.example`. Never commit a real API key.
 
 ## Local Setup
 
@@ -266,6 +283,10 @@ Implemented:
 - Next.js dashboard for the core workflow.
 - Unity C# API client and vertical-slice scene scripts.
 - Alembic migrations and project-scoped database isolation.
+- Durable LangGraph design-agent workflow with PostgreSQL checkpoints, human
+  review interrupts, immutable approval, and evidence-preserving revision.
+- Optional NVIDIA inference with per-node models, bounded retries, timeout,
+  structured-output repair, token/latency traces, and visible mock fallback.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -274,7 +295,8 @@ Remaining product work:
 - Add guided first-run onboarding and a deliberate empty-workspace experience.
 - Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
 - Package engine-neutral API examples and integration starter kits more clearly.
-- Add optional NVIDIA-hosted inference behind the provider interface without weakening local mode.
+- Add the minimal design-agent review and trace console.
+- Record the five-metric CyberRakshak agent quality scorecard.
 - Add production deployment hardening: authentication, object storage, rate limits, backups, and CI/CD.
 
 ## Production Notes
@@ -283,4 +305,7 @@ Local development runs migrations automatically in the backend container. Produc
 
 Authentication is optional in local demo mode and enabled in production through `AUTH_REQUIRED=true`. Production sessions use secure HTTP-only cookies and workspace membership roles. Configure a unique `JWT_SECRET` through deployment secrets before exposing the dashboard.
 
-The main demo path is intentionally local-first and works without paid API usage. Future hosted model integrations, such as NVIDIA API support, should be added through the provider interface without changing the dashboard workflow. Do not put real API keys in Git; use local `.env` values or deployment secrets.
+The main demo path is intentionally local-first and works without paid API
+usage. NVIDIA support is an optional provider behind the same workflow and does
+not change the dashboard contract. Do not put real API keys in Git; use local
+`.env` values or deployment secrets.

@@ -53,6 +53,7 @@ class DesignAgentRunResponse(BaseModel):
     status: str
     current_node: str | None
     provider_name: str
+    degraded: bool = False
     retrieval_revision: int
     revision_count: int
     max_revisions: int

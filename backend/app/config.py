@@ -33,9 +33,24 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     LLM_PROVIDER: str = "mock"
     LOCAL_MODEL_NAME: str = "local-rule-engine"
+    DESIGN_AGENT_PROVIDER: str = "mock"
+    DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
     NVIDIA_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     NVIDIA_MODEL_NAME: str = "meta/llama-3.1-8b-instruct"
+    NVIDIA_PLAN_MODEL_NAME: str | None = None
+    NVIDIA_GENERATE_MODEL_NAME: str | None = None
+    NVIDIA_CRITIQUE_MODEL_NAME: str | None = None
+    NVIDIA_REVISE_MODEL_NAME: str | None = None
+    NVIDIA_PLAN_MAX_TOKENS: int = 1200
+    NVIDIA_GENERATE_MAX_TOKENS: int = 6000
+    NVIDIA_CRITIQUE_MAX_TOKENS: int = 2500
+    NVIDIA_REVISE_MAX_TOKENS: int = 6000
+    NVIDIA_TIMEOUT_SECONDS: float = 45.0
+    NVIDIA_MAX_RETRIES: int = 2
+    NVIDIA_RETRY_BACKOFF_SECONDS: float = 0.5
+    NVIDIA_REPAIR_ENABLED: bool = True
+    NVIDIA_JSON_MODE_ENABLED: bool = False
     CORS_ORIGINS: str = "http://localhost:3000"
 
     @property

@@ -24,10 +24,14 @@ class ProviderResult:
     content: dict[str, Any]
     model_name: str
     usage: ProviderUsage = field(default_factory=ProviderUsage)
+    provider_name: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class DesignAgentProvider(Protocol):
     name: str
+
+    def configuration(self) -> dict[str, Any]: ...
 
     def plan(self, objective: str, document_ids: list[str]) -> ProviderResult: ...
 
@@ -57,6 +61,16 @@ class MockDesignAgentProvider:
     name = "mock"
     model_name = "gamemind-design-agent-mock-v1"
 
+    def configuration(self) -> dict[str, Any]:
+        return {
+            "provider": self.name,
+            "models": {
+                node_name: self.model_name
+                for node_name in ("plan", "generate", "critique", "revise")
+            },
+            "fallback_enabled": False,
+        }
+
     @staticmethod
     def _usage(*values: Any) -> ProviderUsage:
         input_size = sum(len(str(value).split()) for value in values)
@@ -71,6 +85,7 @@ class MockDesignAgentProvider:
             content=plan.model_dump(),
             model_name=self.model_name,
             usage=self._usage(objective, document_ids),
+            provider_name=self.name,
         )
 
     @staticmethod
@@ -155,6 +170,7 @@ class MockDesignAgentProvider:
             content=blueprint.model_dump(),
             model_name=self.model_name,
             usage=self._usage(plan, evidence),
+            provider_name=self.name,
         )
 
     def critique(
@@ -196,6 +212,7 @@ class MockDesignAgentProvider:
             content=critique.model_dump(),
             model_name=self.model_name,
             usage=self._usage(artifact, evidence),
+            provider_name=self.name,
         )
 
     def revise(
@@ -235,4 +252,5 @@ class MockDesignAgentProvider:
             content=revised,
             model_name=self.model_name,
             usage=self._usage(artifact, evidence, rejection_reason),
+            provider_name=self.name,
         )

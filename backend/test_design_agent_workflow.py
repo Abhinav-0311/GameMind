@@ -5,6 +5,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.design_agent import get_design_agent_service
 from app.config import settings
+from app.design_agent.nvidia_provider import (
+    NvidiaDesignAgentProvider,
+    NvidiaNodeConfig,
+    ResilientDesignAgentProvider,
+)
 from app.design_agent.provider import MockDesignAgentProvider
 from app.design_agent.service import DesignAgentService
 from app.design_agent.workflow import DesignAgentWorkflow
@@ -92,7 +97,11 @@ def create_source(db_session, game_project_id: str) -> tuple[Document, list[Docu
     return document, chunks
 
 
-def make_service(db_session, rag: CountingRAG) -> DesignAgentService:
+def make_service(
+    db_session,
+    rag: CountingRAG,
+    provider=None,
+) -> DesignAgentService:
     factory = sessionmaker(
         bind=db_session.get_bind(),
         autocommit=False,
@@ -102,7 +111,7 @@ def make_service(db_session, rag: CountingRAG) -> DesignAgentService:
         DesignAgentWorkflow(
             database_url=settings.DATABASE_URL,
             session_factory=factory,
-            provider=MockDesignAgentProvider(),
+            provider=provider or MockDesignAgentProvider(),
             rag_service=rag,
         )
     )
@@ -283,5 +292,62 @@ def test_run_is_project_scoped_and_rejection_requires_reason(db_session):
             headers={"X-Game-Project-ID": project_id},
         )
         assert export_before_approval.status_code == 409
+    finally:
+        app.dependency_overrides.pop(get_design_agent_service, None)
+
+
+def test_unavailable_nvidia_fallback_is_visible_in_run_and_trace(db_session):
+    project_id = f"agent_fallback_{uuid.uuid4().hex[:8]}"
+    document, chunks = create_source(db_session, project_id)
+    node_configs = {
+        node_name: NvidiaNodeConfig(
+            model_name=f"test-{node_name}-model",
+            temperature=0.0,
+            max_tokens=1000,
+        )
+        for node_name in ("plan", "generate", "critique", "revise")
+    }
+    provider = ResilientDesignAgentProvider(
+        primary=NvidiaDesignAgentProvider(
+            api_key=None,
+            base_url="https://integrate.api.nvidia.com/v1",
+            node_configs=node_configs,
+            timeout_seconds=1,
+            max_retries=0,
+            retry_backoff_seconds=0,
+            repair_enabled=True,
+        ),
+        fallback=MockDesignAgentProvider(),
+    )
+    service = make_service(db_session, CountingRAG(chunks), provider=provider)
+
+    try:
+        run = start_run(service, document.id, project_id)
+
+        assert run["status"] == "awaiting_review"
+        assert run["provider_name"] == "nvidia"
+        assert run["degraded"] is True
+        assert run["critique"]["provider_name"] == "mock"
+        persisted_run = db_session.query(DesignAgentRun).filter(
+            DesignAgentRun.id == uuid.UUID(run["id"])
+        ).one()
+        assert persisted_run.model_config["models"]["plan"]["model"] == "test-plan-model"
+        assert "api_key" not in persisted_run.model_config
+
+        trace_response = client.get(
+            f"/api/v1/design-agent/runs/{run['id']}/trace",
+            headers={"X-Game-Project-ID": project_id},
+        )
+        assert trace_response.status_code == 200
+        provider_nodes = [
+            item
+            for item in trace_response.json()["items"]
+            if item["node_name"] in {"plan", "generate_blueprint", "critique"}
+        ]
+        assert len(provider_nodes) == 3
+        assert all(item["status"] == "degraded" for item in provider_nodes)
+        assert all(item["provider_name"] == "mock" for item in provider_nodes)
+        assert all(item["details"]["fallback_from"] == "nvidia" for item in provider_nodes)
+        assert all(item["details"]["failure_code"] == "api_key_missing" for item in provider_nodes)
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)

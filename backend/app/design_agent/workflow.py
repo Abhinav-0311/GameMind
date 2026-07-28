@@ -176,7 +176,7 @@ class DesignAgentWorkflow:
         execution.latency_ms = max(0, round((time.perf_counter() - started) * 1000))
         execution.completed_at = datetime.now(timezone.utc)
         if result:
-            execution.provider_name = execution.provider_name or "unknown"
+            execution.provider_name = result.provider_name or execution.provider_name or "unknown"
             execution.model_name = result.model_name
             execution.input_tokens = result.usage.input_tokens
             execution.output_tokens = result.usage.output_tokens
@@ -220,12 +220,23 @@ class DesignAgentWorkflow:
             try:
                 result = call()
                 update = persist(db, run, result)
+                degraded = bool(result.metadata.get("degraded"))
+                if degraded:
+                    run.model_config = {
+                        **(run.model_config or {}),
+                        "degraded": True,
+                    }
+                    db.commit()
                 self._complete_execution(
                     db,
                     execution,
                     started,
                     result=result,
-                    details={"output_keys": sorted(update.keys())},
+                    status="degraded" if degraded else "completed",
+                    details={
+                        "output_keys": sorted(update.keys()),
+                        **result.metadata,
+                    },
                 )
                 return update
             except Exception as error:
@@ -373,7 +384,7 @@ class DesignAgentWorkflow:
                 artifact_id=artifact_id,
                 game_project_id=run.game_project_id,
                 content=critique_content,
-                provider_name=self.provider.name,
+                provider_name=result.provider_name or self.provider.name,
                 model_name=result.model_name,
             )
             db.add(critique)

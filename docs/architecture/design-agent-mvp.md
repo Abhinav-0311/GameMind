@@ -152,7 +152,7 @@ scope review.
 | Project-scoped run records, artifacts, critiques, reviews, and traces | Implemented in Phase 1 |
 | Deterministic zero-cost MockProvider | Implemented in Phase 1 |
 | Immutable final artifact and existing GameBlueprint export bridge | Implemented in Phase 1 |
-| NVIDIA provider, retry, timeout, JSON repair, and explicit fallback | Pending Phase 2 |
+| NVIDIA provider, retry, timeout, JSON repair, and explicit fallback | Implemented and deterministically tested in Phase 2 |
 | Minimal review and trace console | Pending Phase 3 |
 | Five-metric CyberRakshak evaluation | Pending Phase 4 |
 
