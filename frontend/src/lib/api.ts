@@ -174,6 +174,93 @@ export interface HealthResponse {
   vector_dimension: number;
 }
 
+export interface DesignAgentBlueprintSection {
+  content: Record<string, unknown>;
+  citations: string[];
+  confidence: "High" | "Medium" | "Low";
+  warnings: string[];
+}
+
+export interface DesignAgentArtifact {
+  id: string;
+  version: number;
+  artifact_type: "draft" | "revision" | "final" | string;
+  content: Record<string, DesignAgentBlueprintSection>;
+  immutable: boolean;
+  blueprint_id?: string | null;
+  created_at: string;
+}
+
+export interface DesignAgentCritiqueFinding {
+  severity: "high" | "medium" | "low";
+  section: string;
+  issue: string;
+  recommendation: string;
+}
+
+export interface DesignAgentCritique {
+  id: string;
+  artifact_id: string;
+  content: {
+    verdict?: "ready_for_review" | "needs_revision" | string;
+    findings?: DesignAgentCritiqueFinding[];
+    summary?: string;
+  };
+  provider_name: string;
+  model_name: string;
+  created_at: string;
+}
+
+export interface DesignAgentRun {
+  id: string;
+  game_project_id: string;
+  objective: string;
+  document_ids: string[];
+  status: string;
+  current_node?: string | null;
+  provider_name: string;
+  degraded: boolean;
+  retrieval_revision: number;
+  revision_count: number;
+  max_revisions: number;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+  current_artifact?: DesignAgentArtifact | null;
+  critique?: DesignAgentCritique | null;
+}
+
+export interface DesignAgentTraceItem {
+  id: string;
+  node_name: string;
+  attempt: number;
+  status: string;
+  provider_name?: string | null;
+  model_name?: string | null;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  details: Record<string, unknown>;
+  error?: string | null;
+  started_at: string;
+  completed_at?: string | null;
+}
+
+export interface DesignAgentTrace {
+  run_id: string;
+  status: string;
+  items: DesignAgentTraceItem[];
+}
+
+export interface DesignAgentRuntimeExport {
+  api_version: string;
+  run_id: string;
+  blueprint_id: string;
+  game_project_id: string;
+  runtime_data: Record<string, unknown>;
+}
+
 export const api = {
   async getAuthSession(): Promise<AuthSession> {
     const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/session`, { credentials: "include" });
@@ -598,6 +685,77 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.detail || "Failed to fetch hint status");
+    }
+    return res.json();
+  },
+
+  async getDesignAgentRuns(): Promise<DesignAgentRun[]> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs`);
+    if (!res.ok) throw new Error("Could not load design-agent runs");
+    return res.json();
+  },
+
+  async createDesignAgentRun(payload: {
+    objective: string;
+    document_ids: string[];
+    max_revisions?: number;
+  }): Promise<DesignAgentRun> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not start the design-agent run");
+    }
+    return res.json();
+  },
+
+  async getDesignAgentRun(runId: string): Promise<DesignAgentRun> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}`);
+    if (!res.ok) throw new Error("Could not refresh this design-agent run");
+    return res.json();
+  },
+
+  async reviewDesignAgentRun(
+    runId: string,
+    payload: { decision: "approve" | "reject"; reason?: string },
+  ): Promise<DesignAgentRun> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not submit the review decision");
+    }
+    return res.json();
+  },
+
+  async getDesignAgentTrace(runId: string): Promise<DesignAgentTrace> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/trace`);
+    if (!res.ok) throw new Error("Could not load the workflow trace");
+    return res.json();
+  },
+
+  async getDesignAgentTechnicalBrief(runId: string): Promise<{ markdown: string; filename: string }> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/exports/technical-brief`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not export the technical brief");
+    }
+    const disposition = res.headers.get("content-disposition") || "";
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || "gamemind-agent-brief.md";
+    return { markdown: await res.text(), filename };
+  },
+
+  async getDesignAgentRuntimeExport(runId: string): Promise<DesignAgentRuntimeExport> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/exports/runtime`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not export the runtime bundle");
     }
     return res.json();
   },

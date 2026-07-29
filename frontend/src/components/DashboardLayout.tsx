@@ -53,6 +53,12 @@ const IconBlueprint = () => (
   </svg>
 );
 
+const IconAgent = () => (
+  <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M6.5 7.5h11v9h-11v-9zM9 11h.01M15 11h.01M9.5 14h5M12 7.5V4.5M10.5 4.5h3M4 10.5H2.5M21.5 10.5H20" />
+  </svg>
+);
+
 const IconDecisions = () => (
   <svg className={iconClassName} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 5.5h9.5M8 10.5h9.5M8 15.5h5.5M4.5 5.5h.01M4.5 10.5h.01M4.5 15.5h.01" />
@@ -113,6 +119,7 @@ const navigationItems: NavigationItem[] = [
   { name: "Sources", href: "/knowledge", section: "Build", icon: <IconArchive /> },
   { name: "Decisions", href: "/decisions", section: "Build", icon: <IconDecisions /> },
   { name: "Blueprints", href: "/blueprints", section: "Build", icon: <IconBlueprint /> },
+  { name: "Design Agent", href: "/design-agent", section: "Build", icon: <IconAgent /> },
   { name: "Workspace", href: "/workspace", section: "Build", icon: <IconPeople /> },
   { name: "Lore Search", href: "/query", section: "Test", icon: <IconSearch /> },
   { name: "Runtime Test", href: "/vertical-slice", section: "Test", icon: <IconPlay /> },
