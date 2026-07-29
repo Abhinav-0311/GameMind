@@ -1,8 +1,8 @@
 # GameMind Design Agent MVP Contract
 
-Status: Phase 1 implemented; Phases 2-4 pending
+Status: Flagship MVP Phases 1-4 implemented and verified
 Case study: CyberRakshak
-Last reviewed: 2026-07-26
+Last reviewed: 2026-07-29
 
 ## Objective
 
@@ -153,9 +153,10 @@ scope review.
 | Deterministic zero-cost MockProvider | Implemented in Phase 1 |
 | Immutable final artifact and existing GameBlueprint export bridge | Implemented in Phase 1 |
 | NVIDIA provider, retry, timeout, JSON repair, and explicit fallback | Implemented and deterministically tested in Phase 2 |
-| Minimal review and trace console | Pending Phase 3 |
-| Five-metric CyberRakshak evaluation | Pending Phase 4 |
+| Minimal review and trace console | Implemented and browser-verified in Phase 3 |
+| Five-metric CyberRakshak evaluation | Implemented and verified in Phase 4 |
 
-Phase 1 is a backend capability. It does not add another dashboard screen or
-change the Unity adapter. The workflow API is available under
-`/api/v1/design-agent`.
+The workflow API is available under `/api/v1/design-agent`. The dashboard
+console is available at `/design-agent`. Phase 4 deliberately keeps evaluation
+authoring outside the product UI: a completed run displays one immutable
+scorecard, while rubric judgments are recorded through the project-scoped API.

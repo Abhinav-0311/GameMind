@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   api,
   type DesignAgentCritiqueFinding,
+  type DesignAgentEvaluation,
   type DesignAgentRun,
   type DesignAgentTrace,
   type DocumentResponse,
@@ -147,6 +148,7 @@ export default function DesignAgentPage() {
   const [runs, setRuns] = useState<DesignAgentRun[]>([]);
   const [activeRun, setActiveRun] = useState<DesignAgentRun | null>(null);
   const [trace, setTrace] = useState<DesignAgentTrace | null>(null);
+  const [evaluation, setEvaluation] = useState<DesignAgentEvaluation | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
   const [activeSection, setActiveSection] = useState<(typeof sections)[number]["key"]>("summary");
@@ -207,7 +209,23 @@ export default function DesignAgentPage() {
     };
   }, [activeRun]);
 
+  useEffect(() => {
+    if (!activeRun || activeRun.status !== "completed") return;
+    let mounted = true;
+    api.getDesignAgentEvaluation(activeRun.id)
+      .then((loadedEvaluation) => {
+        if (mounted) setEvaluation(loadedEvaluation);
+      })
+      .catch(() => {
+        if (mounted) setEvaluation(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeRun]);
+
   function replaceRun(updatedRun: DesignAgentRun) {
+    setEvaluation(null);
     setRuns((current) => [updatedRun, ...current.filter((run) => run.id !== updatedRun.id)]);
     setActiveRun(updatedRun);
   }
@@ -458,6 +476,7 @@ export default function DesignAgentPage() {
                     const selected = runs.find((run) => run.id === event.target.value);
                     if (selected) {
                       setTrace(null);
+                      setEvaluation(null);
                       setActiveRun(selected);
                       setActiveSection("summary");
                       setRejectOpen(false);
@@ -658,6 +677,44 @@ export default function DesignAgentPage() {
               </div>
             </aside>
           </div>
+
+          {evaluation && (
+            <section className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="page-kicker">CyberRakshak rubric · {evaluation.rubric_version}</p>
+                  <h2 className="mt-2 text-lg font-bold">Quality scorecard</h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    Human judgments are stored beside system-verified persistence checks.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    evaluation.passed
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                  }`}>
+                    {evaluation.passed ? "Acceptance passed" : "Needs improvement"}
+                  </span>
+                  <span className="text-lg font-bold">{Math.round(evaluation.overall_score * 100)}%</span>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-5">
+                {evaluation.metrics.map((metric) => (
+                  <div key={metric.key} className="border-b border-[var(--border)] px-5 py-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-bold leading-5 text-[var(--foreground)]">{metric.label}</p>
+                      <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${metric.passed ? "bg-emerald-500" : "bg-rose-500"}`} aria-label={metric.passed ? "Passed" : "Failed"} />
+                    </div>
+                    <p className="mt-3 text-2xl font-bold">{Math.round(metric.value * 100)}%</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                      Target {metric.target} · {metric.source === "system_verified" ? "System verified" : "Human reviewed"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <details className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]">

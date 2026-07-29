@@ -291,6 +291,9 @@ Implemented:
   review interrupts, immutable approval, and evidence-preserving revision.
 - Optional NVIDIA inference with per-node models, bounded retries, timeout,
   structured-output repair, token/latency traces, and visible mock fallback.
+- A governed Design Agent console with cited artifacts, independent critique,
+  run-level review, trace inspection, immutable exports, and an immutable
+  five-metric CyberRakshak quality scorecard.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -299,8 +302,10 @@ Remaining product work:
 - Add guided first-run onboarding and a deliberate empty-workspace experience.
 - Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
 - Package engine-neutral API examples and integration starter kits more clearly.
-- Add the minimal design-agent review and trace console.
-- Record the five-metric CyberRakshak agent quality scorecard.
+- Improve retrieval precision and revision quality using the recorded
+  CyberRakshak scorecard as the baseline.
+- Stabilize the opt-in multithreaded load-test harness before treating it as a
+  release performance gate.
 - Add production deployment hardening: authentication, object storage, rate limits, backups, and CI/CD.
 
 ## Production Notes

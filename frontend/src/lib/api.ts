@@ -261,6 +261,29 @@ export interface DesignAgentRuntimeExport {
   runtime_data: Record<string, unknown>;
 }
 
+export interface DesignAgentEvaluationMetric {
+  key: string;
+  label: string;
+  value: number;
+  numerator: number;
+  denominator: number;
+  target: string;
+  passed: boolean;
+  source: "human_review" | "system_verified";
+}
+
+export interface DesignAgentEvaluation {
+  id: string;
+  run_id: string;
+  game_project_id: string;
+  rubric_version: string;
+  evaluator_label: string;
+  metrics: DesignAgentEvaluationMetric[];
+  overall_score: number;
+  passed: boolean;
+  created_at: string;
+}
+
 export const api = {
   async getAuthSession(): Promise<AuthSession> {
     const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/session`, { credentials: "include" });
@@ -737,6 +760,13 @@ export const api = {
   async getDesignAgentTrace(runId: string): Promise<DesignAgentTrace> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/trace`);
     if (!res.ok) throw new Error("Could not load the workflow trace");
+    return res.json();
+  },
+
+  async getDesignAgentEvaluation(runId: string): Promise<DesignAgentEvaluation | null> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/evaluation`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error("Could not load the quality scorecard");
     return res.json();
   },
 

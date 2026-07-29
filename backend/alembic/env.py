@@ -30,6 +30,7 @@ from app.models.user import User, ProjectMembership
 from app.models.design_agent import (
     DesignAgentArtifact,
     DesignAgentCritique,
+    DesignAgentEvaluation,
     DesignAgentEvidenceSnapshot,
     DesignAgentNodeExecution,
     DesignAgentReviewEvent,

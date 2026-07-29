@@ -6,12 +6,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, get_game_project_id
 from app.design_agent.schemas import (
+    DesignAgentEvaluationCreate,
+    DesignAgentEvaluationResponse,
     DesignAgentReviewRequest,
     DesignAgentRunCreate,
     DesignAgentRunResponse,
     DesignAgentRuntimeExportResponse,
     DesignAgentTraceResponse,
 )
+from app.design_agent.evaluation import DesignAgentEvaluationService
 from app.design_agent.service import DesignAgentService
 from app.models.user import User
 
@@ -20,6 +23,10 @@ router = APIRouter(prefix="/design-agent", tags=["design-agent"])
 
 def get_design_agent_service() -> DesignAgentService:
     return DesignAgentService()
+
+
+def get_design_agent_evaluation_service() -> DesignAgentEvaluationService:
+    return DesignAgentEvaluationService()
 
 
 @router.post("/runs", response_model=DesignAgentRunResponse, status_code=status.HTTP_201_CREATED)
@@ -81,6 +88,40 @@ def get_trace(
     service: DesignAgentService = Depends(get_design_agent_service),
 ):
     return service.trace(db, run_id, game_project_id)
+
+
+@router.get(
+    "/runs/{run_id}/evaluation",
+    response_model=DesignAgentEvaluationResponse,
+)
+def get_evaluation(
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    service: DesignAgentEvaluationService = Depends(
+        get_design_agent_evaluation_service
+    ),
+):
+    return service.get(db, run_id, game_project_id)
+
+
+@router.post(
+    "/runs/{run_id}/evaluation",
+    response_model=DesignAgentEvaluationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_evaluation(
+    run_id: UUID,
+    payload: DesignAgentEvaluationCreate,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+    current_user: User | None = Depends(get_current_user),
+    service: DesignAgentEvaluationService = Depends(
+        get_design_agent_evaluation_service
+    ),
+):
+    """Record one immutable, human-reviewed quality scorecard."""
+    return service.create(db, run_id, game_project_id, payload, current_user)
 
 
 @router.get("/runs/{run_id}/exports/technical-brief")

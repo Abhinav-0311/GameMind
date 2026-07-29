@@ -224,3 +224,36 @@ class DesignAgentNodeExecution(Base, ProjectScopedMixin):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DesignAgentEvaluation(Base, ProjectScopedMixin):
+    __tablename__ = "design_agent_evaluations"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_design_agent_evaluation_run"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("design_agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    evaluator_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    evaluator_label = Column(
+        String(160),
+        nullable=False,
+        default="local_developer",
+        server_default="local_developer",
+    )
+    rubric_version = Column(String(32), nullable=False, default="cyberrakshak-v1", server_default="cyberrakshak-v1")
+    annotations = Column(JSONB, nullable=False)
+    metrics = Column(JSONB, nullable=False)
+    overall_score = Column(Numeric(5, 4), nullable=False)
+    passed = Column(Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -95,3 +95,60 @@ class DesignAgentRuntimeExportResponse(BaseModel):
     blueprint_id: UUID
     game_project_id: str
     runtime_data: dict[str, Any]
+
+
+class CitationJudgment(BaseModel):
+    section: str = Field(min_length=1, max_length=100)
+    chunk_id: UUID
+    relevant: bool
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ClaimJudgment(BaseModel):
+    claim: str = Field(min_length=3, max_length=2000)
+    supported: bool
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class CritiqueJudgment(BaseModel):
+    finding_index: int = Field(ge=0)
+    useful: bool
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class RevisionJudgment(BaseModel):
+    requirement: str = Field(min_length=3, max_length=2000)
+    applied: bool
+    unrelated_regression: bool = False
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class DesignAgentEvaluationCreate(BaseModel):
+    rubric_version: Literal["cyberrakshak-v1"] = "cyberrakshak-v1"
+    citation_judgments: list[CitationJudgment] = Field(min_length=1)
+    claim_judgments: list[ClaimJudgment] = Field(min_length=1)
+    critique_judgments: list[CritiqueJudgment] = Field(min_length=1)
+    revision_judgments: list[RevisionJudgment] = Field(min_length=1)
+
+
+class DesignAgentEvaluationMetric(BaseModel):
+    key: str
+    label: str
+    value: float
+    numerator: int
+    denominator: int
+    target: str
+    passed: bool
+    source: Literal["human_review", "system_verified"]
+
+
+class DesignAgentEvaluationResponse(BaseModel):
+    id: UUID
+    run_id: UUID
+    game_project_id: str
+    rubric_version: str
+    evaluator_label: str
+    metrics: list[DesignAgentEvaluationMetric]
+    overall_score: float
+    passed: bool
+    created_at: datetime
