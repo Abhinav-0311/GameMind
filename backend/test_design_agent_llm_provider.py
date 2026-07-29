@@ -4,7 +4,11 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, ResearchPlan
+from app.design_agent.contracts import (
+    BLUEPRINT_SECTION_KEYS,
+    ResearchPlan,
+    RetrievalPlanOutput,
+)
 from app.design_agent.llm_provider import (
     CompletionRequest,
     MockProvider,
@@ -81,6 +85,7 @@ def _valid_plan(query: str = "all nine CyberRakshak levels") -> str:
 def test_node_model_config_uses_separate_models_and_keys():
     assert NODE_MODEL_CONFIG["plan"].model == "nvidia/llama-3.1-nemotron-nano-8b-v1"
     assert NODE_MODEL_CONFIG["plan"].api_key_env == "NVIDIA_NANO_API_KEY"
+    assert NODE_MODEL_CONFIG["plan"].max_tokens == 300
 
     for node_name in ("generate_blueprint", "critique", "revise"):
         assert (
@@ -106,6 +111,20 @@ def test_research_plan_rejects_generic_or_incomplete_section_lists():
         required_sections=list(reversed(BLUEPRINT_SECTION_KEYS)),
     )
     assert complete.required_sections == list(BLUEPRINT_SECTION_KEYS)
+
+
+def test_planner_model_boundary_owns_only_the_retrieval_query():
+    output = RetrievalPlanOutput.model_validate(
+        {
+            "retrieval_query": "all game levels NPC memories and quest systems",
+            "objective": "The model must not own this field.",
+            "required_sections": ["summary"],
+        }
+    )
+
+    assert output.model_dump() == {
+        "retrieval_query": "all game levels NPC memories and quest systems"
+    }
 
 
 def test_scriptable_mock_returns_sequential_responses_for_same_node():

@@ -313,3 +313,6 @@ The main demo path is intentionally local-first and works without paid API
 usage. NVIDIA support is an optional provider behind the same workflow and does
 not change the dashboard contract. Do not put real API keys in Git; use local
 `.env` values or deployment secrets.
+
+The measured Phase 2 provider and restart-safety results are documented in
+[docs/phase2-nvidia-validation.md](docs/phase2-nvidia-validation.md).

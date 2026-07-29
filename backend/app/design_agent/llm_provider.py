@@ -28,7 +28,7 @@ NODE_MODEL_CONFIG: dict[str, NodeModelConfig] = {
         api_key_env="NVIDIA_NANO_API_KEY",
         temperature=0.0,
         max_retries=2,
-        max_tokens=1200,
+        max_tokens=300,
     ),
     "generate_blueprint": NodeModelConfig(
         provider="nvidia",

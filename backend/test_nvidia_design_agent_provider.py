@@ -3,7 +3,7 @@ import json
 import pytest
 
 from app.config import Settings
-from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS
+from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, RetrievalPlanOutput
 from app.design_agent.llm_provider import (
     CompletionRequest,
     CompletionResult,
@@ -27,9 +27,7 @@ class CapturingProvider:
         self.requests.append(request)
         content = request.response_model.model_validate(
             {
-                "objective": "Build a cited game blueprint.",
                 "retrieval_query": "CyberRakshak levels NPCs gameplay quests",
-                "required_sections": list(BLUEPRINT_SECTION_KEYS),
             }
         ).model_dump()
         return CompletionResult(
@@ -52,7 +50,13 @@ def test_design_agent_adapter_uses_low_level_completion_boundary():
     assert result.provider_name == "nvidia"
     assert result.model_name == "configured-test-model"
     assert result.content["required_sections"] == list(BLUEPRINT_SECTION_KEYS)
+    assert result.content["objective"] == "Build a cited game blueprint."
+    assert result.metadata["deterministic_fields"] == [
+        "objective",
+        "required_sections",
+    ]
     assert low_level.requests[0].node_name == "plan"
+    assert low_level.requests[0].response_model is RetrievalPlanOutput
     assert low_level.requests[0].messages[0] == {
         "role": "system",
         "content": "detailed thinking off",
@@ -81,6 +85,8 @@ def test_missing_nvidia_key_falls_back_to_mock_with_visible_degradation():
     assert result.metadata["degraded"] is True
     assert result.metadata["fallback_from"] == "nvidia"
     assert result.metadata["failure_code"] == "api_key_missing"
+    assert "primary_latency_ms" in result.metadata
+    assert result.usage.latency_ms >= result.metadata["primary_latency_ms"]
 
 
 def test_provider_factory_uses_fixed_models_without_persisting_keys():

@@ -47,6 +47,12 @@ class ResearchPlan(BaseModel):
         return list(BLUEPRINT_SECTION_KEYS)
 
 
+class RetrievalPlanOutput(BaseModel):
+    """Only the semantic retrieval decision belongs to the planner model."""
+
+    retrieval_query: str = Field(min_length=3, max_length=500)
+
+
 class BlueprintSection(BaseModel):
     content: dict[str, Any] = Field(default_factory=dict)
     citations: list[str] = Field(default_factory=list)

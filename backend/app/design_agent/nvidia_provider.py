@@ -1,12 +1,20 @@
 import json
+import time
 from dataclasses import replace
 from typing import Any
 
 from pydantic import BaseModel
 
-from app.design_agent.contracts import BlueprintContent, CritiqueOutput, ResearchPlan
+from app.design_agent.contracts import (
+    BLUEPRINT_SECTION_KEYS,
+    BlueprintContent,
+    CritiqueOutput,
+    ResearchPlan,
+    RetrievalPlanOutput,
+)
 from app.design_agent.llm_provider import (
     CompletionRequest,
+    CompletionResult,
     LLMProvider,
     NODE_MODEL_CONFIG,
     NvidiaAuthenticationError,
@@ -54,7 +62,29 @@ class NvidiaDesignAgentProvider:
         instruction: str,
         payload: dict[str, Any],
     ) -> ProviderResult:
-        result = self.llm_provider.complete(
+        result = self._complete(
+            node_name=node_name,
+            expected_model=expected_model,
+            instruction=instruction,
+            payload=payload,
+        )
+        return ProviderResult(
+            content=result.content,
+            model_name=result.model_name,
+            provider_name=result.provider_name,
+            usage=result.usage,
+            metadata=result.metadata,
+        )
+
+    def _complete(
+        self,
+        *,
+        node_name: str,
+        expected_model: type[BaseModel],
+        instruction: str,
+        payload: dict[str, Any],
+    ) -> CompletionResult:
+        return self.llm_provider.complete(
             CompletionRequest(
                 node_name=node_name,
                 messages=[
@@ -74,23 +104,32 @@ class NvidiaDesignAgentProvider:
                 response_model=expected_model,
             )
         )
+
+    def plan(self, objective: str, document_ids: list[str]) -> ProviderResult:
+        result = self._complete(
+            node_name="plan",
+            expected_model=RetrievalPlanOutput,
+            instruction=(
+                "Create one concise semantic retrieval query that will find evidence "
+                "for narrative, art direction, NPCs, memory, levels, gameplay systems, "
+                "quests, and runtime integration. Return only retrieval_query."
+            ),
+            payload={"objective": objective, "document_ids": document_ids},
+        )
+        plan = ResearchPlan(
+            objective=objective,
+            retrieval_query=result.content["retrieval_query"],
+            required_sections=list(BLUEPRINT_SECTION_KEYS),
+        )
         return ProviderResult(
-            content=result.content,
+            content=plan.model_dump(),
             model_name=result.model_name,
             provider_name=result.provider_name,
             usage=result.usage,
-            metadata=result.metadata,
-        )
-
-    def plan(self, objective: str, document_ids: list[str]) -> ProviderResult:
-        return self._invoke(
-            node_name="plan",
-            expected_model=ResearchPlan,
-            instruction=(
-                "Create one concise retrieval plan for the selected game-design "
-                "documents. Include every required GameMind blueprint section."
-            ),
-            payload={"objective": objective, "document_ids": document_ids},
+            metadata={
+                **result.metadata,
+                "deterministic_fields": ["objective", "required_sections"],
+            },
         )
 
     def generate(
@@ -165,12 +204,25 @@ class ResilientDesignAgentProvider:
         return config
 
     def _call(self, method_name: str, *args: Any) -> ProviderResult:
+        started = time.perf_counter()
         try:
             return getattr(self.primary, method_name)(*args)
         except NvidiaProviderError as error:
             fallback_result = getattr(self.fallback, method_name)(*args)
+            total_latency_ms = max(
+                fallback_result.usage.latency_ms,
+                round((time.perf_counter() - started) * 1000),
+            )
+            primary_latency_ms = max(
+                0,
+                total_latency_ms - fallback_result.usage.latency_ms,
+            )
             return replace(
                 fallback_result,
+                usage=replace(
+                    fallback_result.usage,
+                    latency_ms=total_latency_ms,
+                ),
                 metadata={
                     **fallback_result.metadata,
                     "degraded": True,
@@ -179,6 +231,7 @@ class ResilientDesignAgentProvider:
                     "failure_code": error.code,
                     "primary_attempts": error.attempts,
                     "primary_retryable": error.retryable,
+                    "primary_latency_ms": primary_latency_ms,
                     "cost_status": "unavailable",
                 },
             )

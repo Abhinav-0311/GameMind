@@ -345,5 +345,10 @@ def test_unavailable_nvidia_fallback_is_visible_in_run_and_trace(db_session):
         assert all(item["provider_name"] == "mock" for item in provider_nodes)
         assert all(item["details"]["fallback_from"] == "nvidia" for item in provider_nodes)
         assert all(item["details"]["failure_code"] == "api_key_missing" for item in provider_nodes)
+        assert all("primary_latency_ms" in item["details"] for item in provider_nodes)
+        assert all(
+            item["latency_ms"] >= item["details"]["primary_latency_ms"]
+            for item in provider_nodes
+        )
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)
