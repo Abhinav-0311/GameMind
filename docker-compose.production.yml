@@ -74,6 +74,14 @@ services:
       CHROMA_PORT: "8000"
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LOCAL_MODEL_NAME: ${LOCAL_MODEL_NAME:-local-rule-engine}
+      DESIGN_AGENT_PROVIDER: ${DESIGN_AGENT_PROVIDER:-mock}
+      DESIGN_AGENT_FALLBACK_TO_MOCK: ${DESIGN_AGENT_FALLBACK_TO_MOCK:-true}
+      DESIGN_AGENT_EXECUTION_MODE: ${DESIGN_AGENT_EXECUTION_MODE:-queued}
+      DESIGN_AGENT_JOB_POLL_SECONDS: ${DESIGN_AGENT_JOB_POLL_SECONDS:-1}
+      DESIGN_AGENT_JOB_LEASE_SECONDS: ${DESIGN_AGENT_JOB_LEASE_SECONDS:-300}
+      DESIGN_AGENT_JOB_MAX_ATTEMPTS: ${DESIGN_AGENT_JOB_MAX_ATTEMPTS:-3}
+      NVIDIA_NANO_API_KEY: ${NVIDIA_NANO_API_KEY:-}
+      NVIDIA_SUPER_API_KEY: ${NVIDIA_SUPER_API_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -87,6 +95,38 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+  design-agent-worker:
+    image: gamemind-backend-production:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.design_agent_worker"]
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      DATABASE_POOL_TIMEOUT_SECONDS: ${DATABASE_POOL_TIMEOUT_SECONDS:-5}
+      DATABASE_POOL_RECYCLE_SECONDS: ${DATABASE_POOL_RECYCLE_SECONDS:-1800}
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LOCAL_MODEL_NAME: ${LOCAL_MODEL_NAME:-local-rule-engine}
+      DESIGN_AGENT_PROVIDER: ${DESIGN_AGENT_PROVIDER:-mock}
+      DESIGN_AGENT_FALLBACK_TO_MOCK: ${DESIGN_AGENT_FALLBACK_TO_MOCK:-true}
+      DESIGN_AGENT_EXECUTION_MODE: ${DESIGN_AGENT_EXECUTION_MODE:-queued}
+      DESIGN_AGENT_JOB_POLL_SECONDS: ${DESIGN_AGENT_JOB_POLL_SECONDS:-1}
+      DESIGN_AGENT_JOB_LEASE_SECONDS: ${DESIGN_AGENT_JOB_LEASE_SECONDS:-300}
+      DESIGN_AGENT_JOB_MAX_ATTEMPTS: ${DESIGN_AGENT_JOB_MAX_ATTEMPTS:-3}
+      NVIDIA_NANO_API_KEY: ${NVIDIA_NANO_API_KEY:-}
+      NVIDIA_SUPER_API_KEY: ${NVIDIA_SUPER_API_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      chromadb:
+        condition: service_healthy
 
   frontend:
     image: gamemind-frontend-production:local

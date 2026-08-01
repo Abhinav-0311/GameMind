@@ -78,6 +78,38 @@ class RAGService:
             self.chroma_client = chroma_client
             self.collection = collection
 
+    def _query_collection(self, query_texts: list[str], n_results: int, where: dict) -> dict:
+        """Query Chroma while tolerating its known small HNSW result-set failure."""
+        for candidate_limit in range(n_results, 0, -1):
+            try:
+                return self.collection.query(
+                    query_texts=query_texts,
+                    n_results=candidate_limit,
+                    where=where,
+                    **self._vector_arguments(query_texts, "query_embeddings"),
+                )
+            except Exception as error:
+                is_small_index_error = "contigious 2d array" in str(error).lower()
+                if not is_small_index_error:
+                    raise
+                if candidate_limit == 1:
+                    logger.warning("Chroma HNSW index could not return a single live match; returning no evidence.")
+                    empty_rows = [[] for _ in query_texts]
+                    return {
+                        "ids": empty_rows,
+                        "distances": empty_rows,
+                        "documents": empty_rows,
+                        "metadatas": empty_rows,
+                    }
+
+                logger.warning(
+                    "Chroma HNSW index could not return %s matches; retrying with %s.",
+                    candidate_limit,
+                    candidate_limit - 1,
+                )
+
+        return {}
+
 
     def extract_text(self, file_bytes: bytes, file_name: str, content_type: str) -> str:
         """Extract plain text from TXT, MD, or PDF files."""
@@ -309,7 +341,7 @@ class RAGService:
                 if collection_count == 0:
                     return []
                 n_results = min(limit, int(collection_count))
-            
+
             where = {"game_project_id": game_project_id}
             if document_ids:
                 where = {
@@ -319,12 +351,7 @@ class RAGService:
                     ]
                 }
 
-            results = self.collection.query(
-                query_texts=[query_text],
-                n_results=n_results,
-                where=where,
-                **self._vector_arguments([query_text], "query_embeddings"),
-            )
+            results = self._query_collection([query_text], n_results, where)
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")
             raise e
@@ -399,12 +426,7 @@ class RAGService:
         section_names = list(section_queries)
         query_texts = [section_queries[section] for section in section_names]
         try:
-            results = self.collection.query(
-                query_texts=query_texts,
-                n_results=n_results,
-                where=where,
-                **self._vector_arguments(query_texts, "query_embeddings"),
-            )
+            results = self._query_collection(query_texts, n_results, where)
         except Exception as error:
             logger.error(f"Failed to query section evidence from ChromaDB: {error}")
             raise

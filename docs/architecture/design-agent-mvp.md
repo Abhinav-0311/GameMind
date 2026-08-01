@@ -1,6 +1,6 @@
 # GameMind Design Agent MVP Contract
 
-Status: Flagship MVP Phases 1-4, Phase 5 quality remediation, Phase 6 local resilience, and Phase 7 deployment safeguards implemented
+Status: Flagship MVP Phases 1-4 and production-hardening Phases 5-8 implemented
 Case study: CyberRakshak
 Last reviewed: 2026-07-29
 
@@ -159,6 +159,7 @@ scope review.
 | Structured revision safeguards and shared local extraction | Implemented and verified in Phase 5 |
 | Bounded concurrency regression harness and explicit database pool limits | Implemented and verified in Phase 6 |
 | Retryable overload, pool-aware readiness, request correlation, smoke, and restore verification | Implemented and verified in Phase 7 |
+| Durable PostgreSQL job queue, leased worker execution, bounded retry, and asynchronous dashboard polling | Implemented and verified in Phase 8 |
 
 The workflow API is available under `/api/v1/design-agent`. The dashboard
 console is available at `/design-agent`. Phase 4 deliberately keeps evaluation

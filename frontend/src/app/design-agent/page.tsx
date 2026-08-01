@@ -58,6 +58,9 @@ function statusMeta(run: DesignAgentRun) {
   if (run.status === "failed") {
     return { label: "Run failed", detail: "Open the trace for the failure", tone: "bg-rose-500/10 text-rose-700 dark:text-rose-300" };
   }
+  if (run.status === "queued" || run.status === "review_queued") {
+    return { label: "Queued", detail: "A worker will continue this run shortly", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-200" };
+  }
   return { label: titleCase(run.status), detail: run.current_node ? `Working on ${titleCase(run.current_node)}` : "Workflow in progress", tone: "bg-[var(--accent-soft)] text-[var(--accent)]" };
 }
 
@@ -168,6 +171,8 @@ export default function DesignAgentPage() {
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
   const completed = activeRun?.status === "completed";
+  const activeRunId = activeRun?.id;
+  const activeRunStatus = activeRun?.status;
 
   useEffect(() => {
     let mounted = true;
@@ -208,6 +213,32 @@ export default function DesignAgentPage() {
       mounted = false;
     };
   }, [activeRun]);
+
+  useEffect(() => {
+    if (!activeRunId || !activeRunStatus || !["created", "queued", "review_queued", "running", "revision_requested", "approved"].includes(activeRunStatus)) return;
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const [run, loadedTrace] = await Promise.all([
+          api.getDesignAgentRun(activeRunId),
+          api.getDesignAgentTrace(activeRunId),
+        ]);
+        if (!mounted) return;
+        setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+        setActiveRun(run);
+        setTrace(loadedTrace);
+        if (run.status === "awaiting_review") setNotice("Draft and independent critique are ready for review.");
+        if (run.status === "completed") setNotice("Blueprint approved and final artifact locked.");
+      } catch {
+        // Manual refresh remains available if a transient polling request fails.
+      }
+    };
+    const timer = window.setInterval(refresh, 2000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [activeRunId, activeRunStatus]);
 
   useEffect(() => {
     if (!activeRun || activeRun.status !== "completed") return;
@@ -252,7 +283,7 @@ export default function DesignAgentPage() {
       replaceRun(run);
       setSetupOpen(false);
       setActiveSection("summary");
-      setNotice("Draft and independent critique are ready for review.");
+      setNotice(run.status === "queued" ? "Run queued. A worker is preparing the draft." : "Draft and independent critique are ready for review.");
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : "Could not start the design-agent run.");
     } finally {
@@ -297,7 +328,13 @@ export default function DesignAgentPage() {
       replaceRun(run);
       setRejectOpen(false);
       setRejectionReason("");
-      setNotice(decision === "approve" ? "Blueprint approved and final artifact locked." : "Revision and critique are ready for another review.");
+      setNotice(
+        run.status === "review_queued"
+          ? "Review recorded. A worker will continue the run."
+          : decision === "approve"
+            ? "Blueprint approved and final artifact locked."
+            : "Revision and critique are ready for another review.",
+      );
       const loadedTrace = await api.getDesignAgentTrace(run.id);
       setTrace(loadedTrace);
     } catch (reviewError) {

@@ -6,7 +6,7 @@ import concurrent.futures
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from main import app
-from app.database import SessionLocal, engine
+from app.database import SessionLocal, engine, get_db
 from app.models.graph import WorldEntity, WorldEntityVersion, WorldRelationship, PendingIngest, RelationshipTypeRule
 from app.models.telemetry import LLMTelemetryLog
 from app.repositories.graph_repository import graph_repo
@@ -129,6 +129,16 @@ def test_concurrent_traversal_execution_no_deadlocks_no_leaks(db):
     graph_repo.create_entity(db, slug_s, "character", "Source", "S")
     graph_repo.create_entity(db, slug_t, "character", "Target", "T")
     graph_repo.create_relationship(db, slug_s, slug_t, "allied_with")
+
+    # Concurrent requests must receive independent sessions, matching production.
+    def concurrent_get_db():
+        request_session = SessionLocal()
+        try:
+            yield request_session
+        finally:
+            request_session.close()
+
+    app.dependency_overrides[get_db] = concurrent_get_db
 
     pool = engine.pool
     checked_out_before = pool.checkedout()

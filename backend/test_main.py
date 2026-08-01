@@ -188,6 +188,32 @@ def test_production_settings_reject_invalid_database_pool():
             setattr(settings, name, value)
 
 
+def test_production_settings_reject_inline_design_agent_execution():
+    from app.config import settings, validate_production_settings
+
+    originals = {
+        "ENVIRONMENT": settings.ENVIRONMENT,
+        "AUTH_REQUIRED": settings.AUTH_REQUIRED,
+        "JWT_SECRET": settings.JWT_SECRET,
+        "CORS_ORIGINS": settings.CORS_ORIGINS,
+        "REQUIRE_EMAIL_VERIFICATION": settings.REQUIRE_EMAIL_VERIFICATION,
+        "DESIGN_AGENT_EXECUTION_MODE": settings.DESIGN_AGENT_EXECUTION_MODE,
+    }
+    try:
+        settings.ENVIRONMENT = "production"
+        settings.AUTH_REQUIRED = True
+        settings.JWT_SECRET = "a-production-secret-that-is-long-enough"
+        settings.CORS_ORIGINS = "https://app.example.com"
+        settings.REQUIRE_EMAIL_VERIFICATION = False
+        settings.DESIGN_AGENT_EXECUTION_MODE = "inline"
+
+        with pytest.raises(RuntimeError, match="DESIGN_AGENT_EXECUTION_MODE"):
+            validate_production_settings()
+    finally:
+        for name, value in originals.items():
+            setattr(settings, name, value)
+
+
 def test_chunker_logic():
     """Verify that chunking divides text within bounds and handles overlap correctly."""
     rag = RAGService()

@@ -303,6 +303,8 @@ Implemented:
 - Retryable database-overload responses, pool-aware readiness, request
   correlation logs, a deployment smoke command, and a verified PostgreSQL
   backup-restore procedure.
+- Durable PostgreSQL-backed design-agent jobs with leased worker execution,
+  stale-job recovery, bounded retries, and non-blocking dashboard polling.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -316,8 +318,7 @@ Remaining product work:
 - Run deployment-level capacity tests after choosing the production host and
   reverse proxy; the local benchmark covers regressions, not public traffic.
 - Add remaining public-SaaS hardening: object storage, shared rate limits,
-  automated encrypted off-host backups, external incident monitoring, and a
-  background execution queue for long hosted-model workflows.
+  automated encrypted off-host backups and external incident monitoring.
 
 ## Production Notes
 

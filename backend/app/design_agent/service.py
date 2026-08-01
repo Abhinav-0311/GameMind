@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.design_agent.contracts import ResumeDecision
+from app.design_agent.jobs import DesignAgentJobService
 from app.design_agent.provider_factory import build_design_agent_provider
 from app.design_agent.schemas import (
     DesignAgentArtifactResponse,
@@ -109,20 +110,27 @@ class DesignAgentService:
                 detail="Every selected source must be indexed before the design-agent run starts.",
             )
 
+        provider = self.workflow.provider if self._workflow is not None else build_design_agent_provider()
         run = DesignAgentRun(
             game_project_id=game_project_id,
             created_by_user_id=current_user.id if current_user else None,
             objective=payload.objective.strip(),
             document_ids=[str(document_id) for document_id in document_ids],
-            provider_name=self.workflow.provider.name,
+            provider_name=provider.name,
             model_config={
-                "phase": "phase_5",
-                **self.workflow.provider.configuration(),
+                "phase": "phase_8",
+                **provider.configuration(),
                 "degraded": False,
             },
             max_revisions=payload.max_revisions,
         )
         db.add(run)
+        if settings.DESIGN_AGENT_EXECUTION_MODE == "queued":
+            db.flush()
+            DesignAgentJobService.enqueue_start(db, run)
+            db.commit()
+            db.refresh(run)
+            return self._response(db, run)
         db.commit()
         db.refresh(run)
 
@@ -167,15 +175,30 @@ class DesignAgentService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"This run cannot be reviewed while its status is '{run.status}'.",
             )
+        resume_decision = ResumeDecision(
+            decision=decision,
+            reason=reason.strip() if reason else None,
+            reviewer_user_id=str(current_user.id) if current_user else None,
+            reviewer_label=current_user.email if current_user else "local_developer",
+        )
+        if settings.DESIGN_AGENT_EXECUTION_MODE == "queued":
+            artifact = db.query(DesignAgentArtifact).filter(
+                DesignAgentArtifact.run_id == run.id,
+                DesignAgentArtifact.game_project_id == game_project_id,
+            ).order_by(DesignAgentArtifact.version.desc()).first()
+            if artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The review artifact is unavailable.",
+                )
+            DesignAgentJobService.enqueue_resume(db, run, resume_decision, artifact.id)
+            db.commit()
+            db.refresh(run)
+            return self._response(db, run)
         try:
             self.workflow.resume(
                 run.id,
-                ResumeDecision(
-                    decision=decision,
-                    reason=reason.strip() if reason else None,
-                    reviewer_user_id=str(current_user.id) if current_user else None,
-                    reviewer_label=current_user.email if current_user else "local_developer",
-                ),
+                resume_decision,
             )
         except Exception as error:
             raise HTTPException(

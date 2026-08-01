@@ -18,6 +18,37 @@ def test_query_endpoint_local_demo():
         assert "message" in data
         assert "No matching lore fragments" in data["message"]
 
+
+def test_query_retries_known_small_hnsw_failure(monkeypatch):
+    """A fragmented local index should degrade its result count, not fail the API."""
+    rag = RAGService()
+    requested_limits = []
+
+    class SmallIndexCollection:
+        def count(self):
+            return 2
+
+        def query(self, *, n_results, **_kwargs):
+            requested_limits.append(n_results)
+            if n_results == 2:
+                raise RuntimeError("Cannot return the results in a contigious 2D array")
+            return {
+                "ids": [["chunk-a"]],
+                "distances": [[0.1]],
+                "documents": [["King Arven defended Frostpeak."]],
+                "metadatas": [[{
+                    "document_id": "doc-a",
+                    "title": "Frostpeak GDD",
+                    "chunk_index": 0,
+                }]],
+            }
+
+    monkeypatch.setattr(rag, "collection", SmallIndexCollection())
+    results = rag.query_lore("King Arven", limit=2)
+
+    assert requested_limits == [2, 1]
+    assert results[0]["content"] == "King Arven defended Frostpeak."
+
 def test_document_upload_local_demo(db_session):
     """Verify document upload writes to the local vector collection."""
     rag = RAGService()

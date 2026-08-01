@@ -3,6 +3,7 @@ import time
 from typing import Dict, Any, List, Set
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 from app.models.graph import WorldEntity, WorldRelationship
 from app.repositories.graph_repository import graph_repo
 from app.services.world_state_propagation import WorldStatePropagationService
@@ -17,23 +18,42 @@ class FactionDynamicsEngine:
         return "faction-standing:" + ":".join(sorted((faction_a, faction_b)))
 
     @classmethod
-    def _acquire_standing_lock(cls, db: Session, faction_a: str, faction_b: str) -> bool:
+    def _acquire_standing_lock(
+        cls,
+        db: Session,
+        faction_a: str,
+        faction_b: str,
+    ) -> Connection | None:
         """Serialize one standing change across its multi-commit legacy workflow."""
         if db.bind is None or db.bind.dialect.name != "postgresql":
-            return False
-        db.execute(text("SELECT pg_advisory_lock(hashtext(:lock_key))"), {
-            "lock_key": cls._standing_lock_key(faction_a, faction_b),
-        })
-        return True
+            return None
+
+        lock_connection = db.get_bind().connect()
+        try:
+            lock_connection.execute(text("SELECT pg_advisory_lock(hashtext(:lock_key))"), {
+                "lock_key": cls._standing_lock_key(faction_a, faction_b),
+            })
+            return lock_connection
+        except Exception:
+            lock_connection.close()
+            raise
 
     @classmethod
-    def _release_standing_lock(cls, db: Session, faction_a: str, faction_b: str) -> None:
-        if db.bind is None or db.bind.dialect.name != "postgresql":
+    def _release_standing_lock(
+        cls,
+        lock_connection: Connection | None,
+        faction_a: str,
+        faction_b: str,
+    ) -> None:
+        if lock_connection is None:
             return
-        db.execute(text("SELECT pg_advisory_unlock(hashtext(:lock_key))"), {
-            "lock_key": cls._standing_lock_key(faction_a, faction_b),
-        })
-        db.commit()
+        try:
+            lock_connection.execute(text("SELECT pg_advisory_unlock(hashtext(:lock_key))"), {
+                "lock_key": cls._standing_lock_key(faction_a, faction_b),
+            })
+            lock_connection.commit()
+        finally:
+            lock_connection.close()
 
     @staticmethod
     def shift_standing(db: Session, faction_a: str, faction_b: str, delta: float) -> Dict[str, Any]:
@@ -42,7 +62,7 @@ class FactionDynamicsEngine:
         Locks entities in alphabetical order to prevent concurrent deadlocks.
         """
         start_time = time.time()
-        lock_acquired = FactionDynamicsEngine._acquire_standing_lock(db, faction_a, faction_b)
+        lock_connection = FactionDynamicsEngine._acquire_standing_lock(db, faction_a, faction_b)
         try:
             # Alphabetical row ordering remains useful for related graph updates.
             graph_repo._lock_entities_ordered([faction_a, faction_b], db)
@@ -97,8 +117,7 @@ class FactionDynamicsEngine:
             db.rollback()
             raise
         finally:
-            if lock_acquired:
-                FactionDynamicsEngine._release_standing_lock(db, faction_a, faction_b)
+            FactionDynamicsEngine._release_standing_lock(lock_connection, faction_a, faction_b)
 
     @staticmethod
     def propagate_reputation(db: Session, source_faction: str, entity_slug: str, delta: float) -> int:

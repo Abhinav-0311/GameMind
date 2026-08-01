@@ -91,6 +91,38 @@ wait is five seconds. Requests also return `X-Request-ID` and
 `X-Response-Time-Ms`; use the request ID to correlate a user-visible failure
 with the `gamemind.requests` log without logging query strings or request bodies.
 
+## Design-agent worker
+
+Production uses `DESIGN_AGENT_EXECUTION_MODE=queued`. Starting a run or
+submitting a review writes a project-scoped job in the same transaction as the
+run-state change, then returns without waiting for NVIDIA or LangGraph. The
+`design-agent-worker` Compose service leases jobs from PostgreSQL using locked,
+skip-locked claims.
+
+```env
+DESIGN_AGENT_EXECUTION_MODE=queued
+DESIGN_AGENT_JOB_POLL_SECONDS=1
+DESIGN_AGENT_JOB_LEASE_SECONDS=300
+DESIGN_AGENT_JOB_MAX_ATTEMPTS=3
+```
+
+The worker refreshes its lease during execution. If it stops heartbeating, a
+replacement worker can reclaim the job after the lease expires. Retries use a
+bounded backoff and preserve the existing LangGraph thread and evidence
+snapshot; ordinary rejection never performs retrieval again.
+
+Local development remains `inline` by default so the dashboard works when only
+the development backend is running. To exercise queued mode locally, set
+`DESIGN_AGENT_EXECUTION_MODE=queued`, restart the backend, and run this in a
+second terminal:
+
+```bash
+docker compose exec backend python -m app.workers.design_agent_worker
+```
+
+Do not run production in inline mode. Startup validation rejects it because a
+hosted model call would once again occupy the initiating HTTP request.
+
 ## Production smoke check
 
 Run the zero-credential smoke checker after every deployment:

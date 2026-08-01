@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -71,6 +72,9 @@ checkpoint_writes = Table(
 
 class DesignAgentRun(Base, ProjectScopedMixin):
     __tablename__ = "design_agent_runs"
+    __table_args__ = (
+        UniqueConstraint("game_project_id", "id", name="uq_design_agent_run_project_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_by_user_id = Column(
@@ -88,6 +92,40 @@ class DesignAgentRun(Base, ProjectScopedMixin):
     retrieval_revision = Column(Integer, nullable=False, default=0, server_default="0")
     revision_count = Column(Integer, nullable=False, default=0, server_default="0")
     max_revisions = Column(Integer, nullable=False, default=2, server_default="2")
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class DesignAgentJob(Base, ProjectScopedMixin):
+    __tablename__ = "design_agent_jobs"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_design_agent_job_idempotency_key"),
+        Index("ix_design_agent_jobs_claim", "status", "available_at", "created_at"),
+        ForeignKeyConstraint(
+            ["game_project_id", "run_id"],
+            ["design_agent_runs.game_project_id", "design_agent_runs.id"],
+            name="fk_design_agent_job_project_run",
+            ondelete="CASCADE",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    operation = Column(String(16), nullable=False)
+    payload = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    idempotency_key = Column(String(160), nullable=False)
+    status = Column(String(24), nullable=False, default="pending", server_default="pending", index=True)
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts = Column(Integer, nullable=False, default=3, server_default="3")
+    available_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    locked_at = Column(DateTime(timezone=True), nullable=True)
+    locked_by = Column(String(120), nullable=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

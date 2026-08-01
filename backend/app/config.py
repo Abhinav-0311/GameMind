@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     LOCAL_MODEL_NAME: str = "local-rule-engine"
     DESIGN_AGENT_PROVIDER: str | None = None
     DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
+    DESIGN_AGENT_EXECUTION_MODE: str = "inline"
+    DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0
+    DESIGN_AGENT_JOB_LEASE_SECONDS: int = 300
+    DESIGN_AGENT_JOB_MAX_ATTEMPTS: int = 3
     NVIDIA_NANO_API_KEY: str | None = None
     NVIDIA_SUPER_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
@@ -107,6 +111,14 @@ def validate_production_settings() -> None:
         problems.append("DATABASE_POOL_TIMEOUT_SECONDS must be positive")
     if settings.DATABASE_POOL_RECYCLE_SECONDS < 0:
         problems.append("DATABASE_POOL_RECYCLE_SECONDS cannot be negative")
+    if settings.DESIGN_AGENT_EXECUTION_MODE != "queued":
+        problems.append("DESIGN_AGENT_EXECUTION_MODE must be queued in production")
+    if settings.DESIGN_AGENT_JOB_POLL_SECONDS <= 0:
+        problems.append("DESIGN_AGENT_JOB_POLL_SECONDS must be positive")
+    if settings.DESIGN_AGENT_JOB_LEASE_SECONDS < 30:
+        problems.append("DESIGN_AGENT_JOB_LEASE_SECONDS must be at least 30")
+    if settings.DESIGN_AGENT_JOB_MAX_ATTEMPTS < 1:
+        problems.append("DESIGN_AGENT_JOB_MAX_ATTEMPTS must be at least 1")
     if settings.require_email_verification and (
         settings.EMAIL_DELIVERY_MODE != "smtp"
         or not settings.SMTP_HOST
