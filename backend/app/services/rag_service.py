@@ -367,6 +367,104 @@ class RAGService:
 
         return formatted_results
 
+    def query_lore_sections(
+        self,
+        section_queries: dict[str, str],
+        limit_per_section: int = 3,
+        game_project_id: str = "default_project",
+        document_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Run one batched Chroma request and retain section-level provenance."""
+        if not self.collection:
+            raise ValueError("ChromaDB vector collection is unavailable.")
+        if not section_queries:
+            return []
+
+        collection_count = self.collection.count()
+        if isinstance(collection_count, (int, float)) and collection_count == 0:
+            return []
+        n_results = limit_per_section
+        if isinstance(collection_count, (int, float)):
+            n_results = min(limit_per_section, int(collection_count))
+
+        where: dict = {"game_project_id": game_project_id}
+        if document_ids:
+            where = {
+                "$and": [
+                    {"game_project_id": game_project_id},
+                    {"document_id": {"$in": [str(document_id) for document_id in document_ids]}},
+                ]
+            }
+
+        section_names = list(section_queries)
+        query_texts = [section_queries[section] for section in section_names]
+        try:
+            results = self.collection.query(
+                query_texts=query_texts,
+                n_results=n_results,
+                where=where,
+                **self._vector_arguments(query_texts, "query_embeddings"),
+            )
+        except Exception as error:
+            logger.error(f"Failed to query section evidence from ChromaDB: {error}")
+            raise
+
+        aggregated: dict[str, dict] = {}
+        result_ids = results.get("ids") or []
+        result_distances = results.get("distances") or []
+        result_documents = results.get("documents") or []
+        result_metadatas = results.get("metadatas") or []
+        for query_index, section_name in enumerate(section_names):
+            ids = result_ids[query_index] if query_index < len(result_ids) else []
+            distances = (
+                result_distances[query_index]
+                if query_index < len(result_distances)
+                else []
+            )
+            documents = (
+                result_documents[query_index]
+                if query_index < len(result_documents)
+                else []
+            )
+            metadatas = (
+                result_metadatas[query_index]
+                if query_index < len(result_metadatas)
+                else []
+            )
+            for item_index, chunk_id in enumerate(ids):
+                distance = distances[item_index]
+                similarity = max(0.0, min(1.0, 1.0 - distance))
+                metadata = metadatas[item_index] or {}
+                item = aggregated.setdefault(
+                    str(chunk_id),
+                    {
+                        "chunk_id": str(chunk_id),
+                        "content": documents[item_index],
+                        "document_id": metadata.get("document_id"),
+                        "title": metadata.get("title"),
+                        "chunk_index": metadata.get("chunk_index"),
+                        "game_project_id": metadata.get("game_project_id", game_project_id),
+                        "similarity": round(similarity, 4),
+                        "confidence": "Low",
+                        "matched_sections": [],
+                        "section_similarities": {},
+                    },
+                )
+                item["similarity"] = max(item["similarity"], round(similarity, 4))
+                item["section_similarities"][section_name] = round(similarity, 4)
+                if section_name not in item["matched_sections"]:
+                    item["matched_sections"].append(section_name)
+
+        for item in aggregated.values():
+            similarity = item["similarity"]
+            item["confidence"] = (
+                "High" if similarity >= 0.75 else "Medium" if similarity >= 0.55 else "Low"
+            )
+        return sorted(
+            aggregated.values(),
+            key=lambda item: (-item["similarity"], item.get("chunk_index") or 0),
+        )
+
     def backfill_local_collection(self, db: Session):
         """
         Read existing DocumentChunk rows from relational DB and add them

@@ -116,7 +116,7 @@ class DesignAgentService:
             document_ids=[str(document_id) for document_id in document_ids],
             provider_name=self.workflow.provider.name,
             model_config={
-                "phase": "phase_2",
+                "phase": "phase_5",
                 **self.workflow.provider.configuration(),
                 "degraded": False,
             },

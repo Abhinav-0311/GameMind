@@ -294,6 +294,9 @@ Implemented:
 - A governed Design Agent console with cited artifacts, independent critique,
   run-level review, trace inspection, immutable exports, and an immutable
   five-metric CyberRakshak quality scorecard.
+- Section-aware batched retrieval, shared deterministic GDD extraction,
+  citation grounding, and structured revision safeguards validated against all
+  ten CyberRakshak levels.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -302,8 +305,8 @@ Remaining product work:
 - Add guided first-run onboarding and a deliberate empty-workspace experience.
 - Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
 - Package engine-neutral API examples and integration starter kits more clearly.
-- Improve retrieval precision and revision quality using the recorded
-  CyberRakshak scorecard as the baseline.
+- Validate semantic quality against additional real GDDs using the same
+  immutable scorecard contract.
 - Stabilize the opt-in multithreaded load-test harness before treating it as a
   release performance gate.
 - Add production deployment hardening: authentication, object storage, rate limits, backups, and CI/CD.

@@ -133,6 +133,44 @@ class BlueprintService:
         objective = self._clean_title(objective)
         return objective[:80] if objective else f"Quest Hook {fallback_index + 1}"
 
+    def extract_sections_from_chunks(
+        self,
+        document_title: str,
+        chunks: List[DocumentChunk],
+        game_project_id: str,
+    ) -> Dict[str, Any]:
+        """Extract the shared deterministic blueprint contract from source chunks."""
+        summary = self._parse_summary(document_title, chunks)
+        narrative = self._parse_narrative(chunks)
+        art = self._parse_art_style(chunks)
+        npcs = self._parse_npc_archetypes(chunks)
+        memory = self._parse_npc_memory(chunks)
+        levels = self._parse_level_design(chunks)
+        gameplay_systems = self._parse_gameplay_systems(chunks)
+        quests = self._parse_quest_hooks(chunks)
+        unity_preview = self._generate_unity_preview(
+            game_project_id,
+            summary,
+            narrative,
+            art,
+            npcs,
+            memory,
+            levels,
+            gameplay_systems,
+            quests,
+        )
+        return {
+            "summary": summary,
+            "narrative_direction": narrative,
+            "art_style_direction": art,
+            "npc_archetypes": npcs,
+            "npc_memory_design": memory,
+            "level_design_suggestions": levels,
+            "gameplay_systems": gameplay_systems,
+            "quest_hooks": quests,
+            "unity_runtime_preview": unity_preview,
+        }
+
     def generate_blueprint_from_gdd(
         self,
         db: Session,
@@ -182,16 +220,10 @@ class BlueprintService:
             DocumentChunk.document_id.in_(supporting_ids)
         ).order_by(DocumentChunk.document_id, DocumentChunk.chunk_index).all()
 
-        summary = self._parse_summary(document.title, chunks)
-        narrative = self._parse_narrative(chunks)
-        art = self._parse_art_style(chunks)
-        npcs = self._parse_npc_archetypes(chunks)
-        memory = self._parse_npc_memory(chunks)
-        levels = self._parse_level_design(chunks)
-        gameplay_systems = self._parse_gameplay_systems(chunks)
-        quests = self._parse_quest_hooks(chunks)
-        unity_preview = self._generate_unity_preview(
-            game_project_id, summary, narrative, art, npcs, memory, levels, gameplay_systems, quests
+        sections = self.extract_sections_from_chunks(
+            document.title,
+            chunks,
+            game_project_id,
         )
 
         blueprint = GameBlueprint(
@@ -199,15 +231,15 @@ class BlueprintService:
             document_id=document_id,
             source_document_ids=[str(document_id), *[str(source.id) for source in supporting_documents]],
             game_project_id=game_project_id,
-            summary=summary,
-            narrative_direction=narrative,
-            art_style_direction=art,
-            npc_archetypes=npcs,
-            npc_memory_design=memory,
-            level_design_suggestions=levels,
-            gameplay_systems=gameplay_systems,
-            quest_hooks=quests,
-            unity_runtime_preview=unity_preview,
+            summary=sections["summary"],
+            narrative_direction=sections["narrative_direction"],
+            art_style_direction=sections["art_style_direction"],
+            npc_archetypes=sections["npc_archetypes"],
+            npc_memory_design=sections["npc_memory_design"],
+            level_design_suggestions=sections["level_design_suggestions"],
+            gameplay_systems=sections["gameplay_systems"],
+            quest_hooks=sections["quest_hooks"],
+            unity_runtime_preview=sections["unity_runtime_preview"],
             status="draft",
         )
         db.add(blueprint)

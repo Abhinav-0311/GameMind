@@ -18,6 +18,10 @@ from app.design_agent.contracts import (
     ResearchPlan,
     ResumeDecision,
 )
+from app.design_agent.grounding import (
+    ground_blueprint_citations,
+    validate_structured_revision,
+)
 from app.design_agent.provider import (
     DesignAgentProvider,
     MockDesignAgentProvider,
@@ -292,9 +296,9 @@ class DesignAgentWorkflow:
                     }
 
                 plan = ResearchPlan.model_validate(state["plan"])
-                evidence = self.rag_service.query_lore(
-                    plan.retrieval_query,
-                    limit=12,
+                evidence = self.rag_service.query_lore_sections(
+                    plan.section_queries,
+                    limit_per_section=3,
                     game_project_id=run.game_project_id,
                     document_ids=state["document_ids"],
                 )
@@ -316,6 +320,13 @@ class DesignAgentWorkflow:
                     details={
                         "evidence_snapshot_id": str(snapshot.id),
                         "evidence_count": len(evidence),
+                        "section_evidence_counts": {
+                            section_name: sum(
+                                section_name in (item.get("matched_sections") or [])
+                                for item in evidence
+                            )
+                            for section_name in plan.required_sections
+                        },
                         "reused": False,
                     },
                 )
@@ -343,7 +354,10 @@ class DesignAgentWorkflow:
                     "current_artifact": existing.content,
                 }
 
-            content = BlueprintContent.model_validate(result.content).model_dump()
+            content = ground_blueprint_citations(
+                result.content,
+                state["evidence_items"],
+            )
             artifact = DesignAgentArtifact(
                 run_id=run.id,
                 game_project_id=run.game_project_id,
@@ -505,7 +519,15 @@ class DesignAgentWorkflow:
                     "revision_count": run.revision_count,
                 }
 
-            content = BlueprintContent.model_validate(result.content).model_dump()
+            content = ground_blueprint_citations(
+                result.content,
+                state["evidence_items"],
+            )
+            validate_structured_revision(
+                state["current_artifact"],
+                content,
+                state["rejection_reason"],
+            )
             artifact = DesignAgentArtifact(
                 run_id=run.id,
                 game_project_id=run.game_project_id,

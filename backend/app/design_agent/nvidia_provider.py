@@ -11,6 +11,7 @@ from app.design_agent.contracts import (
     CritiqueOutput,
     ResearchPlan,
     RetrievalPlanOutput,
+    build_section_queries,
 )
 from app.design_agent.llm_provider import (
     CompletionRequest,
@@ -120,6 +121,10 @@ class NvidiaDesignAgentProvider:
             objective=objective,
             retrieval_query=result.content["retrieval_query"],
             required_sections=list(BLUEPRINT_SECTION_KEYS),
+            section_queries=build_section_queries(
+                objective,
+                result.content["retrieval_query"],
+            ),
         )
         return ProviderResult(
             content=plan.model_dump(),
@@ -142,8 +147,11 @@ class NvidiaDesignAgentProvider:
             expected_model=BlueprintContent,
             instruction=(
                 "Generate all blueprint sections. Every citation must reference a "
-                "chunk_id present in the supplied evidence. Put unsupported design "
-                "decisions in warnings instead of presenting them as source facts."
+                "chunk_id present in the supplied evidence and list the current section "
+                "in that evidence item's matched_sections. Populate structured arrays "
+                "such as levels, NPCs, systems, and quests when the evidence defines "
+                "them. Put unsupported design decisions in warnings instead of "
+                "presenting them as source facts."
             ),
             payload={"plan": plan, "evidence": evidence},
         )
@@ -174,7 +182,9 @@ class NvidiaDesignAgentProvider:
             expected_model=BlueprintContent,
             instruction=(
                 "Revise the blueprint to address the human rejection reason. Reuse "
-                "only the supplied evidence and preserve unrelated valid sections."
+                "only the supplied evidence and preserve every unrelated section "
+                "exactly. Materially update the targeted section's structured fields; "
+                "a revision note without corrected design data is not a valid revision."
             ),
             payload={
                 "artifact": artifact,

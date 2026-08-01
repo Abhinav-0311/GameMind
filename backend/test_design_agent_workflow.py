@@ -63,6 +63,42 @@ class CountingRAG:
             if not allowed or str(chunk.document_id) in allowed
         ][:limit]
 
+    def query_lore_sections(
+        self,
+        section_queries: dict[str, str],
+        limit_per_section: int = 3,
+        game_project_id: str = "default_project",
+        document_ids: list[str] | None = None,
+    ) -> list[dict]:
+        self.calls += 1
+        self.requests.append(
+            {
+                "section_queries": section_queries,
+                "limit_per_section": limit_per_section,
+                "game_project_id": game_project_id,
+                "document_ids": document_ids,
+            }
+        )
+        allowed = set(document_ids or [])
+        return [
+            {
+                "chunk_id": str(chunk.id),
+                "content": chunk.content,
+                "document_id": str(chunk.document_id),
+                "title": chunk.document.title,
+                "chunk_index": chunk.chunk_index,
+                "game_project_id": game_project_id,
+                "similarity": 0.91,
+                "confidence": "High",
+                "matched_sections": list(section_queries),
+                "section_similarities": {
+                    section_name: 0.91 for section_name in section_queries
+                },
+            }
+            for chunk in self.chunks
+            if not allowed or str(chunk.document_id) in allowed
+        ]
+
 
 def create_source(db_session, game_project_id: str) -> tuple[Document, list[DocumentChunk]]:
     document = Document(
@@ -192,7 +228,7 @@ def test_rejection_reuses_evidence_and_restart_resume_completes(db_session):
             headers={"X-Game-Project-ID": project_id},
             json={
                 "decision": "reject",
-                "reason": "The level design is inaccurate; preserve the evidence and correct the level section.",
+                "reason": "Add Level 10: Incident Response.",
             },
         )
         assert rejection.status_code == 200, rejection.text
@@ -200,9 +236,14 @@ def test_rejection_reuses_evidence_and_restart_resume_completes(db_session):
         assert revised["status"] == "awaiting_review"
         assert revised["revision_count"] == 1
         assert revised["current_artifact"]["artifact_type"] == "revision"
+        assert revised["current_artifact"]["content"]["level_design_suggestions"][
+            "content"
+        ]["review_adjustments"] == [
+            "Add Level 10: Incident Response."
+        ]
         assert (
-            revised["current_artifact"]["content"]["level_design_suggestions"]["content"]["human_revision"]
-            == "The level design is inaccurate; preserve the evidence and correct the level section."
+            revised["current_artifact"]["content"]["level_design_suggestions"]
+            != run["current_artifact"]["content"]["level_design_suggestions"]
         )
         assert rag.calls == 1
         assert db_session.query(DesignAgentEvidenceSnapshot).filter(

@@ -8,7 +8,10 @@ from app.design_agent.contracts import (
     BlueprintContent,
     CritiqueOutput,
     ResearchPlan,
+    build_section_queries,
 )
+from app.design_agent.grounding import review_target
+from app.services.blueprint_service import BlueprintService
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,13 @@ class ProviderResult:
     usage: ProviderUsage = field(default_factory=ProviderUsage)
     provider_name: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _EvidenceChunk:
+    id: str
+    content: str
+    chunk_index: int
 
 
 class DesignAgentProvider(Protocol):
@@ -77,9 +87,13 @@ class MockDesignAgentProvider:
         return ProviderUsage(input_tokens=input_size, output_tokens=max(1, input_size // 3))
 
     def plan(self, objective: str, document_ids: list[str]) -> ProviderResult:
+        retrieval_query = (
+            f"{objective} game design narrative NPC levels gameplay quests runtime"
+        )
         plan = ResearchPlan(
             objective=objective,
-            retrieval_query=f"{objective} game design narrative NPC levels gameplay quests runtime",
+            retrieval_query=retrieval_query,
+            section_queries=build_section_queries(objective, retrieval_query),
         )
         return ProviderResult(
             content=plan.model_dump(),
@@ -88,90 +102,55 @@ class MockDesignAgentProvider:
             provider_name=self.name,
         )
 
-    @staticmethod
-    def _section(
-        content: dict[str, Any],
-        citations: list[str],
-        warning: str | None = None,
-    ) -> dict[str, Any]:
-        return {
-            "content": content,
-            "citations": citations,
-            "confidence": "Medium" if citations else "Low",
-            "warnings": [warning] if warning else [],
-        }
-
     def generate(
         self,
         plan: dict[str, Any],
         evidence: list[dict[str, Any]],
     ) -> ProviderResult:
-        citations = [str(item["chunk_id"]) for item in evidence[:5] if item.get("chunk_id")]
-        excerpts = [str(item.get("content", "")).strip() for item in evidence if item.get("content")]
-        primary = excerpts[0][:900] if excerpts else None
-        secondary = excerpts[1][:700] if len(excerpts) > 1 else primary
-        missing = "No cited evidence was retrieved for this section."
-
-        blueprint = BlueprintContent.model_validate(
-            {
-                "summary": self._section(
-                    {"title": "GameMind design-agent blueprint", "description": primary},
-                    citations[:2],
-                    None if primary else missing,
-                ),
-                "narrative_direction": self._section(
-                    {"lore_background": secondary, "themes": []},
-                    citations[:3],
-                    None if secondary else missing,
-                ),
-                "art_style_direction": self._section(
-                    {"source_direction": primary, "palette": []},
-                    citations[:2],
-                    None if primary else missing,
-                ),
-                "npc_archetypes": self._section(
-                    {"archetypes": [], "source_notes": secondary},
-                    citations[:3],
-                    "NPC roles require human confirmation.",
-                ),
-                "npc_memory_design": self._section(
-                    {"memory_nodes": [], "continuity_source": secondary},
-                    citations[:3],
-                    "Memory rules require human confirmation.",
-                ),
-                "level_design_suggestions": self._section(
-                    {"levels": [], "source_direction": primary},
-                    citations[:3],
-                    "Level coverage must be checked against the complete source.",
-                ),
-                "gameplay_systems": self._section(
-                    {"systems": [], "source_direction": secondary},
-                    citations[:3],
-                    "Gameplay rules require human confirmation.",
-                ),
-                "quest_hooks": self._section(
-                    {"quests": [], "source_direction": primary},
-                    citations[:3],
-                    "Quest hooks require human confirmation.",
-                ),
-                "unity_runtime_preview": self._section(
-                    {
-                        "npcs": [],
-                        "levels": [],
-                        "quests": [],
-                        "version": "1.0.0",
-                        "generation_mode": "mock",
-                    },
-                    citations,
-                ),
-            }
-        )
+        blueprint = self._extract_blueprint(evidence)
         return ProviderResult(
             content=blueprint.model_dump(),
             model_name=self.model_name,
             usage=self._usage(plan, evidence),
             provider_name=self.name,
         )
+
+    @staticmethod
+    def _extract_blueprint(evidence: list[dict[str, Any]]) -> BlueprintContent:
+        chunks = [
+            _EvidenceChunk(
+                id=str(item["chunk_id"]),
+                content=str(item.get("content") or ""),
+                chunk_index=int(item.get("chunk_index") or 0),
+            )
+            for item in evidence
+            if item.get("chunk_id") and item.get("content")
+        ]
+        document_title = next(
+            (str(item["title"]) for item in evidence if item.get("title")),
+            "GameMind design-agent blueprint",
+        )
+        game_project_id = next(
+            (
+                str(item["game_project_id"])
+                for item in evidence
+                if item.get("game_project_id")
+            ),
+            "local_project",
+        )
+        sections = BlueprintService().extract_sections_from_chunks(
+            document_title,
+            chunks,
+            game_project_id,
+        )
+        runtime_citations = [
+            str(item["chunk_id"])
+            for item in evidence
+            if "unity_runtime_preview" in (item.get("matched_sections") or [])
+        ][:5]
+        sections["unity_runtime_preview"]["citations"] = runtime_citations
+        sections["unity_runtime_preview"]["content"]["generation_mode"] = "mock"
+        return BlueprintContent.model_validate(sections)
 
     def critique(
         self,
@@ -222,31 +201,44 @@ class MockDesignAgentProvider:
         rejection_reason: str,
     ) -> ProviderResult:
         revised = copy.deepcopy(artifact)
-        reason_lower = rejection_reason.lower()
-        target = "summary"
-        keyword_targets = (
-            ("level", "level_design_suggestions"),
-            ("npc", "npc_archetypes"),
-            ("memory", "npc_memory_design"),
-            ("quest", "quest_hooks"),
-            ("gameplay", "gameplay_systems"),
-            ("art", "art_style_direction"),
-            ("narrative", "narrative_direction"),
-            ("runtime", "unity_runtime_preview"),
+        target = review_target(rejection_reason)
+        extracted = self._extract_blueprint(evidence).model_dump()
+        revised[target] = extracted[target]
+        if target == "level_design_suggestions":
+            level_match = re.search(
+                r"\bLevel\s+(\d+)\s*:\s*([^.;]+)",
+                rejection_reason,
+                re.IGNORECASE,
+            )
+            evidence_text = "\n".join(
+                str(item.get("content") or "") for item in evidence
+            )
+            if level_match and level_match.group(2).strip().lower() in evidence_text.lower():
+                number = int(level_match.group(1))
+                title = level_match.group(2).strip()
+                levels = revised[target]["content"].setdefault("levels", [])
+                replacement = {
+                    "number": number,
+                    "title": title,
+                    "focus": f"Human-directed correction: {rejection_reason}",
+                }
+                existing_index = next(
+                    (
+                        index
+                        for index, level in enumerate(levels)
+                        if int(level.get("number", -1)) == number
+                    ),
+                    None,
+                )
+                if existing_index is None:
+                    levels.append(replacement)
+                    levels.sort(key=lambda level: int(level.get("number", 0)))
+                else:
+                    levels[existing_index] = replacement
+        revised[target]["content"]["review_adjustments"] = [rejection_reason]
+        revised[target]["warnings"] = list(
+            dict.fromkeys(revised[target].get("warnings", []))
         )
-        for keyword, section_name in keyword_targets:
-            if re.search(rf"\b{keyword}\w*\b", reason_lower):
-                target = section_name
-                break
-
-        section = revised[target]
-        section["content"]["human_revision"] = rejection_reason
-        section["warnings"] = [
-            warning
-            for warning in section.get("warnings", [])
-            if "human confirmation" not in warning.lower()
-            and "coverage must be checked" not in warning.lower()
-        ]
         BlueprintContent.model_validate(revised)
         return ProviderResult(
             content=revised,
