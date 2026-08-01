@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from app.api.v1.documents import router as documents_router
 from app.api.v1.query import router as query_router
 from app.api.v1.npcs import router as npcs_router
@@ -20,7 +21,8 @@ from app.api.v1.decisions import router as decisions_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.design_agent import router as design_agent_router
 from app.config import settings, validate_production_settings
-from app.middleware import SecurityHeadersMiddleware
+from app.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from app.operational import database_capacity_response, get_database_pool_status
 import logging
 
 # Setup standard logging
@@ -83,6 +85,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(SQLAlchemyTimeoutError)
+async def database_capacity_exception_handler(
+    request: Request,
+    _exc: SQLAlchemyTimeoutError,
+):
+    request_id = getattr(request.state, "request_id", None)
+    logger.warning("Database pool capacity exceeded for request %s", request_id)
+    return database_capacity_response(request_id)
 
 # Register endpoints under /api/v1
 app.include_router(documents_router, prefix="/api/v1")
@@ -110,15 +123,23 @@ app.include_router(design_agent_router, prefix="/api/v1")
 def health_check():
     """Verify backend, database connection, ChromaDB connection, and local AI mode."""
     db_status = "unhealthy"
-    try:
-        from sqlalchemy import text
-        from app.database import SessionLocal
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        db_status = "healthy"
-    except Exception as e:
-        logger.error(f"Database health verification failed: {e}")
+    pool_status = get_database_pool_status()
+    if pool_status["saturated"]:
+        db_status = "saturated"
+    else:
+        db = None
+        try:
+            from sqlalchemy import text
+            from app.database import SessionLocal
+
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            db_status = "healthy"
+        except Exception as e:
+            logger.error(f"Database health verification failed: {e}")
+        finally:
+            if db is not None:
+                db.close()
 
     chroma_status = "unhealthy"
     try:
@@ -134,6 +155,7 @@ def health_check():
     return {
         "status": "healthy" if db_status == "healthy" and chroma_status == "healthy" else "degraded",
         "database": db_status,
+        "database_pool": pool_status,
         "chromadb": chroma_status,
         "ai_mode": "local_demo",
         "llm_provider": settings.LLM_PROVIDER,

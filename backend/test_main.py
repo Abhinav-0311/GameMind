@@ -35,6 +35,109 @@ def test_security_headers_are_present():
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
+def test_request_context_headers_echo_valid_id_and_replace_invalid_id():
+    valid = client.get("/health", headers={"X-Request-ID": "release-smoke-123"})
+    assert valid.headers["x-request-id"] == "release-smoke-123"
+    assert float(valid.headers["x-response-time-ms"]) >= 0
+
+    invalid = client.get("/health", headers={"X-Request-ID": "bad request id"})
+    assert invalid.headers["x-request-id"] != "bad request id"
+    assert len(invalid.headers["x-request-id"]) == 32
+
+
+def test_health_exposes_database_pool_budget():
+    response = client.get("/health")
+    pool = response.json()["database_pool"]
+
+    assert pool["capacity"] == pool["pool_size"] + pool["max_overflow"]
+    assert pool["available"] >= 0
+    assert isinstance(pool["saturated"], bool)
+
+
+def test_health_degrades_immediately_when_database_pool_is_saturated(monkeypatch):
+    import main
+
+    monkeypatch.setattr(
+        main,
+        "get_database_pool_status",
+        lambda: {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "capacity": 15,
+            "checked_out": 15,
+            "available": 0,
+            "saturated": True,
+        },
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["database"] == "saturated"
+
+
+def test_dialogue_pool_timeout_returns_retryable_503(monkeypatch):
+    from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
+
+    from app.services.dialogue_service import DialogueService
+
+    def raise_pool_timeout(*_args, **_kwargs):
+        raise SQLAlchemyTimeoutError("pool capacity reached")
+
+    monkeypatch.setattr(DialogueService, "assemble_prompt", raise_pool_timeout)
+    response = client.post(
+        "/api/v1/dialogue/chat",
+        headers={"X-Request-ID": "overload-test"},
+        json={
+            "npc_slug": "eldrin",
+            "player_message": "Hello there",
+            "player_id": "capacity-test-player",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["x-request-id"] == "overload-test"
+    assert response.json()["detail"]["code"] == "database_capacity_exceeded"
+
+
+@pytest.mark.integration
+def test_real_database_pool_saturation_fails_with_bounded_503(db_session):
+    import time
+
+    from app.config import settings
+    test_engine = db_session.get_bind()
+    capacity = settings.DATABASE_POOL_SIZE + settings.DATABASE_MAX_OVERFLOW
+
+    connections = []
+    try:
+        for _ in range(capacity):
+            connections.append(test_engine.connect())
+
+        started = time.perf_counter()
+        response = client.post(
+            "/api/v1/dialogue/chat",
+            headers={"X-Request-ID": "real-overload-test"},
+            json={
+                "npc_slug": "eldrin",
+                "player_message": "Hello there",
+                "player_id": "real-capacity-test-player",
+            },
+        )
+        duration = time.perf_counter() - started
+
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "2"
+        assert response.json()["detail"]["code"] == "database_capacity_exceeded"
+        assert duration < settings.DATABASE_POOL_TIMEOUT_SECONDS + 2
+    finally:
+        for connection in connections:
+            connection.close()
+
+    assert test_engine.pool.checkedout() == 0
+
+
 def test_production_settings_reject_unsafe_jwt_secret():
     from app.config import settings, validate_production_settings
 

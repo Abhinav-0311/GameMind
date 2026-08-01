@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://user:password@localhost:5432/dbname"
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 10
-    DATABASE_POOL_TIMEOUT_SECONDS: float = 30.0
+    DATABASE_POOL_TIMEOUT_SECONDS: float = 5.0
     DATABASE_POOL_RECYCLE_SECONDS: int = 1800
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8000

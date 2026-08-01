@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.git
+.pytest_cache
+__pycache__
+**/__pycache__
+*.py[cod]
+*.log
+.coverage
+htmlcov
+chroma_db_local
+test-results

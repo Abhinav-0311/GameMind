@@ -23,7 +23,13 @@ This runbook outlines standard operating procedures, disaster recovery protocols
      ```sql
      SELECT count(*), state FROM pg_stat_activity GROUP BY state;
      ```
-  2. Increase `pool_size` and `max_overflow` in `backend/app/database.py` or adjust PostgreSQL `max_connections` settings.
+  2. Find the request using its `X-Request-ID` in the `gamemind.requests` log.
+  3. Confirm whether traffic, a slow query, or a leaked transaction exhausted
+     the pool. GameMind returns a retryable `503 database_capacity_exceeded`
+     response after the configured pool timeout.
+  4. Adjust `DATABASE_POOL_SIZE` or `DATABASE_MAX_OVERFLOW` only after checking
+     PostgreSQL's total connection budget. Do not edit `database.py` during an
+     incident and do not increase capacity merely to silence a benchmark.
 
 ---
 
@@ -73,4 +79,5 @@ This runbook outlines standard operating procedures, disaster recovery protocols
      ```
 3. **Rollback**: If a bad deployment causes regressions, run rollback commands:
    * Revert git commit: `git revert HEAD`
-   * Revert database migration: `alembic downgrade -1`
+   * Prefer deploying the earlier application image. Downgrade a database
+     migration only when that exact revision has a reviewed, tested downgrade.

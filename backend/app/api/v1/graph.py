@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from datetime import datetime
 from typing import List, Optional
 from app.database import get_db
 from app.services.graph_traversal import graph_traversal_service
 from app.dependencies import get_game_project_id
+from app.operational import database_capacity_response
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -106,6 +108,8 @@ def get_subgraph(
             game_project_id=game_project_id
         )
         return subgraph
+    except SQLAlchemyTimeoutError:
+        return database_capacity_response()
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -188,6 +192,8 @@ def traverse(
             game_project_id=game_project_id
         )
         return path_results
+    except SQLAlchemyTimeoutError:
+        return database_capacity_response()
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -211,9 +217,10 @@ def get_graph_analytics(
         duration = time.time() - start_time
         telemetry_service.record_metric("graph_analytics_duration_seconds", duration)
         return metrics
+    except SQLAlchemyTimeoutError:
+        return database_capacity_response()
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": str(e)}
         )
-

@@ -64,7 +64,7 @@ overflow connections:
 ```env
 DATABASE_POOL_SIZE=5
 DATABASE_MAX_OVERFLOW=10
-DATABASE_POOL_TIMEOUT_SECONDS=30
+DATABASE_POOL_TIMEOUT_SECONDS=5
 DATABASE_POOL_RECYCLE_SECONDS=1800
 ```
 
@@ -84,6 +84,26 @@ docker exec gamemind_backend pytest -q -m load test_load_phase10.py -s --disable
 This benchmark detects deadlocks, request failures, severe latency regressions,
 and retained-memory growth in the single-process Compose topology. It is not a
 substitute for a deployment-level test through the production reverse proxy.
+
+When the pool is exhausted, API routes return HTTP 503 with
+`code=database_capacity_exceeded` and `Retry-After: 2`. The default connection
+wait is five seconds. Requests also return `X-Request-ID` and
+`X-Response-Time-Ms`; use the request ID to correlate a user-visible failure
+with the `gamemind.requests` log without logging query strings or request bodies.
+
+## Production smoke check
+
+Run the zero-credential smoke checker after every deployment:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T backend \
+  python -m app.scripts.production_smoke --base-url http://127.0.0.1:8000
+```
+
+The command requires both `/health` and `/ready` to report healthy PostgreSQL
+and Chroma dependencies. It retries during startup and exits non-zero if the API
+never becomes ready. GitHub Actions runs the same checker against a freshly
+migrated test stack.
 
 ## Release procedure
 
@@ -110,6 +130,23 @@ cat gamemind-backup.sql | docker compose --env-file .env.production -f docker-co
 ```
 
 Chroma's Docker volume contains the retrieval index. Preserve it with the PostgreSQL backup cycle; PostgreSQL document chunks remain the authoritative source and can rebuild the local vector collection.
+
+Instructions are not proof of recoverability. Exercise an actual restore into a
+dedicated temporary database:
+
+```powershell
+.\ops\verify-backup-restore.ps1 `
+  -ComposeFile docker-compose.production.yml `
+  -EnvFile .env.production `
+  -DatabaseUser gamemind `
+  -SourceDatabase gamemind
+```
+
+The verifier refuses to continue if `gamemind_restore_verify` already exists.
+It dumps the source, restores into only that temporary database, compares the
+public table count and Alembic revision, and removes the temporary database and
+container dump afterward. Schedule this periodically on a non-peak replica or
+staging copy; it is not a replacement for encrypted off-host backup retention.
 
 ## Current boundary
 

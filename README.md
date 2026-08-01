@@ -300,6 +300,9 @@ Implemented:
 - A bounded concurrency regression harness with isolated API clients, explicit
   worker deadlines, stage-level latency diagnostics, and configurable
   PostgreSQL connection-pool limits.
+- Retryable database-overload responses, pool-aware readiness, request
+  correlation logs, a deployment smoke command, and a verified PostgreSQL
+  backup-restore procedure.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -313,7 +316,8 @@ Remaining product work:
 - Run deployment-level capacity tests after choosing the production host and
   reverse proxy; the local benchmark covers regressions, not public traffic.
 - Add remaining public-SaaS hardening: object storage, shared rate limits,
-  automated off-host backups, and incident monitoring.
+  automated encrypted off-host backups, external incident monitoring, and a
+  background execution queue for long hosted-model workflows.
 
 ## Production Notes
 

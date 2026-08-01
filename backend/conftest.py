@@ -46,7 +46,14 @@ assert "gamemind_test" in settings.DATABASE_URL, (
 )
 
 # Create the test engine
-test_engine = create_engine(settings.DATABASE_URL)
+test_engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+    pool_recycle=settings.DATABASE_POOL_RECYCLE_SECONDS,
+)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 @pytest.fixture(scope="session", autouse=True)

@@ -388,6 +388,16 @@ class MemoryService:
             "archived_memories_count": archived_count
         }
 
+    async def run_summarization_background(self, db: Session, conversation_id: uuid.UUID):
+        """Contain failures at the fire-and-forget background-task boundary."""
+        try:
+            await self.run_summarization_and_promotion(db, conversation_id)
+        except Exception:
+            logger.exception(
+                "Background summarization failed for conversation %s",
+                conversation_id,
+            )
+
     async def run_summarization_and_promotion(self, db: Session, conversation_id: uuid.UUID):
         """
         Perform async conversation summarization and memory extraction in background thread.
@@ -493,7 +503,7 @@ class MemoryService:
                 )
             except Exception:
                 pass
-            raise e
+            raise
             
         try:
             # Clean and parse JSON response

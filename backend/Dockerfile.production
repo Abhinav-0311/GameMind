@@ -5,7 +5,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN useradd --create-home --uid 10001 gamemind
+COPY --chown=gamemind:gamemind . .
+USER gamemind
 
 EXPOSE 8000
 

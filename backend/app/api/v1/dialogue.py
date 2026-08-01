@@ -2,6 +2,7 @@ import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from app.database import get_db
 from app.schemas import (
     DialogueAssembleRequest, 
@@ -13,6 +14,7 @@ from app.services.dialogue_service import DialogueService
 from app.services.llm.factory import get_llm_provider, get_provider_name
 from app.config import settings
 from app.dependencies import get_game_project_id, get_player_id
+from app.operational import database_capacity_response
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,8 @@ def assemble_dialogue(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
+    except SQLAlchemyTimeoutError:
+        return database_capacity_response()
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -228,7 +232,7 @@ async def chat_dialogue(
                 mem_service = MemoryService(rag)
                 
                 background_tasks.add_task(
-                    mem_service.run_summarization_and_promotion,
+                    mem_service.run_summarization_background,
                     db,
                     conv.id
                 )
@@ -296,6 +300,9 @@ async def chat_dialogue(
     except HTTPException:
         db.rollback()
         raise
+    except SQLAlchemyTimeoutError:
+        db.rollback()
+        return database_capacity_response()
     except Exception as e:
         db.rollback()
         logger.error(f"Dialogue chat failed: {str(e)}", exc_info=True)
