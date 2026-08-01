@@ -1,4 +1,6 @@
 from fastapi.testclient import TestClient
+import pytest
+
 from main import app
 from app.services.rag_service import RAGService
 import uuid
@@ -55,6 +57,33 @@ def test_production_settings_reject_unsafe_jwt_secret():
         settings.AUTH_REQUIRED = original_auth_required
         settings.JWT_SECRET = original_jwt_secret
         settings.CORS_ORIGINS = original_cors_origins
+
+
+def test_production_settings_reject_invalid_database_pool():
+    from app.config import settings, validate_production_settings
+
+    originals = {
+        "ENVIRONMENT": settings.ENVIRONMENT,
+        "AUTH_REQUIRED": settings.AUTH_REQUIRED,
+        "JWT_SECRET": settings.JWT_SECRET,
+        "CORS_ORIGINS": settings.CORS_ORIGINS,
+        "REQUIRE_EMAIL_VERIFICATION": settings.REQUIRE_EMAIL_VERIFICATION,
+        "DATABASE_POOL_SIZE": settings.DATABASE_POOL_SIZE,
+    }
+    try:
+        settings.ENVIRONMENT = "production"
+        settings.AUTH_REQUIRED = True
+        settings.JWT_SECRET = "a-production-secret-that-is-long-enough"
+        settings.CORS_ORIGINS = "https://app.example.com"
+        settings.REQUIRE_EMAIL_VERIFICATION = False
+        settings.DATABASE_POOL_SIZE = 0
+
+        with pytest.raises(RuntimeError, match="DATABASE_POOL_SIZE"):
+            validate_production_settings()
+    finally:
+        for name, value in originals.items():
+            setattr(settings, name, value)
+
 
 def test_chunker_logic():
     """Verify that chunking divides text within bounds and handles overlap correctly."""

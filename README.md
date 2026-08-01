@@ -297,6 +297,9 @@ Implemented:
 - Section-aware batched retrieval, shared deterministic GDD extraction,
   citation grounding, and structured revision safeguards validated against all
   ten CyberRakshak levels.
+- A bounded concurrency regression harness with isolated API clients, explicit
+  worker deadlines, stage-level latency diagnostics, and configurable
+  PostgreSQL connection-pool limits.
 - Backend test suite, frontend lint, and production build verification gates.
 
 Remaining product work:
@@ -307,9 +310,10 @@ Remaining product work:
 - Package engine-neutral API examples and integration starter kits more clearly.
 - Validate semantic quality against additional real GDDs using the same
   immutable scorecard contract.
-- Stabilize the opt-in multithreaded load-test harness before treating it as a
-  release performance gate.
-- Add production deployment hardening: authentication, object storage, rate limits, backups, and CI/CD.
+- Run deployment-level capacity tests after choosing the production host and
+  reverse proxy; the local benchmark covers regressions, not public traffic.
+- Add remaining public-SaaS hardening: object storage, shared rate limits,
+  automated off-host backups, and incident monitoring.
 
 ## Production Notes
 

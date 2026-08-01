@@ -2,7 +2,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+engine_options = {"pool_pre_ping": True}
+if settings.DATABASE_URL.startswith(("postgresql://", "postgresql+")):
+    engine_options.update(
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+        pool_recycle=settings.DATABASE_POOL_RECYCLE_SECONDS,
+    )
+
+engine = create_engine(settings.DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -54,4 +63,3 @@ def _execute_and_commit(conn, statement):
         except Exception:
             pass
     return res
-

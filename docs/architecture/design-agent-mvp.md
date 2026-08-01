@@ -1,6 +1,6 @@
 # GameMind Design Agent MVP Contract
 
-Status: Flagship MVP Phases 1-4 and Phase 5 quality remediation implemented
+Status: Flagship MVP Phases 1-4, Phase 5 quality remediation, and Phase 6 local resilience baseline implemented
 Case study: CyberRakshak
 Last reviewed: 2026-07-29
 
@@ -157,6 +157,7 @@ scope review.
 | Five-metric CyberRakshak evaluation | Implemented and verified in Phase 4 |
 | Section-aware batched retrieval and citation grounding | Implemented and verified in Phase 5 |
 | Structured revision safeguards and shared local extraction | Implemented and verified in Phase 5 |
+| Bounded concurrency regression harness and explicit database pool limits | Implemented and verified in Phase 6 |
 
 The workflow API is available under `/api/v1/design-agent`. The dashboard
 console is available at `/design-agent`. Phase 4 deliberately keeps evaluation

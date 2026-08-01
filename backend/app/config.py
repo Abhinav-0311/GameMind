@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     DATABASE_URL: str = "postgresql://user:password@localhost:5432/dbname"
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT_SECONDS: float = 30.0
+    DATABASE_POOL_RECYCLE_SECONDS: int = 1800
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8000
     REDIS_HOST: str = "localhost"
@@ -95,6 +99,14 @@ def validate_production_settings() -> None:
         problems.append("CORS_ORIGINS must contain HTTPS origins only in production")
     if settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS < 1 or settings.AUTH_RATE_LIMIT_WINDOW_SECONDS < 1:
         problems.append("auth rate-limit settings must be positive")
+    if settings.DATABASE_POOL_SIZE < 1:
+        problems.append("DATABASE_POOL_SIZE must be at least 1")
+    if settings.DATABASE_MAX_OVERFLOW < 0:
+        problems.append("DATABASE_MAX_OVERFLOW cannot be negative")
+    if settings.DATABASE_POOL_TIMEOUT_SECONDS <= 0:
+        problems.append("DATABASE_POOL_TIMEOUT_SECONDS must be positive")
+    if settings.DATABASE_POOL_RECYCLE_SECONDS < 0:
+        problems.append("DATABASE_POOL_RECYCLE_SECONDS cannot be negative")
     if settings.require_email_verification and (
         settings.EMAIL_DELIVERY_MODE != "smtp"
         or not settings.SMTP_HOST

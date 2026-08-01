@@ -55,6 +55,36 @@ The backend applies a process-local sliding-window limit to registration and fai
 
 This is appropriate for the current single-backend Compose deployment. For multiple backend replicas, enforce the equivalent rule at the reverse proxy or use a shared Redis-backed limiter before scaling out.
 
+## Database connection capacity
+
+The backend uses an explicit, pre-pinged SQLAlchemy connection pool. The
+production defaults are five persistent connections and up to ten temporary
+overflow connections:
+
+```env
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
+DATABASE_POOL_TIMEOUT_SECONDS=30
+DATABASE_POOL_RECYCLE_SECONDS=1800
+```
+
+Keep the total possible application connections within PostgreSQL's connection
+budget. For one Uvicorn process, the upper bound is `pool size + max overflow`.
+If backend processes are added later, multiply that value by the process count
+and leave capacity for migrations, backups, and administration. Do not increase
+the pool merely to make a load test pass; measure database wait time and query
+latency first.
+
+Run the bounded local regression benchmark from the backend container:
+
+```bash
+docker exec gamemind_backend pytest -q -m load test_load_phase10.py -s --disable-warnings
+```
+
+This benchmark detects deadlocks, request failures, severe latency regressions,
+and retained-memory growth in the single-process Compose topology. It is not a
+substitute for a deployment-level test through the production reverse proxy.
+
 ## Release procedure
 
 1. Pull a reviewed Git commit.
