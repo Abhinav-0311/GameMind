@@ -78,8 +78,48 @@ class RAGService:
             self.chroma_client = chroma_client
             self.collection = collection
 
+    @staticmethod
+    def _empty_query_rows(query_texts: list[str]) -> dict:
+        empty_rows = [[] for _ in query_texts]
+        return {
+            "ids": empty_rows,
+            "distances": empty_rows,
+            "documents": empty_rows,
+            "metadatas": empty_rows,
+        }
+
+    def _query_collection_individually(
+        self,
+        query_texts: list[str],
+        n_results: int,
+        where: dict,
+    ) -> dict:
+        """Keep evidence available when Chroma fails only multi-query HNSW calls."""
+        aggregated = {key: [] for key in ("ids", "distances", "documents", "metadatas")}
+        for query_text in query_texts:
+            for candidate_limit in range(n_results, 0, -1):
+                try:
+                    result = self.collection.query(
+                        query_texts=[query_text],
+                        n_results=candidate_limit,
+                        where=where,
+                        **self._vector_arguments([query_text], "query_embeddings"),
+                    )
+                    for key in aggregated:
+                        rows = result.get(key) or [[]]
+                        aggregated[key].append(rows[0] if rows else [])
+                    break
+                except Exception as error:
+                    if "contigious 2d array" not in str(error).lower():
+                        raise
+                    if candidate_limit == 1:
+                        logger.warning("Chroma HNSW could not return evidence for one section query.")
+                        for key in aggregated:
+                            aggregated[key].append([])
+        return aggregated
+
     def _query_collection(self, query_texts: list[str], n_results: int, where: dict) -> dict:
-        """Query Chroma while tolerating its known small HNSW result-set failure."""
+        """Query Chroma with a narrow fallback for its known batch HNSW failure."""
         for candidate_limit in range(n_results, 0, -1):
             try:
                 return self.collection.query(
@@ -93,14 +133,17 @@ class RAGService:
                 if not is_small_index_error:
                     raise
                 if candidate_limit == 1:
+                    if len(query_texts) > 1:
+                        logger.warning(
+                            "Chroma HNSW batch query failed; retrying each section independently."
+                        )
+                        return self._query_collection_individually(
+                            query_texts,
+                            n_results,
+                            where,
+                        )
                     logger.warning("Chroma HNSW index could not return a single live match; returning no evidence.")
-                    empty_rows = [[] for _ in query_texts]
-                    return {
-                        "ids": empty_rows,
-                        "distances": empty_rows,
-                        "documents": empty_rows,
-                        "metadatas": empty_rows,
-                    }
+                    return self._empty_query_rows(query_texts)
 
                 logger.warning(
                     "Chroma HNSW index could not return %s matches; retrying with %s.",

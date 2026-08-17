@@ -7,6 +7,7 @@ from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, RetrievalPlanOutp
 from app.design_agent.llm_provider import (
     CompletionRequest,
     CompletionResult,
+    NODE_MODEL_CONFIG,
     NvidiaProvider,
 )
 from app.design_agent.nvidia_provider import (
@@ -64,6 +65,30 @@ def test_design_agent_adapter_uses_low_level_completion_boundary():
     assert "JSON Schema:" in low_level.requests[0].messages[1]["content"]
 
 
+def test_evidence_compaction_preserves_citation_provenance_and_bounds_prompt_size():
+    evidence = [
+        {
+            "chunk_id": f"chunk-{index}",
+            "content": "x" * 900,
+            "document_id": "doc-a",
+            "title": "CyberRakshak GDD",
+            "chunk_index": index,
+            "similarity": 0.9 - index / 100,
+            "matched_sections": ["summary", "quest_hooks"] if index == 0 else ["summary"],
+            "section_similarities": {"summary": 0.9},
+        }
+        for index in range(12)
+    ]
+
+    compacted = NvidiaDesignAgentProvider._compact_evidence(evidence)
+
+    assert len(compacted) == 10
+    assert compacted[0]["chunk_id"] == "chunk-0"
+    assert compacted[0]["matched_sections"] == ["summary", "quest_hooks"]
+    assert compacted[0]["content_truncated"] is True
+    assert all(len(item["content"]) == 600 for item in compacted)
+
+
 def test_missing_nvidia_key_falls_back_to_mock_with_visible_degradation():
     primary = NvidiaDesignAgentProvider(
         llm_provider=NvidiaProvider(
@@ -89,7 +114,7 @@ def test_missing_nvidia_key_falls_back_to_mock_with_visible_degradation():
     assert result.usage.latency_ms >= result.metadata["primary_latency_ms"]
 
 
-def test_provider_factory_uses_fixed_models_without_persisting_keys():
+def test_provider_factory_uses_active_models_without_persisting_keys():
     configured = Settings(
         _env_file=None,
         LLM_PROVIDER="nvidia",
@@ -107,11 +132,11 @@ def test_provider_factory_uses_fixed_models_without_persisting_keys():
     assert configuration["fallback_enabled"] is True
     assert (
         configuration["models"]["plan"]["model"]
-        == "nvidia/llama-3.1-nemotron-nano-8b-v1"
+        == NODE_MODEL_CONFIG["plan"].model
     )
     assert (
         configuration["models"]["generate_blueprint"]["model"]
-        == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+        == NODE_MODEL_CONFIG["generate_blueprint"].model
     )
     assert "nano-factory-secret" not in serialized
     assert "super-factory-secret" not in serialized

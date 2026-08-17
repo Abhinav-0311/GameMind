@@ -31,6 +31,8 @@ from app.services.blueprint_brief_service import BlueprintBriefService
 
 
 class DesignAgentService:
+    _ACTIVE_RUN_STATUSES = ("created", "queued", "running", "review_queued", "awaiting_review")
+
     def __init__(self, workflow: DesignAgentWorkflow | None = None):
         self._workflow = workflow
 
@@ -95,6 +97,7 @@ class DesignAgentService:
         current_user: User | None,
     ) -> DesignAgentRunResponse:
         document_ids = list(dict.fromkeys(payload.document_ids))
+        document_id_values = [str(document_id) for document_id in document_ids]
         documents = db.query(Document).filter(
             Document.id.in_(document_ids),
             Document.game_project_id == game_project_id,
@@ -110,12 +113,23 @@ class DesignAgentService:
                 detail="Every selected source must be indexed before the design-agent run starts.",
             )
 
+        existing_run = db.query(DesignAgentRun).filter(
+            DesignAgentRun.game_project_id == game_project_id,
+            DesignAgentRun.status.in_(self._ACTIVE_RUN_STATUSES),
+            DesignAgentRun.document_ids.contains(document_id_values),
+        ).first()
+        if existing_run:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A governed review is already active for this GDD ({existing_run.id}).",
+            )
+
         provider = self.workflow.provider if self._workflow is not None else build_design_agent_provider()
         run = DesignAgentRun(
             game_project_id=game_project_id,
             created_by_user_id=current_user.id if current_user else None,
             objective=payload.objective.strip(),
-            document_ids=[str(document_id) for document_id in document_ids],
+            document_ids=document_id_values,
             provider_name=provider.name,
             model_config={
                 "phase": "phase_8",

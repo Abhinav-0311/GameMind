@@ -49,6 +49,38 @@ def test_query_retries_known_small_hnsw_failure(monkeypatch):
     assert requested_limits == [2, 1]
     assert results[0]["content"] == "King Arven defended Frostpeak."
 
+
+def test_section_retrieval_falls_back_to_individual_queries_after_batch_hnsw_failure(monkeypatch):
+    rag = RAGService()
+    calls: list[list[str]] = []
+
+    class BatchFragileCollection:
+        def count(self):
+            return 4
+
+        def query(self, *, query_texts, **_kwargs):
+            calls.append(query_texts)
+            if len(query_texts) > 1:
+                raise RuntimeError("Cannot return the results in a contigious 2D array")
+            return {
+                "ids": [[f"chunk-{query_texts[0]}"]],
+                "distances": [[0.1]],
+                "documents": [[f"Evidence for {query_texts[0]}"]],
+                "metadatas": [[{"document_id": "doc-a", "title": "GDD", "chunk_index": 0}]],
+            }
+
+    monkeypatch.setattr(rag, "collection", BatchFragileCollection())
+    results = rag.query_lore_sections(
+        {"summary": "overview", "quest_hooks": "quests"},
+        limit_per_section=2,
+        game_project_id="project-a",
+        document_ids=["doc-a"],
+    )
+
+    assert len(results) == 2
+    assert results[0]["matched_sections"]
+    assert calls[-2:] == [["overview"], ["quests"]]
+
 def test_document_upload_local_demo(db_session):
     """Verify document upload writes to the local vector collection."""
     rag = RAGService()

@@ -2,8 +2,11 @@ import copy
 
 import pytest
 
+from app.design_agent.contracts import BlueprintContent
 from app.design_agent.grounding import (
+    assess_artifact_quality,
     ground_blueprint_citations,
+    validate_generated_blueprint,
     validate_structured_revision,
 )
 from app.design_agent.provider import MockDesignAgentProvider
@@ -105,6 +108,142 @@ def test_mock_generation_extracts_all_ten_cyberrakshak_levels():
         "11111111-1111-1111-1111-111111111111"
     ]
 
+
+def test_blueprint_contract_keeps_phase_two_design_details_traceable():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    content["npc_archetypes"]["content"]["npcs"][0].update({
+        "dialogue_hooks": ["Warn Adi before a risky route."],
+        "relationship_notes": ["PATCH supports Adi during missions."],
+        "implementation_notes": ["Use this only after review."],
+        "assumptions": ["Confirm the exact trigger condition."],
+    })
+    content["quest_hooks"]["content"]["quests"] = [{
+        "id": "q_0",
+        "title": "Secure the vault",
+        "objective": "Recover the access record.",
+        "source_chunk_ids": ["11111111-1111-1111-1111-111111111111"],
+        "reward": "Evidence",
+        "objectives": ["Reach the vault", "Recover the record"],
+        "failure_states": ["Detection raises the alert level."],
+        "dependencies": ["Authentication mechanic"],
+        "dialogue_hooks": ["PATCH warns about the access gate."],
+        "implementation_notes": ["Keep this as a reviewed draft."],
+        "assumptions": ["Confirm the reward economy."],
+    }]
+
+    validated = BlueprintContent.model_validate(content).model_dump()
+
+    assert validated["npc_archetypes"]["content"]["npcs"][0]["dialogue_hooks"]
+    assert validated["quest_hooks"]["content"]["quests"][0]["failure_states"]
+    assert validated["quest_hooks"]["content"]["quests"][0]["assumptions"]
+
+
+def test_generated_blueprint_rejects_evidence_echoes():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    content["summary"]["content"] = {
+        "title": "cyberrakshak_gdd.md",
+        "content": "A retrieved chunk copied into the generated artifact.",
+        "chunk_id": "11111111-1111-1111-1111-111111111111",
+        "document_id": "22222222-2222-2222-2222-222222222222",
+        "chunk_index": 0,
+    }
+
+    with pytest.raises(ValueError, match="retrieved evidence metadata"):
+        validate_generated_blueprint(content)
+
+
+def test_generated_blueprint_allows_structured_sparse_sections():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+
+    validated = validate_generated_blueprint(content)
+
+    assert validated["npc_archetypes"]["content"]["npcs"]
+    assert any(
+        "stable NPC profile" in step
+        for step in validated["npc_archetypes"]["content"]["npcs"][0]["implementation_notes"]
+    )
+
+
+def test_actionable_gate_rejects_empty_dialogue_and_quest_objectives():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+
+    with pytest.raises(ValueError, match="no cited dialogue hook"):
+        validate_generated_blueprint(
+            content, _cyber_evidence(), require_actionable=True
+        )
+
+
+def test_actionable_quest_gate_rejects_unsupported_numbers_and_dependencies():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    content["quest_hooks"]["content"]["quests"] = [{
+        "id": "training_sandbox_1",
+        "title": "Device Safety Training",
+        "objective": "Complete the Training Sandbox.",
+        "source_chunk_ids": ["11111111-1111-1111-1111-111111111111"],
+        "reward": None,
+        "objectives": ["Achieve a rating of 80% or higher."],
+        "failure_states": ["Score below 80%."],
+        "dependencies": ["Complete the consent acceptance quest."],
+        "dialogue_hooks": [],
+        "implementation_notes": [],
+        "assumptions": ["Confirm any score threshold with a designer."],
+    }]
+
+    with pytest.raises(ValueError, match="unsupported numeric detail"):
+        validate_generated_blueprint(
+            content,
+            _cyber_evidence(),
+            require_actionable=True,
+            actionable_sections={"quest_hooks"},
+        )
+
+    content["quest_hooks"]["content"]["quests"][0]["objectives"] = [
+        "Complete the Training Sandbox."
+    ]
+    content["quest_hooks"]["content"]["quests"][0]["failure_states"] = [
+        "Leave the Training Sandbox before completion."
+    ]
+    with pytest.raises(ValueError, match="unsupported dependency"):
+        validate_generated_blueprint(
+            content,
+            _cyber_evidence(),
+            require_actionable=True,
+            actionable_sections={"quest_hooks"},
+        )
+
+
+def test_quality_scorecard_makes_unresolved_assumptions_visible():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    content["npc_archetypes"]["content"]["npcs"][0]["dialogue_hooks"] = [
+        "Watch the route before you trust it."
+    ]
+    content["quest_hooks"]["content"]["quests"][0].update({
+        "objectives": ["Enter the Training Sandbox."],
+        "failure_states": ["Leave before completing the training."],
+        "dependencies": ["Training Sandbox."],
+    })
+    validated = validate_generated_blueprint(content, _cyber_evidence())
+    validated["quest_hooks"]["content"]["quests"][0]["assumptions"] = [
+        "Confirm the reward with a designer."
+    ]
+
+    scorecard = assess_artifact_quality(validated)
+
+    assert scorecard["overall_score"] > 0
+    assert scorecard["unresolved_assumptions"]
+    assert "Integration readiness" in scorecard["blockers"]
 
 def test_grounding_filters_cross_section_citations():
     evidence = _cyber_evidence()

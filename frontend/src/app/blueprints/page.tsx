@@ -1088,6 +1088,9 @@ function SectionBrief({
   const npcProfiles = Array.isArray(section.section.content.npcs)
     ? section.section.content.npcs.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
     : [];
+  const questProfiles = Array.isArray(section.section.content.quests)
+    ? section.section.content.quests.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    : [];
   const usesEditorialLayout = section.id === "summary" || section.id === "narrative" || section.id === "art";
   const originLabel = section.section.citations.length > 0
     ? "Extracted from source"
@@ -1137,6 +1140,8 @@ function SectionBrief({
         </section>
       ) : npcProfiles.length > 0 ? (
         <NpcProfiles profiles={npcProfiles} />
+      ) : questProfiles.length > 0 ? (
+        <QuestPlans quests={questProfiles} />
       ) : section.id === "levels" ? (
         <LevelPlan content={section.section.content} />
       ) : section.id === "systems" ? (
@@ -1358,9 +1363,62 @@ function NpcProfiles({ profiles }: { profiles: Record<string, unknown>[] }) {
             {dialogueStyle !== "Not detected" && (
               <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm leading-6 text-[var(--text-secondary)]">{dialogueStyle}</p>
             )}
+            <ArtifactList label="Dialogue hooks" items={asStringArray(profile.dialogue_hooks)} />
+            <ArtifactList label="Relationship notes" items={asStringArray(profile.relationship_notes)} />
+            <ArtifactList label="Integration steps" items={asStringArray(profile.implementation_notes)} />
+            <ArtifactList label="Assumptions to confirm" items={asStringArray(profile.assumptions)} muted />
           </article>
         );
       })}
+    </section>
+  );
+}
+
+function QuestPlans({ quests }: { quests: Record<string, unknown>[] }) {
+  return (
+    <section className="mt-8 space-y-4">
+      {quests.map((quest, index) => {
+        const title = readableValue(quest.title);
+        const objective = readableValue(quest.objective);
+        const reward = readableValue(quest.reward);
+        return (
+          <article key={`${title}-${index}`} className="border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="page-kicker">Quest {String(index + 1).padStart(2, "0")}</p>
+                <h4 className="mt-2 text-xl font-semibold text-[var(--foreground)]">{title}</h4>
+              </div>
+              {reward !== "Not detected" && <span className="w-fit rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">{reward}</span>}
+            </div>
+            {objective !== "Not detected" && <p className="mt-4 max-w-3xl border-t border-[var(--border)] pt-4 text-sm leading-6 text-[var(--text-secondary)]">{objective}</p>}
+            <div className="mt-5 grid gap-x-8 gap-y-1 lg:grid-cols-2">
+              <ArtifactList label="Objectives" items={asStringArray(quest.objectives)} />
+              <ArtifactList label="Dependencies" items={asStringArray(quest.dependencies)} />
+              <ArtifactList label="Failure states" items={asStringArray(quest.failure_states)} />
+              <ArtifactList label="Dialogue hooks" items={asStringArray(quest.dialogue_hooks)} />
+            </div>
+            <ArtifactList label="Integration steps" items={asStringArray(quest.implementation_notes)} />
+            <ArtifactList label="Assumptions to confirm" items={asStringArray(quest.assumptions)} muted />
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+function ArtifactList({ label, items, muted = false }: { label: string; items: string[]; muted?: boolean }) {
+  if (items.length === 0) return null;
+  return (
+    <section className="mt-5">
+      <p className="page-kicker">{label}</p>
+      <ul className={`mt-2 space-y-2 text-sm leading-6 ${muted ? "text-[var(--text-secondary)]" : "text-[var(--foreground)]"}`}>
+        {items.map((item) => (
+          <li key={item} className="grid grid-cols-[0.4rem_minmax(0,1fr)] gap-3">
+            <span className={`mt-2.5 h-1.5 w-1.5 rounded-full ${muted ? "bg-amber-500" : "bg-[var(--accent)]"}`} aria-hidden="true" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

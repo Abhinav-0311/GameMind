@@ -143,6 +143,10 @@ class MockDesignAgentProvider:
             chunks,
             game_project_id,
         )
+        for section_name, record_key in (("npc_archetypes", "npcs"), ("quest_hooks", "quests")):
+            source_ids = list(sections[section_name].get("citations", []))
+            for record in sections[section_name].get("content", {}).get(record_key, []):
+                record["source_chunk_ids"] = source_ids[:1]
         runtime_citations = [
             str(item["chunk_id"])
             for item in evidence

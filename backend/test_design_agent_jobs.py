@@ -112,6 +112,32 @@ def test_run_creation_transactionally_enqueues_in_queued_mode(db_session, monkey
     assert job.idempotency_key == f"start:{run_id}"
 
 
+def test_run_creation_rejects_duplicate_active_gdd_review(db_session, monkeypatch):
+    project_id = f"duplicate_run_{uuid.uuid4().hex[:8]}"
+    document, _chunks = create_source(db_session, project_id)
+    monkeypatch.setattr(settings, "DESIGN_AGENT_EXECUTION_MODE", "queued")
+    payload = {
+        "objective": "Generate a durable queued game design blueprint.",
+        "document_ids": [str(document.id)],
+        "max_revisions": 2,
+    }
+
+    first = client.post(
+        "/api/v1/design-agent/runs",
+        headers={"X-Game-Project-ID": project_id},
+        json=payload,
+    )
+    duplicate = client.post(
+        "/api/v1/design-agent/runs",
+        headers={"X-Game-Project-ID": project_id},
+        json=payload,
+    )
+
+    assert first.status_code == 201, first.text
+    assert duplicate.status_code == 409
+    assert "already active" in duplicate.json()["detail"]
+
+
 def test_stale_lease_is_reclaimed(db_session):
     run = _run(db_session, "lease_project")
     job = DesignAgentJobService.enqueue_start(db_session, run)

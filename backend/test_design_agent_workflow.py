@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.design_agent import get_design_agent_service
 from app.config import settings
-from app.design_agent.llm_provider import NvidiaProvider
+from app.design_agent.llm_provider import NODE_MODEL_CONFIG, NvidiaProvider
 from app.design_agent.nvidia_provider import (
     NvidiaDesignAgentProvider,
     ResilientDesignAgentProvider,
@@ -367,7 +367,7 @@ def test_unavailable_nvidia_fallback_is_visible_in_run_and_trace(db_session):
         ).one()
         assert (
             persisted_run.model_config["models"]["plan"]["model"]
-            == "nvidia/llama-3.1-nemotron-nano-8b-v1"
+                == NODE_MODEL_CONFIG["plan"].model
         )
         assert "api_key" not in persisted_run.model_config
 

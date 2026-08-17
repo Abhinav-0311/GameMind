@@ -198,6 +198,22 @@ export interface DesignAgentCritiqueFinding {
   recommendation: string;
 }
 
+export interface DesignAgentQualityMetric {
+  key: string;
+  label: string;
+  value: number;
+  passed: boolean;
+  detail: string;
+}
+
+export interface DesignAgentQualityScorecard {
+  metrics: DesignAgentQualityMetric[];
+  overall_score: number;
+  passed: boolean;
+  blockers: string[];
+  unresolved_assumptions: { record: string; assumption: string }[];
+}
+
 export interface DesignAgentCritique {
   id: string;
   artifact_id: string;
@@ -205,6 +221,7 @@ export interface DesignAgentCritique {
     verdict?: "ready_for_review" | "needs_revision" | string;
     findings?: DesignAgentCritiqueFinding[];
     summary?: string;
+    quality_scorecard?: DesignAgentQualityScorecard;
   };
   provider_name: string;
   model_name: string;

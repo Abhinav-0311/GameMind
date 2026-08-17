@@ -1,6 +1,6 @@
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 BLUEPRINT_SECTION_KEYS = (
@@ -101,15 +101,94 @@ class BlueprintSection(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class NPCDesignCandidate(BaseModel):
+    """A reviewable NPC brief, not an active runtime NPC record."""
+
+    name: str
+    archetype: str
+    dialogue_style: str
+    source_chunk_ids: list[str] = Field(min_length=1)
+    dialogue_hooks: list[str] = Field(default_factory=list)
+    relationship_notes: list[str] = Field(default_factory=list)
+    implementation_notes: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class QuestDesignCandidate(BaseModel):
+    """A reviewable quest brief that preserves the legacy materializer fields."""
+
+    id: str
+    title: str
+    objective: str
+    source_chunk_ids: list[str] = Field(min_length=1)
+    reward: str | None = None
+    objectives: list[str] = Field(default_factory=list)
+    failure_states: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    dialogue_hooks: list[str] = Field(default_factory=list)
+    implementation_notes: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class NPCDesignContent(BaseModel):
+    """The only valid container for developer-facing NPC artifacts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    npcs: list[NPCDesignCandidate]
+
+
+class QuestDesignContent(BaseModel):
+    """The only valid container for developer-facing quest artifacts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    quests: list[QuestDesignCandidate]
+
+
+class NPCBlueprintSection(BlueprintSection):
+    content: NPCDesignContent
+
+
+class QuestBlueprintSection(BlueprintSection):
+    content: QuestDesignContent
+
+
+class FocusedDeveloperPack(BaseModel):
+    """Small, evidence-scoped artifacts generated after the broad blueprint."""
+
+    npc_archetypes: NPCBlueprintSection
+    quest_hooks: QuestBlueprintSection
+
+
+class PatchDialogueLine(BaseModel):
+    text: str = Field(min_length=8)
+    source_chunk_ids: list[str] = Field(min_length=1)
+
+
+class PatchDialoguePack(BaseModel):
+    lines: list[PatchDialogueLine] = Field(min_length=1, max_length=3)
+
+
+class ActionableQuestCandidate(QuestDesignCandidate):
+    objectives: list[str] = Field(min_length=1, max_length=4)
+    failure_states: list[str] = Field(min_length=1, max_length=3)
+    dependencies: list[str] = Field(min_length=1, max_length=3)
+
+
+class FocusedQuestPack(BaseModel):
+    quests: list[ActionableQuestCandidate] = Field(min_length=1, max_length=1)
+
+
 class BlueprintContent(BaseModel):
     summary: BlueprintSection
     narrative_direction: BlueprintSection
     art_style_direction: BlueprintSection
-    npc_archetypes: BlueprintSection
+    npc_archetypes: NPCBlueprintSection
     npc_memory_design: BlueprintSection
     level_design_suggestions: BlueprintSection
     gameplay_systems: BlueprintSection
-    quest_hooks: BlueprintSection
+    quest_hooks: QuestBlueprintSection
     unity_runtime_preview: BlueprintSection
 
 

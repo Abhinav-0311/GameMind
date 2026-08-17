@@ -53,6 +53,27 @@ services:
       - CHROMA_PORT=8000
       - ANONYMIZED_TELEMETRY=False
 
+  design-agent-worker:
+    profiles: ["agent"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.workers.design_agent_worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/gamemind
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - ANONYMIZED_TELEMETRY=False
+
 volumes:
   postgres_data:
   chroma_data:

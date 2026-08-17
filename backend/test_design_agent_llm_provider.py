@@ -16,6 +16,8 @@ from app.design_agent.llm_provider import (
     NvidiaProvider,
     NvidiaProviderError,
     NvidiaTruncatedOutputError,
+    _artifact_model_config,
+    _plan_model_config,
 )
 
 
@@ -82,17 +84,33 @@ def _valid_plan(query: str = "all nine CyberRakshak levels") -> str:
     )
 
 
-def test_node_model_config_uses_separate_models_and_keys():
-    assert NODE_MODEL_CONFIG["plan"].model == "nvidia/llama-3.1-nemotron-nano-8b-v1"
-    assert NODE_MODEL_CONFIG["plan"].api_key_env == "NVIDIA_NANO_API_KEY"
-    assert NODE_MODEL_CONFIG["plan"].max_tokens == 300
+def test_node_model_config_uses_nano_by_default_and_allows_explicit_plan_override(monkeypatch):
+    monkeypatch.delenv("NVIDIA_PLAN_MODEL", raising=False)
+    monkeypatch.delenv("NVIDIA_PLAN_API_KEY_ENV", raising=False)
+    monkeypatch.delenv("NVIDIA_PLAN_MAX_TOKENS", raising=False)
+    default_plan = _plan_model_config()
+    assert default_plan.model == "nvidia/llama-3.1-nemotron-nano-8b-v1"
+    assert default_plan.api_key_env == "NVIDIA_NANO_API_KEY"
+    assert default_plan.max_tokens == 300
 
-    for node_name in ("generate_blueprint", "critique", "revise"):
-        assert (
-            NODE_MODEL_CONFIG[node_name].model
-            == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
-        )
-        assert NODE_MODEL_CONFIG[node_name].api_key_env == "NVIDIA_SUPER_API_KEY"
+    monkeypatch.setenv("NVIDIA_PLAN_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1.5")
+    monkeypatch.setenv("NVIDIA_PLAN_API_KEY_ENV", "NVIDIA_SUPER_API_KEY")
+    monkeypatch.setenv("NVIDIA_PLAN_MAX_TOKENS", "1024")
+    overridden_plan = _plan_model_config()
+    assert overridden_plan.model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    assert overridden_plan.api_key_env == "NVIDIA_SUPER_API_KEY"
+    assert overridden_plan.max_tokens == 1024
+
+    monkeypatch.delenv("NVIDIA_ARTIFACT_MODEL", raising=False)
+    monkeypatch.delenv("NVIDIA_ARTIFACT_API_KEY_ENV", raising=False)
+    default_artifact = _artifact_model_config(max_tokens=8000)
+    assert default_artifact.model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    assert default_artifact.api_key_env == "NVIDIA_SUPER_API_KEY"
+
+    monkeypatch.setenv("NVIDIA_ARTIFACT_MODEL", "meta/llama-3.1-8b-instruct")
+    overridden_artifact = _artifact_model_config(max_tokens=2048)
+    assert overridden_artifact.model == "meta/llama-3.1-8b-instruct"
+    assert overridden_artifact.api_key_env == "NVIDIA_SUPER_API_KEY"
 
 
 def test_research_plan_rejects_generic_or_incomplete_section_lists():
@@ -173,9 +191,43 @@ def test_nvidia_provider_uses_node_specific_model_and_key():
     result = provider.complete(_request("plan"))
 
     assert result.model_name == NODE_MODEL_CONFIG["plan"].model
-    assert captured[0]["authorization"] == "Bearer nano-secret"
+    expected_secret = (
+        "super-secret"
+        if NODE_MODEL_CONFIG["plan"].api_key_env == "NVIDIA_SUPER_API_KEY"
+        else "nano-secret"
+    )
+    assert captured[0]["authorization"] == f"Bearer {expected_secret}"
     assert captured[0]["payload"]["model"] == NODE_MODEL_CONFIG["plan"].model
     assert "response_format" not in captured[0]["payload"]
+
+
+def test_nvidia_provider_sends_native_json_schema_when_requested():
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return _completion(_valid_plan())
+
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        timeout_seconds=25,
+        repair_enabled=True,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        key_reader=lambda _name: "test-secret",
+        sleep=lambda _seconds: None,
+    )
+
+    result = provider.complete(
+        CompletionRequest(
+            node_name="plan",
+            messages=_request("plan").messages,
+            response_model=ResearchPlan,
+            guided_json=True,
+        )
+    )
+
+    assert result.content["objective"]
+    assert captured[0]["guided_json"] == ResearchPlan.model_json_schema()
 
 
 def test_nvidia_provider_discards_reasoning_and_parses_visible_content_only():

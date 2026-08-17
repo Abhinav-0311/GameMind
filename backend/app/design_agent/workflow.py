@@ -19,7 +19,9 @@ from app.design_agent.contracts import (
     ResumeDecision,
 )
 from app.design_agent.grounding import (
+    assess_artifact_quality,
     ground_blueprint_citations,
+    validate_generated_blueprint,
     validate_structured_revision,
 )
 from app.design_agent.provider import (
@@ -358,6 +360,11 @@ class DesignAgentWorkflow:
                 result.content,
                 state["evidence_items"],
             )
+            content = validate_generated_blueprint(
+                content,
+                state["evidence_items"],
+                require_actionable=self.provider.name == "nvidia",
+            )
             artifact = DesignAgentArtifact(
                 run_id=run.id,
                 game_project_id=run.game_project_id,
@@ -393,6 +400,18 @@ class DesignAgentWorkflow:
                 return {"critique_id": str(existing.id), "critique": existing.content}
 
             critique_content = CritiqueOutput.model_validate(result.content).model_dump()
+            critique_content["quality_scorecard"] = assess_artifact_quality(
+                state["current_artifact"]
+            )
+            if (
+                critique_content["verdict"] == "ready_for_review"
+                and any(finding["severity"] == "high" for finding in critique_content["findings"])
+            ):
+                critique_content["verdict"] = "needs_revision"
+                critique_content["summary"] = (
+                    f"{critique_content['summary'].rstrip()} "
+                    "High-severity findings require revision before human approval."
+                )
             critique = DesignAgentCritique(
                 run_id=run.id,
                 artifact_id=artifact_id,
@@ -522,6 +541,11 @@ class DesignAgentWorkflow:
             content = ground_blueprint_citations(
                 result.content,
                 state["evidence_items"],
+            )
+            content = validate_generated_blueprint(
+                content,
+                state["evidence_items"],
+                require_actionable=self.provider.name == "nvidia",
             )
             validate_structured_revision(
                 state["current_artifact"],

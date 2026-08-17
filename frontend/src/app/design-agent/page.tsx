@@ -6,6 +6,7 @@ import {
   api,
   type DesignAgentCritiqueFinding,
   type DesignAgentEvaluation,
+  type DesignAgentQualityScorecard,
   type DesignAgentRun,
   type DesignAgentTrace,
   type DocumentResponse,
@@ -130,6 +131,39 @@ function SeverityMark({ severity }: { severity: DesignAgentCritiqueFinding["seve
   return <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${color}`} aria-label={`${severity} severity`} />;
 }
 
+function PreApprovalScorecard({ scorecard }: { scorecard: DesignAgentQualityScorecard }) {
+  return (
+    <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Pre-approval quality scorecard">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="page-kicker">System checks</p>
+          <h3 className="mt-2 text-sm font-bold">Pre-approval quality</h3>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${scorecard.passed ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+          {Math.round(scorecard.overall_score * 100)}%
+        </span>
+      </div>
+      <div className="mt-4 space-y-3">
+        {scorecard.metrics.map((metric) => (
+          <div key={metric.key}>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-semibold text-[var(--foreground)]">{metric.label}</span>
+              <span className={metric.passed ? "text-emerald-700 dark:text-emerald-300" : "text-amber-800 dark:text-amber-200"}>{Math.round(metric.value * 100)}%</span>
+            </div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--border)]"><div className={`h-full rounded-full ${metric.passed ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.round(metric.value * 100)}%` }} /></div>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{metric.detail}</p>
+          </div>
+        ))}
+      </div>
+      {scorecard.unresolved_assumptions.length > 0 && (
+        <p className="mt-4 border-l-2 border-amber-500 pl-3 text-xs leading-5 text-[var(--text-secondary)]">
+          {scorecard.unresolved_assumptions.length} assumption{scorecard.unresolved_assumptions.length === 1 ? "" : "s"} still need human confirmation.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function LoadingView() {
   return (
     <div className="page-shell" aria-busy="true" aria-label="Loading design-agent workspace">
@@ -167,6 +201,7 @@ export default function DesignAgentPage() {
   const activeSectionMeta = sections.find((section) => section.key === activeSection) ?? sections[0];
   const activeSectionData = activeRun?.current_artifact?.content?.[activeSection];
   const critiqueFindings = activeRun?.critique?.content.findings ?? [];
+  const preApprovalScorecard = activeRun?.critique?.content.quality_scorecard;
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
@@ -611,6 +646,7 @@ export default function DesignAgentPage() {
             </section>
 
             <aside className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} />}
               <div className="border-b border-[var(--border)] p-5">
                 <p className="page-kicker">Independent critique</p>
                 <h2 className="mt-2 text-lg font-bold">

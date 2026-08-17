@@ -34,9 +34,11 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 import pytest
-from sqlalchemy import create_engine
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from app.database import Base, get_db
+from app.database import get_db
 from app.config import settings
 from main import app
 
@@ -58,13 +60,19 @@ TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_eng
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
-    """Session-scoped fixture to drop and recreate all tables once for the test run."""
-    # Ensure tables are created in the test database
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
+    """Rebuild the dedicated test schema from the production migrations."""
+    with test_engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+
+    alembic_config = Config(str(backend_dir / "alembic.ini"))
+    alembic_config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    command.upgrade(alembic_config, "head")
     yield
-    # Cleanup at the very end
-    Base.metadata.drop_all(bind=test_engine)
+
+    with test_engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
 
 @pytest.fixture(autouse=True)
 def db_session():

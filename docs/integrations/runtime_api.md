@@ -31,6 +31,18 @@ Game Client
 - Treat animation suggestions as hints, not commands.
 - Always support fallback UI when the backend is unavailable.
 
+## From reviewed GDD artifact to game client
+
+Use this sequence for every generated NPC or quest:
+
+1. Review the cited GDD evidence, dialogue hooks, objectives, failure states, dependencies, and visible assumptions in the dashboard.
+2. Treat **Integration steps** as implementation guidance, not executable commands. Map them to your own scene events, quest-state machine, dialogue UI, and animation allowlist.
+3. Confirm or remove every assumption. Do not turn a proposed reward, threshold, prerequisite, or narrative fact into runtime data without a designer's approval.
+4. Approve the reviewed blueprint, then materialize it. Only approved materialized records belong in a runtime bundle.
+5. Fetch the runtime bundle in the client and map its NPC and quest data to presentation. Keep backend failure handling local to the affected interaction or journal panel.
+
+The GDD review pipeline deliberately rejects generated quest numbers and named prerequisites that do not appear in cited evidence. This prevents an LLM proposal from silently becoming an implementation requirement.
+
 ## Required Headers
 
 Most runtime calls should include:
@@ -152,4 +164,3 @@ Unity/Assets/Scripts/Contracts/DialogueDTO.cs
 ```
 
 Use it as a reference implementation, not as a required scene architecture.
-

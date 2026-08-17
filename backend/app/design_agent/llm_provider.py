@@ -11,6 +11,10 @@ from pydantic import BaseModel, ValidationError
 from app.design_agent.provider import ProviderUsage
 
 
+NVIDIA_NANO_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
+NVIDIA_SUPER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+
+
 @dataclass(frozen=True)
 class NodeModelConfig:
     provider: str
@@ -21,38 +25,40 @@ class NodeModelConfig:
     max_tokens: int
 
 
+def _plan_model_config() -> NodeModelConfig:
+    """Allow an explicit operational override when the Nano route is unavailable."""
+    return NodeModelConfig(
+        provider="nvidia",
+        model=os.getenv("NVIDIA_PLAN_MODEL", NVIDIA_NANO_MODEL),
+        api_key_env=os.getenv("NVIDIA_PLAN_API_KEY_ENV", "NVIDIA_NANO_API_KEY"),
+        temperature=0.0,
+        max_retries=2,
+        max_tokens=int(os.getenv("NVIDIA_PLAN_MAX_TOKENS", "300")),
+    )
+
+
+def _artifact_model_config(*, max_tokens: int) -> NodeModelConfig:
+    """Keep artifact routing explicit when provider reliability changes."""
+    return NodeModelConfig(
+        provider="nvidia",
+        model=os.getenv("NVIDIA_ARTIFACT_MODEL", NVIDIA_SUPER_MODEL),
+        api_key_env=os.getenv("NVIDIA_ARTIFACT_API_KEY_ENV", "NVIDIA_SUPER_API_KEY"),
+        temperature=0.0,
+        max_retries=2,
+        max_tokens=max_tokens,
+    )
+
+
 NODE_MODEL_CONFIG: dict[str, NodeModelConfig] = {
-    "plan": NodeModelConfig(
-        provider="nvidia",
-        model="nvidia/llama-3.1-nemotron-nano-8b-v1",
-        api_key_env="NVIDIA_NANO_API_KEY",
-        temperature=0.0,
-        max_retries=2,
-        max_tokens=300,
+    "plan": _plan_model_config(),
+    "generate_blueprint": _artifact_model_config(
+        max_tokens=int(os.getenv("NVIDIA_GENERATE_MAX_TOKENS", "8000")),
     ),
-    "generate_blueprint": NodeModelConfig(
-        provider="nvidia",
-        model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        api_key_env="NVIDIA_SUPER_API_KEY",
-        temperature=0.0,
-        max_retries=2,
-        max_tokens=8000,
+    "critique": _artifact_model_config(
+        max_tokens=int(os.getenv("NVIDIA_CRITIQUE_MAX_TOKENS", "4000")),
     ),
-    "critique": NodeModelConfig(
-        provider="nvidia",
-        model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        api_key_env="NVIDIA_SUPER_API_KEY",
-        temperature=0.0,
-        max_retries=2,
-        max_tokens=4000,
-    ),
-    "revise": NodeModelConfig(
-        provider="nvidia",
-        model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        api_key_env="NVIDIA_SUPER_API_KEY",
-        temperature=0.0,
-        max_retries=2,
-        max_tokens=8000,
+    "revise": _artifact_model_config(
+        max_tokens=int(os.getenv("NVIDIA_REVISE_MAX_TOKENS", "8000")),
     ),
 }
 
@@ -62,6 +68,7 @@ class CompletionRequest:
     node_name: str
     messages: list[dict[str, str]]
     response_model: type[BaseModel]
+    guided_json: bool = False
 
 
 @dataclass(frozen=True)
@@ -245,23 +252,27 @@ class NvidiaProvider:
         api_key: str,
         messages: list[dict[str, str]],
         max_tokens: int,
+        guided_json_schema: dict[str, Any] | None,
     ) -> _RawCompletion:
         maximum_attempts = config.max_retries + 1
         for attempt in range(1, maximum_attempts + 1):
             try:
+                payload: dict[str, Any] = {
+                    "model": config.model,
+                    "messages": messages,
+                    "temperature": config.temperature,
+                    "max_tokens": max_tokens,
+                    "stream": False,
+                }
+                if guided_json_schema is not None:
+                    payload["guided_json"] = guided_json_schema
                 response = self._client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
-                    json={
-                        "model": config.model,
-                        "messages": messages,
-                        "temperature": config.temperature,
-                        "max_tokens": max_tokens,
-                        "stream": False,
-                    },
+                    json=payload,
                     timeout=self.timeout_seconds,
                 )
             except httpx.TransportError:
@@ -336,12 +347,14 @@ class NvidiaProvider:
         config: NodeModelConfig,
         api_key: str,
         messages: list[dict[str, str]],
+        guided_json_schema: dict[str, Any] | None,
     ) -> tuple[_RawCompletion, int]:
         first = self._send(
             config=config,
             api_key=api_key,
             messages=messages,
             max_tokens=config.max_tokens,
+            guided_json_schema=guided_json_schema,
         )
         if first.finish_reason != "length":
             return first, 0
@@ -351,6 +364,7 @@ class NvidiaProvider:
             api_key=api_key,
             messages=messages,
             max_tokens=config.max_tokens * 2,
+            guided_json_schema=guided_json_schema,
         )
         combined = _RawCompletion(
             content=second.content,
@@ -391,6 +405,9 @@ class NvidiaProvider:
             config=config,
             api_key=api_key,
             messages=request.messages,
+            guided_json_schema=(
+                request.response_model.model_json_schema() if request.guided_json else None
+            ),
         )
         input_tokens = completion.input_tokens
         output_tokens = completion.output_tokens
@@ -431,6 +448,9 @@ class NvidiaProvider:
                         ),
                     },
                 ],
+                guided_json_schema=(
+                    request.response_model.model_json_schema() if request.guided_json else None
+                ),
             )
             truncation_retries += repair_truncation_retries
             input_tokens += repair.input_tokens

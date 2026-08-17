@@ -34,6 +34,9 @@ function DecisionsContent() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [attachingId, setAttachingId] = useState<string | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [agentRunId, setAgentRunId] = useState<string | null>(null);
+  const [agentConsentOpen, setAgentConsentOpen] = useState(false);
+  const [startingAgentReview, setStartingAgentReview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -102,11 +105,50 @@ function DecisionsContent() {
       setDrafts(Object.fromEntries(updated.map((decision) => [decision.id, decision.decision || ""])));
       setEvidenceSelections(Object.fromEntries(updated.map((decision) => [decision.id, decision.evidence_document_id || ""])));
       setCoverage(assessed);
-      setNotice(updated.length === 0 ? "The source review found no unresolved decisions." : "Open decisions are ready to resolve.");
+
+      let agentNotice = "";
+      if (selectedDocument?.source_kind === "gdd") {
+        try {
+          const runs = await api.getDesignAgentRuns();
+          const existingRun = runs.find((run) => run.document_ids.includes(selectedDocumentId) && run.status !== "failed");
+          if (existingRun) {
+            setAgentRunId(existingRun.id);
+            agentNotice = " A governed review is already attached to this GDD.";
+          } else {
+            setAgentConsentOpen(true);
+            agentNotice = " Start the governed review when you want a cited draft and independent critique.";
+          }
+        } catch {
+          agentNotice = " The local review is ready; the governed review can be started from this checkpoint.";
+        }
+      }
+
+      setNotice((updated.length === 0 ? "The source review found no unresolved decisions." : "Open decisions are ready to resolve.") + agentNotice);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create decisions from this source review.");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const startAgentReview = async () => {
+    if (!selectedDocumentId) return;
+    setStartingAgentReview(true);
+    setError(null);
+    try {
+      const run = await api.createDesignAgentRun({
+        objective: "Review this GDD for missing or conflicting implementation decisions, then create a cited, reviewable design blueprint for the team to approve.",
+        document_ids: [selectedDocumentId],
+      });
+      setAgentRunId(run.id);
+      setAgentConsentOpen(false);
+      setNotice(run.degraded
+        ? "The NVIDIA review fell back to local mock output. Inspect the review trace before relying on it."
+        : "Open decisions are ready to resolve. A governed review is now preparing a cited draft and independent critique.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not start the governed review.");
+    } finally {
+      setStartingAgentReview(false);
     }
   };
 
@@ -180,9 +222,14 @@ function DecisionsContent() {
       </section>
 
       {(error || notice) && (
-        <p className={`mt-6 border-l-2 px-4 py-3 text-sm ${error ? "border-amber-500 text-[var(--foreground)]" : "border-emerald-500 text-[var(--foreground)]"}`} role={error ? "alert" : "status"}>
-          {error || notice}
-        </p>
+        <div className={`mt-6 flex flex-wrap items-center justify-between gap-3 border-l-2 px-4 py-3 text-sm ${error ? "border-amber-500 text-[var(--foreground)]" : "border-emerald-500 text-[var(--foreground)]"}`} role={error ? "alert" : "status"}>
+          <span>{error || notice}</span>
+          {!error && agentRunId && (
+            <Link href="/design-agent" className="shrink-0 font-semibold text-[var(--accent)] underline-offset-4 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+              View review trace
+            </Link>
+          )}
+        </div>
       )}
 
       <section className="mt-8 grid gap-8 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -191,11 +238,13 @@ function DecisionsContent() {
           <select
             id="decision-source"
             value={selectedDocumentId}
-            onChange={(event) => {
-              setSelectedDocumentId(event.target.value);
-              setNotice(null);
-              setError(null);
-            }}
+                onChange={(event) => {
+                  setSelectedDocumentId(event.target.value);
+                  setAgentRunId(null);
+                  setAgentConsentOpen(false);
+                  setNotice(null);
+                  setError(null);
+                }}
             disabled={loading || documents.length === 0}
             className="mt-3 min-h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
           >
@@ -205,7 +254,7 @@ function DecisionsContent() {
             {selectedDocument ? `${selectedDocument.chunks_count} indexed chunks` : "Choose a source to begin."}
           </p>
           <button type="button" onClick={syncFromReview} disabled={!selectedDocumentId || syncing} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50">
-            {syncing ? "Checking source" : "Find open decisions"}
+            {syncing ? "Reviewing source" : selectedDocument?.source_kind === "gdd" ? "Review GDD" : "Find open decisions"}
           </button>
           {hasOpenTechnicalDecision && (
             <button type="button" onClick={downloadTechnicalBriefTemplate} disabled={downloadingTemplate} className="btn-secondary mt-3 w-full disabled:cursor-not-allowed disabled:opacity-50">
@@ -316,6 +365,26 @@ function DecisionsContent() {
           )}
         </section>
       </section>
+
+      {agentConsentOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/25 p-4" role="presentation">
+          <section className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="agent-review-title">
+            <p className="page-kicker">Governed AI review</p>
+            <h2 id="agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">Add a cited AI review to this GDD?</h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              GameMind will use the configured AI provider to review selected source evidence, prepare a cited draft, and run an independent critique. Your local source review and decisions stay available either way.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" onClick={() => setAgentConsentOpen(false)} disabled={startingAgentReview} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                Continue with local review
+              </button>
+              <button type="button" onClick={startAgentReview} disabled={startingAgentReview} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+                {startingAgentReview ? "Starting review" : "Start governed review"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
