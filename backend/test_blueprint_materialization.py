@@ -36,7 +36,12 @@ def make_blueprint(db_session):
             npc_archetypes={
                 "content": {
                     "npcs": [
-                        {"name": "NPC Eldrin", "archetype": "Mentoring wizard", "dialogue_style": "Slow and formal."}
+                        {
+                            "name": "NPC Eldrin",
+                            "archetype": "Mentoring wizard",
+                            "dialogue_style": "Slow and formal.",
+                            "dialogue_hooks": ["The pass is cold, but the path is clear."],
+                        }
                     ]
                 },
                 "citations": [], "confidence": "High", "warnings": []
@@ -44,7 +49,12 @@ def make_blueprint(db_session):
             npc_memory_design={
                 "content": {
                     "memory_nodes": [
-                        {"subject": "Ember Siege historical memories", "importance": 9.0}
+                        {
+                            "subject": "Ember Siege historical memories",
+                            "npc_slug": "eldrin",
+                            "memory_type": "episodic",
+                            "importance": 9.0,
+                        }
                     ]
                 },
                 "citations": [], "confidence": "High", "warnings": []
@@ -52,14 +62,45 @@ def make_blueprint(db_session):
             level_design_suggestions={
                 "content": {
                     "level_layout": "Volcanic vents,East Gate unlocked",
-                    "interactive_elements": ["checkpoint-vent-alpha", "east-gate-locked"]
+                    "interactive_elements": [
+                        "checkpoint-vent-alpha",
+                        {"flag_key": "east-gate", "flag_value": "locked"},
+                    ]
                 },
                 "citations": [], "confidence": "High", "warnings": []
             },
             quest_hooks={
                 "content": {
                     "quests": [
-                        {"title": "Reclaim Ash Pass Objective", "objective": "Reclaim the Ash Pass outpost."}
+                        {
+                            "id": "reclaim_ash_pass",
+                            "title": "Reclaim Ash Pass Objective",
+                            "objective": "Reclaim the Ash Pass outpost.",
+                            "objectives": ["Reach Ash Pass.", "Secure the outpost."],
+                            "failure_states": ["Retreat from the pass."],
+                            "dependencies": ["Training route complete."],
+                            "dialogue_hooks": ["Eldrin marks a safe approach."],
+                            "runtime": {
+                                "npc_slug": "eldrin",
+                                "difficulty": "Medium",
+                                "gold_reward": 0,
+                                "xp_reward": 0,
+                                "objectives": [
+                                    {
+                                        "description": "Reach Ash Pass.",
+                                        "target_type": "reach",
+                                        "target_id": "ash-pass",
+                                        "quantity_required": 1,
+                                    },
+                                    {
+                                        "description": "Secure the outpost.",
+                                        "target_type": "interact",
+                                        "target_id": "ash-pass-outpost",
+                                        "quantity_required": 1,
+                                    },
+                                ],
+                            },
+                        }
                     ]
                 },
                 "citations": [], "confidence": "High", "warnings": []
@@ -383,7 +424,58 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     assert "Water the plants" not in quests
     manifest_quest = next(q for q in bundle["quests"] if q["title"] == "Reclaim Ash Pass Objective")
     assert manifest_quest["objectives"]
-    assert manifest_quest["objectives"][0]["description"] == "Reclaim the Ash Pass outpost."
+    assert manifest_quest["objectives"][0]["description"] == "Reach Ash Pass."
+    assert manifest_quest["objectives"][0]["target_type"] == "reach"
+    assert manifest_quest["objectives"][0]["target_id"] == "ash-pass"
+    approved_npc = bundle["approved_design"]["npcs"][0]
+    approved_quest = bundle["approved_design"]["quests"][0]
+    assert approved_npc["slug"] == "eldrin"
+    assert approved_npc["dialogue_hooks"] == ["The pass is cold, but the path is clear."]
+    assert approved_quest["design_id"] == "reclaim_ash_pass"
+    assert approved_quest["runtime_quest_id"] == manifest_quest["id"]
+    assert approved_quest["objectives"] == ["Reach Ash Pass.", "Secure the outpost."]
+    assert approved_quest["failure_states"] == ["Retreat from the pass."]
+    assert approved_quest["dependencies"] == ["Training route complete."]
+
+
+def test_materializer_never_guesses_missing_quest_runtime_semantics(db_session, make_blueprint):
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    blueprint = make_blueprint(project_id, "approved")
+    quest_hooks = dict(blueprint.quest_hooks)
+    content = dict(quest_hooks["content"])
+    quest = dict(content["quests"][0])
+    quest.pop("runtime")
+    content["quests"] = [quest]
+    quest_hooks["content"] = content
+    blueprint.quest_hooks = quest_hooks
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/blueprints/{blueprint.id}/materialize",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["quests"]["created"] == []
+    assert report["quests"]["skipped"] == ["Reclaim Ash Pass Objective"]
+    assert any("approved design only" in warning for warning in report["warnings"])
+    assert db_session.query(Quest).filter(
+        Quest.game_project_id == project_id
+    ).count() == 0
+
+
+def test_runtime_bundle_rejects_an_unapproved_blueprint(db_session, make_blueprint):
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    blueprint = make_blueprint(project_id, "draft")
+
+    response = client.get(
+        f"/api/v1/blueprints/{blueprint.id}/runtime-bundle",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 409
+    assert "Only an approved blueprint" in response.json()["detail"]
 
 def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_session, make_blueprint):
     """Unity demo bundles still load when a materialization skipped duplicate matching records."""

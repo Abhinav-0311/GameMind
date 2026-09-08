@@ -142,11 +142,11 @@ export default function WorkspaceOverview() {
 
   return (
     <main className="page-shell">
-      <section className="grid items-center gap-10 py-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:py-10">
+      <section className="grid items-start gap-8 py-5 lg:grid-cols-[minmax(0,1fr)_23rem] lg:py-10">
         <div className="max-w-3xl">
           <p className="page-kicker">Local-first AI game builder</p>
-          <h1 className="display-title mt-5 max-w-3xl text-[2.35rem] leading-[1.05] sm:text-[3.45rem]">
-            Design the game first. Integrate the runtime when it matters.
+          <h1 className="display-title mt-4 max-w-3xl text-[2.35rem] leading-[1.05] sm:text-[3.2rem]">
+            Keep every game decision connected to its evidence.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
             GameMind helps new game developers convert GDDs, lore, NPC notes, quest ideas, and level concepts into
@@ -163,7 +163,7 @@ export default function WorkspaceOverview() {
           </div>
         </div>
 
-        <aside className="panel overflow-hidden rounded-3xl" aria-label="Recommended next action">
+        <aside className="status-strip overflow-hidden rounded-2xl" aria-label="Recommended next action">
           <Image
             src="/brand/game-builder-workbench.svg"
             alt="GameMind workflow from source document to blueprint and runtime systems"
@@ -172,9 +172,9 @@ export default function WorkspaceOverview() {
             priority
             className="h-auto w-full border-b border-[var(--border)] bg-[var(--card-muted)]"
           />
-          <div className="p-6">
+          <div className="p-5">
             <p className="page-kicker">Next best step</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--foreground)]">{nextAction.label}</h2>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[var(--foreground)]">{nextAction.label}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{nextAction.description}</p>
           </div>
         </aside>
@@ -186,7 +186,7 @@ export default function WorkspaceOverview() {
         </section>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" aria-label="Workspace status">
+      <section className="grid gap-px overflow-hidden border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-5" aria-label="Workspace status">
         <StatusTile label="Documents" value={isLoading ? "--" : String(documents.length)} />
         <StatusTile label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
         <StatusTile label="Blueprints" value={isLoading ? "--" : String(blueprints.length)} />
@@ -194,11 +194,11 @@ export default function WorkspaceOverview() {
         <StatusTile label="AI cost" value="$0" accent />
       </section>
 
-      <section id="product-modes" className="mt-12">
+      <section id="product-modes" className="mt-14">
         <div className="max-w-2xl">
           <p className="page-kicker">Choose the path</p>
           <h2 className="display-title mt-4 text-3xl leading-tight sm:text-[2.35rem]">
-            GameMind works in two useful ways.
+            One design desk. Two outcomes.
           </h2>
           <p className="mt-4 text-base leading-7 text-[var(--text-secondary)]">
             You do not need a Unity project to get value. Use the dashboard to organize a game, then connect a runtime
@@ -208,7 +208,7 @@ export default function WorkspaceOverview() {
 
         <div className="mt-7 grid gap-5 lg:grid-cols-2">
           {productModes.map((mode) => (
-            <article key={mode.title} className="panel rounded-3xl p-6">
+            <article key={mode.title} className="status-strip rounded-2xl p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="page-kicker">{mode.eyebrow}</p>
@@ -241,7 +241,7 @@ export default function WorkspaceOverview() {
       </section>
 
       <section className="mt-12 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="panel rounded-3xl p-6">
+        <div className="status-strip rounded-2xl p-6">
           <p className="page-kicker">Workflow</p>
           <h2 className="display-title mt-4 text-3xl leading-tight">From document to game systems.</h2>
           <div className="mt-7 grid gap-4 md:grid-cols-4">
@@ -252,7 +252,7 @@ export default function WorkspaceOverview() {
           </div>
         </div>
 
-        <aside className="panel-muted rounded-3xl p-6">
+        <aside className="panel-muted rounded-2xl p-6">
           <p className="page-kicker">Readiness</p>
           <h2 className="mt-4 text-2xl font-semibold tracking-normal text-[var(--foreground)]">
             {isLoading ? "Checking workspace" : health?.status === "healthy" ? "Workspace is connected" : "Needs attention"}
@@ -290,11 +290,11 @@ function FirstRunWorkspace() {
 
   return (
     <main className="page-shell">
-      <section className="grid min-h-[calc(100dvh-9rem)] items-center gap-12 py-10 lg:grid-cols-[minmax(0,1fr)_21rem] lg:py-16">
+      <section className="grid min-h-[calc(100dvh-11rem)] items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:py-12">
         <div className="max-w-3xl">
           <p className="page-kicker">New workspace</p>
-          <h1 className="display-title mt-5 max-w-2xl text-[2.5rem] leading-[1.04] sm:text-[3.6rem]">
-            Start with the game you want to build.
+          <h1 className="display-title mt-4 max-w-2xl text-[2.45rem] leading-[1.04] sm:text-[3.35rem]">
+            Begin with a document you can defend.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
             Add one design document first. GameMind will keep the source, the design decisions, and the resulting blueprint connected as your game develops.
@@ -314,12 +314,12 @@ function FirstRunWorkspace() {
           </p>
         </div>
 
-        <aside className="border-l border-[var(--border)] pl-0 lg:pl-8" aria-label="First workspace steps">
+        <aside className="status-strip rounded-2xl p-6" aria-label="First workspace steps">
           <p className="page-kicker">Your path</p>
-          <ol className="mt-5 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+          <ol className="mt-6 space-y-6">
             {steps.map((step) => (
-              <li key={step.number} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-4 py-5">
-                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{step.number}</span>
+              <li key={step.number} className="onboarding-step">
+                <span className="onboarding-step__number">{step.number}</span>
                 <div>
                   <h2 className="text-base font-semibold text-[var(--foreground)]">{step.title}</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{step.body}</p>
@@ -335,7 +335,7 @@ function FirstRunWorkspace() {
 
 function StatusTile({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="panel-muted rounded-2xl p-4">
+    <div className="metric-tile">
       <p className="page-kicker">{label}</p>
       <p className={`mt-3 text-2xl font-semibold tracking-normal ${accent ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
         {value}
@@ -348,7 +348,7 @@ function FlowStep({ index, title, body, href }: { index: string; title: string; 
   return (
     <Link
       href={href}
-      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--foreground)] hover:bg-[var(--accent-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
     >
       <p className="page-kicker">{index}</p>
       <h3 className="mt-4 text-base font-semibold text-[var(--foreground)]">{title}</h3>

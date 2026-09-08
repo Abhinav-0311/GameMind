@@ -128,6 +128,26 @@ class QuestDesignCandidate(BaseModel):
     dialogue_hooks: list[str] = Field(default_factory=list)
     implementation_notes: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
+    runtime: "QuestRuntimeBinding | None" = None
+
+
+class QuestRuntimeObjectiveBinding(BaseModel):
+    """Explicit engine binding; never inferred from natural-language objectives."""
+
+    description: str = Field(min_length=1)
+    target_type: str = Field(min_length=1, max_length=50)
+    target_id: str = Field(min_length=1, max_length=100)
+    quantity_required: int = Field(ge=1)
+
+
+class QuestRuntimeBinding(BaseModel):
+    """The complete runtime semantics required by the legacy Quest tables."""
+
+    npc_slug: str = Field(min_length=1, max_length=100)
+    difficulty: str = Field(min_length=1, max_length=50)
+    gold_reward: int = Field(ge=0)
+    xp_reward: int = Field(ge=0)
+    objectives: list[QuestRuntimeObjectiveBinding] = Field(min_length=1)
 
 
 class NPCDesignContent(BaseModel):
@@ -222,6 +242,7 @@ class DesignAgentState(TypedDict, total=False):
     plan: dict[str, Any]
     evidence_snapshot_id: str
     evidence_items: list[dict[str, Any]]
+    resolved_decisions: list[dict[str, Any]]
     current_artifact_id: str
     current_artifact_version: int
     current_artifact: dict[str, Any]

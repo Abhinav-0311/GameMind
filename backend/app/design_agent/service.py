@@ -18,10 +18,12 @@ from app.design_agent.schemas import (
     DesignAgentTraceResponse,
 )
 from app.design_agent.workflow import DesignAgentWorkflow
+from app.design_agent.grounding import validate_generated_blueprint
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
     DesignAgentArtifact,
     DesignAgentCritique,
+    DesignAgentEvidenceSnapshot,
     DesignAgentNodeExecution,
     DesignAgentRun,
 )
@@ -189,6 +191,33 @@ class DesignAgentService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"This run cannot be reviewed while its status is '{run.status}'.",
             )
+        if decision == "approve" and run.provider_name == "nvidia":
+            artifact = db.query(DesignAgentArtifact).filter(
+                DesignAgentArtifact.run_id == run.id,
+                DesignAgentArtifact.game_project_id == game_project_id,
+            ).order_by(DesignAgentArtifact.version.desc()).first()
+            snapshot = db.query(DesignAgentEvidenceSnapshot).filter(
+                DesignAgentEvidenceSnapshot.run_id == run.id,
+                DesignAgentEvidenceSnapshot.game_project_id == game_project_id,
+            ).order_by(DesignAgentEvidenceSnapshot.revision.desc()).first()
+            if artifact is None or snapshot is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The review artifact or its frozen evidence snapshot is unavailable.",
+                )
+            try:
+                validate_generated_blueprint(
+                    artifact.content,
+                    snapshot.items,
+                    require_actionable=True,
+                )
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This draft needs revision before approval: " + str(error)
+                    ),
+                ) from error
         resume_decision = ResumeDecision(
             decision=decision,
             reason=reason.strip() if reason else None,

@@ -10,9 +10,6 @@ from app.design_agent.contracts import (
     BLUEPRINT_SECTION_KEYS,
     BlueprintContent,
     CritiqueOutput,
-    FocusedDeveloperPack,
-    FocusedQuestPack,
-    PatchDialoguePack,
     ResearchPlan,
     RetrievalPlanOutput,
     build_section_queries,
@@ -93,6 +90,16 @@ class NvidiaDesignAgentProvider:
     def _schema_instruction(model: type[BaseModel]) -> str:
         return json.dumps(model.model_json_schema(), separators=(",", ":"))
 
+    @staticmethod
+    def _guided_json_enabled() -> bool:
+        """Allow hosted NVIDIA endpoints without legacy guided_json support."""
+        return os.getenv("NVIDIA_GUIDED_JSON_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
     def _invoke(
         self,
         *,
@@ -123,7 +130,11 @@ class NvidiaDesignAgentProvider:
         instruction: str,
         payload: dict[str, Any],
     ) -> CompletionResult:
-        use_guided_json = node_name in {"generate_blueprint", "critique", "revise"}
+        use_guided_json = self._guided_json_enabled() and node_name in {
+            "generate_blueprint",
+            "critique",
+            "revise",
+        }
         schema_instruction = (
             ""
             if use_guided_json
@@ -204,73 +215,19 @@ class NvidiaDesignAgentProvider:
                 "present it as a source fact. Every NPC and quest must include one or more "
                 "source_chunk_ids from the supplied evidence. Generate at most two NPCs and two "
                 "quests, prioritizing complete, distinctive records over coverage. Keep unavailable "
-                "detail as an empty array."
+                "detail as an empty array. Quest dependencies must be explicitly supported by "
+                "the supplied evidence; never invent prerequisite names. When no dependency is "
+                "supported, return an empty dependencies array. The plan may contain "
+                "resolved_decisions: treat those as binding human design direction for this "
+                "run, but do not present them as GDD facts or cite them as source chunks. "
+                "If a resolved decision conflicts with supplied evidence, preserve the conflict "
+                "as an assumption requiring human confirmation. Set a quest's runtime binding "
+                "only when the evidence explicitly supplies its quest giver, difficulty, rewards, "
+                "and every objective target; otherwise leave runtime null."
             ),
             payload={"plan": plan, "evidence": compacted_evidence},
         )
-        focused_evidence = [
-            item for item in compacted_evidence
-            if {"npc_archetypes", "quest_hooks"} & set(item.get("matched_sections") or [])
-        ]
-        focused = self._invoke(
-            node_name="generate_blueprint",
-            expected_model=FocusedDeveloperPack,
-            instruction=(
-                "Generate only two complete, developer-ready NPC profiles and two complete quests. "
-                "Prioritize PATCH and Jay when supported. Every factual record needs source_chunk_ids. "
-                "For each selected NPC include at least one distinctive dialogue hook drawn from or tightly "
-                "paraphrased from its cited evidence; never invent personality traits. For each quest include "
-                "at least one ordered objective; include a failure state and dependency when supported. Omit a "
-                "record that cannot meet these requirements. Use assumptions for anything not supported."
-            ),
-            payload={"objective": plan.get("objective", ""), "evidence": focused_evidence},
-        )
-        content = dict(broad.content)
-        content.update(focused.content)
-        patch_evidence = [
-            item for item in focused_evidence
-            if "patch" in str(item.get("content") or "").lower()
-        ]
-        patch = self._invoke(
-            node_name="generate_blueprint",
-            expected_model=PatchDialoguePack,
-            instruction=(
-                "Return 1 to 3 PATCH companion dialogue lines only. Each line must be an exact "
-                "quote or a close, concise paraphrase of the supplied PATCH evidence and cite its source_chunk_ids."
-            ),
-            payload={"evidence": patch_evidence},
-        )
-        npcs = content["npc_archetypes"]["content"]["npcs"]
-        for npc in npcs:
-            if npc["name"].strip().lower() == "patch":
-                npc["dialogue_hooks"] = [line["text"] for line in patch.content["lines"]]
-                npc["source_chunk_ids"] = list(dict.fromkeys(
-                    npc["source_chunk_ids"] + [source for line in patch.content["lines"] for source in line["source_chunk_ids"]]
-                ))
-        quest = self._invoke(
-            node_name="generate_blueprint",
-            expected_model=FocusedQuestPack,
-            instruction=(
-                "Generate exactly one actionable Training Sandbox quest from the supplied quest and level evidence. "
-                "Include cited source_chunk_ids, ordered objectives, a failure state, and a dependency. "
-                "Do not invent numeric thresholds, reward amounts, or prerequisite level names. Put any such "
-                "proposal in assumptions unless it appears explicitly in the supplied evidence."
-            ),
-            payload={"evidence": [item for item in focused_evidence if "quest_hooks" in (item.get("matched_sections") or [])]},
-        )
-        content["quest_hooks"]["content"]["quests"] = quest.content["quests"]
-        return ProviderResult(
-            content=content,
-            model_name=focused.model_name,
-            provider_name=focused.provider_name,
-            usage=ProviderUsage(
-                input_tokens=broad.usage.input_tokens + focused.usage.input_tokens + patch.usage.input_tokens + quest.usage.input_tokens,
-                output_tokens=broad.usage.output_tokens + focused.usage.output_tokens + patch.usage.output_tokens + quest.usage.output_tokens,
-                cost_usd=broad.usage.cost_usd + focused.usage.cost_usd + patch.usage.cost_usd + quest.usage.cost_usd,
-                latency_ms=broad.usage.latency_ms + focused.usage.latency_ms + patch.usage.latency_ms + quest.usage.latency_ms,
-            ),
-            metadata={**focused.metadata, "focused_developer_pack": True},
-        )
+        return broad
 
     def critique(
         self,

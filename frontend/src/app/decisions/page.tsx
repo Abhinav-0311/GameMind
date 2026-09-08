@@ -210,7 +210,7 @@ function DecisionsContent() {
 
   return (
     <main className="page-shell">
-      <section className="flex flex-col gap-6 py-3 lg:flex-row lg:items-end lg:justify-between">
+      <section className="workbench-header flex flex-col gap-6 pt-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl">
           <p className="page-kicker">Design decisions</p>
           <h1 className="display-title mt-4 text-[2.15rem] leading-tight sm:text-[3rem]">Turn open questions into build choices.</h1>

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from app.database import get_db
+from app.dependencies import get_game_project_id
 from app.services.narrative_consistency import NarrativeConsistencyService
 from app.services.quest_dependency import QuestDependencyAnalyzer
 from app.services.event_simulation import EventChainSimulator
@@ -82,7 +83,7 @@ class ForecastTrendResponse(BaseModel):
 # ----------------------------------------------------
 
 @router.post("/verify", response_model=VerifyResponse, status_code=status.HTTP_200_OK)
-def verify_claims(payload: VerifyRequest, db: Session = Depends(get_db)):
+def verify_claims(payload: VerifyRequest, db: Session = Depends(get_db), game_project_id: str = Depends(get_game_project_id)):
     """
     Validates a batch of structured claims against active graph relationships.
     Max 50 claims per request.
@@ -100,7 +101,7 @@ def verify_claims(payload: VerifyRequest, db: Session = Depends(get_db)):
             "predicate": claim.predicate,
             "object": claim.object
         }
-        consistent, reason = NarrativeConsistencyService.check_consistency(db, claim_dict)
+        consistent, reason = NarrativeConsistencyService.check_consistency(db, claim_dict, game_project_id=game_project_id)
         if not consistent and reason:
             contradictions.append(reason)
 
@@ -114,17 +115,18 @@ def verify_claims(payload: VerifyRequest, db: Session = Depends(get_db)):
 def check_quest_eligibility(
     id: uuid.UUID,
     player_id: Optional[str] = "default_player",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
 ):
     """
     Checks if a player is eligible to accept a quest based on graph prerequisites.
     """
-    eligible, reason = QuestDependencyAnalyzer.is_eligible(db, player_id, str(id))
+    eligible, reason = QuestDependencyAnalyzer.is_eligible(db, player_id, str(id), game_project_id=game_project_id)
     return EligibilityResponse(eligible=eligible, reason=reason)
 
 
 @router.post("/simulate", response_model=SimulateResponse, status_code=status.HTTP_200_OK)
-def simulate_events(payload: SimulateRequest, db: Session = Depends(get_db)):
+def simulate_events(payload: SimulateRequest, db: Session = Depends(get_db), game_project_id: str = Depends(get_game_project_id)):
     """
     Simulates sequence of events starting from triggers.
     Max 10 starting triggers.
@@ -135,7 +137,7 @@ def simulate_events(payload: SimulateRequest, db: Session = Depends(get_db)):
             detail="Simulation exceeds maximum limit of 10 starting triggers."
         )
 
-    res = EventChainSimulator.simulate_narrative_paths(db, payload.starting_triggers)
+    res = EventChainSimulator.simulate_narrative_paths(db, payload.starting_triggers, game_project_id=game_project_id)
     return SimulateResponse(
         path=res["path"],
         warnings=res["warnings"],
@@ -147,7 +149,8 @@ def simulate_events(payload: SimulateRequest, db: Session = Depends(get_db)):
 def audit_narrative_drift(
     as_of_start: str = Query(..., description="ISO 8601 Start datetime"),
     as_of_end: str = Query(..., description="ISO 8601 End datetime"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
 ):
     """
     Returns diff-oriented output of state drift between two timestamps.
@@ -177,7 +180,7 @@ def audit_narrative_drift(
             detail="Audit window exceeds maximum range of 365 days."
         )
 
-    diff = TemporalNarrativeAuditor.audit_state_drift(db, start_dt, end_dt)
+    diff = TemporalNarrativeAuditor.audit_state_drift(db, start_dt, end_dt, game_project_id=game_project_id)
     return AuditDiffResponse(
         entities_added=diff["entities_added"],
         entities_removed=diff["entities_removed"],
@@ -188,11 +191,11 @@ def audit_narrative_drift(
 
 
 @router.post("/orchestrate/tick", response_model=OrchestrateTickResponse, status_code=status.HTTP_200_OK)
-def orchestrate_narrative_tick(db: Session = Depends(get_db)):
+def orchestrate_narrative_tick(db: Session = Depends(get_db), game_project_id: str = Depends(get_game_project_id)):
     """
     Triggers evaluation and processes event queue tick.
     """
-    res = NarrativeOrchestrator.execute_tick(db, datetime.utcnow())
+    res = NarrativeOrchestrator.execute_tick(db, datetime.utcnow(), game_project_id=game_project_id)
     return OrchestrateTickResponse(
         executed_events=res["executed_events"],
         pruned_events_count=res["pruned_events_count"],
@@ -202,12 +205,12 @@ def orchestrate_narrative_tick(db: Session = Depends(get_db)):
 
 
 @router.post("/factions/standing", response_model=FactionStandingResponse, status_code=status.HTTP_200_OK)
-def update_faction_standing(payload: FactionStandingRequest, db: Session = Depends(get_db)):
+def update_faction_standing(payload: FactionStandingRequest, db: Session = Depends(get_db), game_project_id: str = Depends(get_game_project_id)):
     """
     Updates faction standing relation weight and propagates changes.
     """
     res = FactionDynamicsEngine.shift_standing(
-        db, payload.faction_a, payload.faction_b, payload.delta
+        db, payload.faction_a, payload.faction_b, payload.delta, game_project_id=game_project_id
     )
     return FactionStandingResponse(
         faction_a=res["faction_a"],
@@ -221,7 +224,8 @@ def update_faction_standing(payload: FactionStandingRequest, db: Session = Depen
 @router.get("/forecast", response_model=List[ForecastTrendResponse], status_code=status.HTTP_200_OK)
 def get_narrative_forecast(
     steps: int = Query(default=3, description="Forecast simulation steps"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
 ):
     """
     Retrieves projected state trajectories. Max steps = 5.
@@ -232,7 +236,7 @@ def get_narrative_forecast(
             detail="Forecast steps must be between 1 and 5."
         )
 
-    res = NarrativeForecaster.forecast_trends(db, steps)
+    res = NarrativeForecaster.forecast_trends(db, steps, game_project_id=game_project_id)
     return [
         ForecastTrendResponse(
             trend_id=trend["trend_id"],
@@ -247,24 +251,25 @@ def get_narrative_forecast(
 def get_npc_emotion(
     npc_slug: str = Query(..., min_length=1),
     player_id: str = Query("default_player"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
 ):
     """
     Retrieves the 5 emotional states of an NPC with respect to a player.
     """
-    npc = db.query(NPCProfile).filter(NPCProfile.slug == npc_slug, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(NPCProfile.slug == npc_slug, NPCProfile.game_project_id == game_project_id, NPCProfile.deleted_at.is_(None)).first()
     if not npc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"NPC with slug '{npc_slug}' not found.")
     
-    emotions = EmotionEngine.get_emotional_state(db, npc_slug, player_id)
+    emotions = EmotionEngine.get_emotional_state(db, npc_slug, player_id, game_project_id=game_project_id)
     return EmotionResponse(npc_slug=npc_slug, player_id=player_id, emotions=emotions)
 
 @router.post("/emotion", response_model=EmotionResponse, status_code=status.HTTP_200_OK)
-def update_npc_emotion(payload: EmotionUpdateRequest, db: Session = Depends(get_db)):
+def update_npc_emotion(payload: EmotionUpdateRequest, db: Session = Depends(get_db), game_project_id: str = Depends(get_game_project_id)):
     """
     Updates specified NPC emotional states. Strict range validation (0-100) is enforced.
     """
-    npc = db.query(NPCProfile).filter(NPCProfile.slug == payload.npc_slug, NPCProfile.deleted_at.is_(None)).first()
+    npc = db.query(NPCProfile).filter(NPCProfile.slug == payload.npc_slug, NPCProfile.game_project_id == game_project_id, NPCProfile.deleted_at.is_(None)).first()
     if not npc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"NPC with slug '{payload.npc_slug}' not found.")
 
@@ -274,7 +279,8 @@ def update_npc_emotion(payload: EmotionUpdateRequest, db: Session = Depends(get_
             npc_slug=payload.npc_slug,
             player_id=payload.player_id,
             updates=payload.updates,
-            reason=payload.reason
+            reason=payload.reason,
+            game_project_id=game_project_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
@@ -282,5 +288,4 @@ def update_npc_emotion(payload: EmotionUpdateRequest, db: Session = Depends(get_
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return EmotionResponse(npc_slug=payload.npc_slug, player_id=payload.player_id, emotions=updated_emotions)
-
 

@@ -24,7 +24,8 @@ class WorldStatePropagationService:
         source_slug: str,
         target_slug: str,
         rel_type: str,
-        new_weight: float
+        new_weight: float,
+        game_project_id: str = "default_project",
     ) -> int:
         """
         Propagates relationship changes to adjacent vertices in the graph up to depth 2.
@@ -32,11 +33,14 @@ class WorldStatePropagationService:
         Rolls back the active transaction and raises PropagationLimitExceededError if boundaries are breached.
         """
         # Step 1: Alphabetical lock ordering to prevent concurrent deadlocks
-        graph_repo._lock_entities_ordered([source_slug, target_slug], db)
+        graph_repo._lock_entities_ordered(
+            [source_slug, target_slug], db, game_project_id=game_project_id
+        )
 
         # Step 2: Fetch the active relationship
         active_rel = graph_repo.get_active_relationship(
-            db, source_slug, target_slug, rel_type, for_update=True
+            db, source_slug, target_slug, rel_type,
+            game_project_id=game_project_id, for_update=True,
         )
         if not active_rel:
             logger.warning(f"No active relationship found between '{source_slug}' and '{target_slug}' of type '{rel_type}' to propagate.")
@@ -62,19 +66,20 @@ class WorldStatePropagationService:
             source_slug=source_slug,
             target_slug=target_slug,
             rel_type=rel_type,
-            weight=new_weight
+            weight=new_weight,
+            game_project_id=game_project_id,
         )
         if not updated_root:
             return 0
 
         # Step 3: Enforce threshold-based state flag rules
-        cls._apply_threshold_rules(db, rel_type, new_weight)
+        cls._apply_threshold_rules(db, rel_type, new_weight, game_project_id=game_project_id)
 
         # Step 4: BFS propagation
         # Queue stores: (entity_id, current_depth, delta_to_propagate)
         queue = deque()
-        source_ent = graph_repo.get_entity_by_slug(db, source_slug)
-        target_ent = graph_repo.get_entity_by_slug(db, target_slug)
+        source_ent = graph_repo.get_entity_by_slug(db, source_slug, game_project_id=game_project_id)
+        target_ent = graph_repo.get_entity_by_slug(db, target_slug, game_project_id=game_project_id)
         
         # Enqueue the direct endpoints at depth 1 with half the delta weight
         if source_ent:
@@ -94,6 +99,7 @@ class WorldStatePropagationService:
             # Query active adjacent relationships
             adj_rels = db.query(WorldRelationship).filter(
                 WorldRelationship.valid_to.is_(None),
+                WorldRelationship.game_project_id == game_project_id,
                 (WorldRelationship.source_id == curr_id) | (WorldRelationship.target_id == curr_id)
             ).all()
 
@@ -119,13 +125,21 @@ class WorldStatePropagationService:
                     )
 
                 # Get adjacent node details
-                src_node = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-                tgt_node = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+                src_node = db.query(WorldEntity).filter(
+                    WorldEntity.id == rel.source_id,
+                    WorldEntity.game_project_id == game_project_id,
+                ).first()
+                tgt_node = db.query(WorldEntity).filter(
+                    WorldEntity.id == rel.target_id,
+                    WorldEntity.game_project_id == game_project_id,
+                ).first()
                 if not src_node or not tgt_node:
                     continue
 
                 # Lock alphabetically before modifying
-                graph_repo._lock_entities_ordered([src_node.slug, tgt_node.slug], db)
+                graph_repo._lock_entities_ordered(
+                    [src_node.slug, tgt_node.slug], db, game_project_id=game_project_id
+                )
 
                 # Update the adjacent relationship weight
                 next_weight = max(0.0, min(100.0, rel.weight + delta))
@@ -134,13 +148,16 @@ class WorldStatePropagationService:
                     source_slug=src_node.slug,
                     target_slug=tgt_node.slug,
                     rel_type=rel.rel_type,
-                    weight=next_weight
+                    weight=next_weight,
+                    game_project_id=game_project_id,
                 )
                 if new_rel:
                     visited_relationships.add(new_rel.id)
 
                 # Apply threshold flags to this updated adjacent edge
-                cls._apply_threshold_rules(db, rel.rel_type, next_weight)
+                cls._apply_threshold_rules(
+                    db, rel.rel_type, next_weight, game_project_id=game_project_id
+                )
 
                 # Enqueue the neighbor for next hop propagation
                 other_id = rel.target_id if rel.source_id == curr_id else rel.source_id
@@ -149,14 +166,19 @@ class WorldStatePropagationService:
         return modified_count
 
     @staticmethod
-    def _apply_threshold_rules(db: Session, rel_type: str, weight: float) -> None:
+    def _apply_threshold_rules(
+        db: Session, rel_type: str, weight: float, game_project_id: str = "default_project"
+    ) -> None:
         """
         Threshold-based propagation rules:
         - If standing or faction relation falls below 20 -> set hostilities_present = "true"
         - If standing or faction relation is >= 20 -> set hostilities_present = "false"
         """
         if rel_type in ("standing", "faction_relation", "allied_with"):
-            flag = db.query(WorldStateFlag).filter(WorldStateFlag.flag_key == "hostilities_present").first()
+            flag = db.query(WorldStateFlag).filter(
+                WorldStateFlag.flag_key == "hostilities_present",
+                WorldStateFlag.game_project_id == game_project_id,
+            ).first()
             target_val = "true" if weight < 20.0 else "false"
             
             if flag:
@@ -167,7 +189,8 @@ class WorldStatePropagationService:
                     flag_key="hostilities_present",
                     flag_value=target_val,
                     is_active=True,
-                    priority=10
+                    priority=10,
+                    game_project_id=game_project_id,
                 )
                 db.add(new_flag)
             db.flush()

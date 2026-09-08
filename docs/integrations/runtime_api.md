@@ -73,6 +73,13 @@ GET /api/v1/blueprints/runtime/latest-bundle
 
 Returns the newest materialized blueprint data for the active project.
 
+Runtime bundle `api_version` is currently `1.1`. It retains the existing `npcs`,
+`quests`, `memories`, and `world_flags` fields, and adds `approved_design` for
+the reviewed GDD artifact data. `approved_design.npcs` includes dialogue hooks;
+`approved_design.quests` includes ordered objectives, failure states,
+dependencies, dialogue hooks, and the optional mapping from `design_id` to the
+materialized `runtime_quest_id`.
+
 The bundle can include:
 
 - NPC profiles.

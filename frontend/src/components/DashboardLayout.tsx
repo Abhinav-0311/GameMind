@@ -141,6 +141,17 @@ const commandNavigationItems: CommandNavigationItem[] = [
 const sections: NavigationItem["section"][] = ["Build", "Test"];
 const themeStorageKey = "gamemind-theme";
 const themeChangeEvent = "gamemind-theme-change";
+const publicAccountRoutes = new Set([
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/accept-invitation",
+]);
+
+function isPublicAccountRoute(pathname: string): boolean {
+  return publicAccountRoutes.has(pathname);
+}
 
 function getStoredTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
@@ -175,9 +186,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [creatingProject, setCreatingProject] = useState(false);
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const isPublicRoute = isPublicAccountRoute(pathname);
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (isPublicRoute) return;
     let active = true;
 
     api.getAuthSession()
@@ -193,7 +205,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => {
       active = false;
     };
-  }, [pathname, router]);
+  }, [isPublicRoute, router]);
 
   const currentPage = useMemo(
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
@@ -233,7 +245,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [theme]);
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (isPublicRoute) return;
     let active = true;
 
     api
@@ -255,7 +267,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => {
       active = false;
     };
-  }, [activeProjectId, pathname]);
+  }, [activeProjectId, isPublicRoute]);
 
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
@@ -335,7 +347,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setPaletteOpen(false);
   };
 
-  if (["/login", "/forgot-password", "/reset-password", "/verify-email", "/accept-invitation"].includes(pathname)) return <>{children}</>;
+  if (isPublicRoute) return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)] antialiased">
@@ -355,7 +367,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </button>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold leading-none text-[var(--foreground)]">{pageTitle}</p>
-                <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Zero-cost local game builder</p>
+                <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Evidence-first game design</p>
               </div>
             </div>
 
@@ -665,7 +677,7 @@ function Brand() {
         <div>
           <p className="text-[1.05rem] font-semibold leading-none tracking-normal text-[var(--foreground)] transition">GameMind</p>
           <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-normal text-[var(--text-secondary)]">
-            Guided game builder
+            Evidence-first game design
           </p>
         </div>
     </Link>

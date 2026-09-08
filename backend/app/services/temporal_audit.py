@@ -10,7 +10,9 @@ logger = logging.getLogger("gamemind.temporal_audit")
 
 class TemporalNarrativeAuditor:
     @staticmethod
-    def audit_state_drift(db: Session, timestamp_a: datetime, timestamp_b: datetime) -> Dict[str, Any]:
+    def audit_state_drift(
+        db: Session, timestamp_a: datetime, timestamp_b: datetime, game_project_id: str = "default_project"
+    ) -> Dict[str, Any]:
         """
         Reconstructs the difference between timestamp_a and timestamp_b.
         Returns a diff-oriented payload:
@@ -52,7 +54,8 @@ class TemporalNarrativeAuditor:
         added_versions = db.query(WorldEntityVersion).join(WorldEntity).filter(
             WorldEntityVersion.valid_from >= timestamp_a,
             WorldEntityVersion.valid_from <= timestamp_b,
-            WorldEntityVersion.version == 1
+            WorldEntityVersion.version == 1,
+            WorldEntity.game_project_id == game_project_id,
         ).all()
         for ver in added_versions:
             entities_added.append(ver.entity.slug)
@@ -61,7 +64,8 @@ class TemporalNarrativeAuditor:
         # An entity is retired if its active version valid_to was set to a timestamp in the interval
         removed_versions = db.query(WorldEntityVersion).join(WorldEntity).filter(
             WorldEntityVersion.valid_to >= timestamp_a,
-            WorldEntityVersion.valid_to <= timestamp_b
+            WorldEntityVersion.valid_to <= timestamp_b,
+            WorldEntity.game_project_id == game_project_id,
         ).all()
         
         # Verify if there is any active version for these entities after timestamp_b
@@ -70,7 +74,7 @@ class TemporalNarrativeAuditor:
             newer_ver = db.query(WorldEntityVersion).filter(
                 WorldEntityVersion.entity_id == ver.entity_id,
                 WorldEntityVersion.valid_from > ver.valid_to
-            ).first()
+            ).join(WorldEntity).filter(WorldEntity.game_project_id == game_project_id).first()
             if not newer_ver and ver.entity.slug not in entities_removed:
                 entities_removed.append(ver.entity.slug)
 
@@ -85,12 +89,13 @@ class TemporalNarrativeAuditor:
         added_rels = db.query(WorldRelationship).filter(
             WorldRelationship.valid_from >= timestamp_a,
             WorldRelationship.valid_from <= timestamp_b,
-            WorldRelationship.version == 1
+            WorldRelationship.version == 1,
+            WorldRelationship.game_project_id == game_project_id,
         ).all()
 
         for rel in added_rels:
-            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id, WorldEntity.game_project_id == game_project_id).first()
+            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id, WorldEntity.game_project_id == game_project_id).first()
             if src and tgt:
                 relationships_added.append({
                     "source": src.slug,
@@ -102,7 +107,8 @@ class TemporalNarrativeAuditor:
         # Find relationships retired (soft-deleted) in the interval
         removed_rels = db.query(WorldRelationship).filter(
             WorldRelationship.valid_to >= timestamp_a,
-            WorldRelationship.valid_to <= timestamp_b
+            WorldRelationship.valid_to <= timestamp_b,
+            WorldRelationship.game_project_id == game_project_id,
         ).all()
 
         for rel in removed_rels:
@@ -111,11 +117,12 @@ class TemporalNarrativeAuditor:
                 WorldRelationship.source_id == rel.source_id,
                 WorldRelationship.target_id == rel.target_id,
                 WorldRelationship.rel_type == rel.rel_type,
-                WorldRelationship.valid_from > rel.valid_to
+                WorldRelationship.valid_from > rel.valid_to,
+                WorldRelationship.game_project_id == game_project_id,
             ).first()
 
-            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id, WorldEntity.game_project_id == game_project_id).first()
+            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id, WorldEntity.game_project_id == game_project_id).first()
             if not newer_rel and src and tgt:
                 relationships_removed.append({
                     "source": src.slug,
@@ -127,7 +134,8 @@ class TemporalNarrativeAuditor:
         changed_rels = db.query(WorldRelationship).filter(
             WorldRelationship.valid_from >= timestamp_a,
             WorldRelationship.valid_from <= timestamp_b,
-            WorldRelationship.version > 1
+            WorldRelationship.version > 1,
+            WorldRelationship.game_project_id == game_project_id,
         ).all()
 
         for rel in changed_rels:
@@ -136,11 +144,12 @@ class TemporalNarrativeAuditor:
                 WorldRelationship.source_id == rel.source_id,
                 WorldRelationship.target_id == rel.target_id,
                 WorldRelationship.rel_type == rel.rel_type,
-                WorldRelationship.version == rel.version - 1
+                WorldRelationship.version == rel.version - 1,
+                WorldRelationship.game_project_id == game_project_id,
             ).first()
 
-            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+            src = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id, WorldEntity.game_project_id == game_project_id).first()
+            tgt = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id, WorldEntity.game_project_id == game_project_id).first()
             
             if src and tgt:
                 old_weight = prev_rel.weight if prev_rel else 0.0

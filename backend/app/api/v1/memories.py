@@ -68,11 +68,12 @@ def create_npc_memory(
 @router.post("/sync")
 def sync_memories(
     db: Session = Depends(get_db),
-    mem_service: MemoryService = Depends(get_memory_service)
+    mem_service: MemoryService = Depends(get_memory_service),
+    game_project_id: str = Depends(get_game_project_id),
 ):
     """Trigger manual re-indexing of unindexed PostgreSQL memories into Chroma DB."""
     try:
-        result = mem_service.sync_unindexed_memories(db)
+        result = mem_service.sync_unindexed_memories(db, game_project_id=game_project_id)
         return result
     except Exception as e:
         raise HTTPException(

@@ -21,6 +21,7 @@ from app.models.design_agent import (
     DesignAgentRun,
 )
 from app.models.document import Document, DocumentChunk
+from app.models.design_decision import DesignDecision
 from main import app
 
 client = TestClient(app)
@@ -98,6 +99,38 @@ class CountingRAG:
             for chunk in self.chunks
             if not allowed or str(chunk.document_id) in allowed
         ]
+
+
+class PlanCapturingMockProvider(MockDesignAgentProvider):
+    def __init__(self):
+        super().__init__()
+        self.generation_plans: list[dict] = []
+
+    def generate(self, plan: dict, evidence: list[dict]):
+        self.generation_plans.append(plan)
+        return super().generate(plan, evidence)
+
+
+class IncompleteNvidiaProvider(MockDesignAgentProvider):
+    name = "nvidia"
+
+    def generate(self, plan: dict, evidence: list[dict]):
+        result = super().generate(plan, evidence)
+        content = result.content
+        if not content["npc_archetypes"]["content"]["npcs"]:
+            content["npc_archetypes"]["content"]["npcs"] = [{
+                "name": "Mira",
+                "archetype": "Scout mentor",
+                "dialogue_style": "Brief and practical.",
+                "source_chunk_ids": [evidence[0]["chunk_id"]],
+                "dialogue_hooks": [],
+                "relationship_notes": [],
+                "implementation_notes": [],
+                "assumptions": [],
+            }]
+        for npc in content["npc_archetypes"]["content"]["npcs"]:
+            npc["dialogue_hooks"] = []
+        return result
 
 
 def create_source(db_session, game_project_id: str) -> tuple[Document, list[DocumentChunk]]:
@@ -206,6 +239,78 @@ def test_run_pauses_with_durable_checkpoint_and_trace(db_session):
             {"thread_id": f"design-agent:{run['id']}"},
         ).scalar()
         assert checkpoint_count > 0
+    finally:
+        app.dependency_overrides.pop(get_design_agent_service, None)
+
+
+def test_resolved_selected_decisions_are_passed_to_generation_and_traced(db_session):
+    project_id = f"agent_decisions_{uuid.uuid4().hex[:8]}"
+    document, chunks = create_source(db_session, project_id)
+    selected_decision = DesignDecision(
+        game_project_id=project_id,
+        document_id=document.id,
+        category="mvp_scope",
+        title="MVP scope",
+        decision="Ship the tutorial before the open-world expansion.",
+        status="resolved",
+    )
+    other_document, _ = create_source(db_session, project_id)
+    unselected_decision = DesignDecision(
+        game_project_id=project_id,
+        document_id=other_document.id,
+        category="unselected_scope",
+        title="Unselected scope",
+        decision="This must not influence the selected GDD run.",
+        status="resolved",
+    )
+    db_session.add_all([selected_decision, unselected_decision])
+    db_session.commit()
+    rag = CountingRAG(chunks)
+    provider = PlanCapturingMockProvider()
+    service = make_service(db_session, rag, provider)
+
+    try:
+        run = start_run(service, document.id, project_id)
+        assert provider.generation_plans[0]["resolved_decisions"] == [
+            {
+                "decision_id": str(selected_decision.id),
+                "document_id": str(document.id),
+                "title": "MVP scope",
+                "guidance": None,
+                "decision": "Ship the tutorial before the open-world expansion.",
+            }
+        ]
+        trace = client.get(
+            f"/api/v1/design-agent/runs/{run['id']}/trace",
+            headers={"X-Game-Project-ID": project_id},
+        ).json()["items"]
+        retrieval = next(item for item in trace if item["node_name"] == "retrieve_evidence")
+        assert retrieval["details"]["resolved_decision_count"] == 1
+        assert retrieval["details"]["resolved_decision_ids"] == [str(selected_decision.id)]
+    finally:
+        app.dependency_overrides.pop(get_design_agent_service, None)
+
+
+def test_incomplete_nvidia_draft_reaches_review_but_cannot_be_approved(db_session):
+    project_id = f"agent_incomplete_{uuid.uuid4().hex[:8]}"
+    document, chunks = create_source(db_session, project_id)
+    service = make_service(db_session, CountingRAG(chunks), IncompleteNvidiaProvider())
+
+    try:
+        run = start_run(service, document.id, project_id)
+        assert run["status"] == "awaiting_review"
+        assert run["critique"] is not None
+
+        approval = client.post(
+            f"/api/v1/design-agent/runs/{run['id']}/review",
+            headers={"X-Game-Project-ID": project_id},
+            json={"decision": "approve"},
+        )
+        assert approval.status_code == 409
+        assert "needs revision before approval" in approval.json()["detail"]
+        assert db_session.query(GameBlueprint).filter(
+            GameBlueprint.game_project_id == project_id
+        ).count() == 0
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)
 

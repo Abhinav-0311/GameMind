@@ -773,11 +773,43 @@ class MaterializationReportResponse(BaseModel):
     flags: MaterializationReportSection
     warnings: List[str] = []
 
+
+class ApprovedRuntimeNpcArtifact(BaseModel):
+    """Approved GDD character data, safe for engine-neutral clients."""
+
+    slug: str
+    name: str
+    archetype: str
+    dialogue_style: str
+    dialogue_hooks: List[str] = []
+
+
+class ApprovedRuntimeQuestArtifact(BaseModel):
+    """Approved GDD quest data, separate from the legacy quest-row schema."""
+
+    design_id: str | None = None
+    runtime_quest_id: UUID | None = None
+    title: str
+    objective: str
+    objectives: List[str] = []
+    failure_states: List[str] = []
+    dependencies: List[str] = []
+    dialogue_hooks: List[str] = []
+
+
+class ApprovedRuntimeDesignArtifacts(BaseModel):
+    contract_version: str = "1.0"
+    npcs: List[ApprovedRuntimeNpcArtifact] = []
+    quests: List[ApprovedRuntimeQuestArtifact] = []
+
 class BlueprintRuntimeBundleResponse(BaseModel):
-    api_version: str = "1.0"
+    api_version: str = "1.1"
     blueprint_id: UUID
     game_project_id: str
     npcs: List[NPCProfileResponse]
     quests: List[QuestResponse]
     memories: List[NPCMemoryResponse]
     world_flags: List[WorldStateFlagResponse]
+    approved_design: ApprovedRuntimeDesignArtifacts = Field(
+        default_factory=ApprovedRuntimeDesignArtifacts
+    )

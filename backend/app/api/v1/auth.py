@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.project import GameProject
-from app.models.user import ProjectMembership, User
+from app.models.user import User
 from app.schemas import (
     AuthLoginRequest, AuthRegisterRequest, AuthSessionResponse, AuthUserResponse,
     EmailRequest, PasswordResetConfirmationRequest, TokenConfirmationRequest,
@@ -28,16 +27,6 @@ def _set_session_cookie(response: Response, user: User) -> None:
         samesite="lax",
         path="/",
     )
-
-
-def _claim_legacy_workspace_if_unowned(db: Session, user: User) -> None:
-    """Assign the legacy demo workspace to the first registered account only."""
-    project = db.get(GameProject, "default_project")
-    if project is None:
-        return
-    has_members = db.query(ProjectMembership).filter(ProjectMembership.game_project_id == project.id).first()
-    if has_members is None:
-        db.add(ProjectMembership(user_id=user.id, game_project_id=project.id, role="owner"))
 
 
 def _rate_limit_key(request: Request, action: str, email: str | None = None) -> str:
@@ -75,13 +64,14 @@ def register(payload: AuthRegisterRequest, request: Request, response: Response,
 
     user = User(email=payload.email, password_hash=hash_password(payload.password))
     db.add(user)
-    db.flush()
-    _claim_legacy_workspace_if_unowned(db, user)
     db.commit()
     db.refresh(user)
     verification_token = AccountActionService.issue(db, "email_verification", user.email, user_id=user.id, lifetime_minutes=24 * 60)
     send_account_link(user.email, "Verify your GameMind email", "/verify-email", verification_token)
-    _set_session_cookie(response, user)
+    # A registration response must not bypass an enabled email-verification policy.
+    # Login issues the session after the verification confirmation has completed.
+    if not settings.require_email_verification:
+        _set_session_cookie(response, user)
     return user
 
 

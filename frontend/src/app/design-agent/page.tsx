@@ -407,7 +407,7 @@ export default function DesignAgentPage() {
 
   return (
     <div className="page-shell">
-      <header className="flex flex-col gap-6 border-b border-[var(--border)] pb-8 sm:flex-row sm:items-end sm:justify-between">
+      <header className="workbench-header flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
           <p className="page-kicker">Governed workflow</p>
           <h1 className="display-title mt-3 text-3xl sm:text-[2rem]">Design agent</h1>
@@ -442,7 +442,7 @@ export default function DesignAgentPage() {
       </div>
 
       {setupOpen && (
-        <section className="mt-8 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+        <section className="status-strip mt-8 overflow-hidden rounded-lg">
           <div className="grid lg:grid-cols-[16rem_1fr]">
             <div className="border-b border-[var(--border)] bg-[var(--card-muted)] p-6 lg:border-b-0 lg:border-r">
               <p className="page-kicker">New run</p>
@@ -515,7 +515,7 @@ export default function DesignAgentPage() {
         </section>
       ) : (
         <>
-          <section className="mt-8 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+          <section className="status-strip mt-8 overflow-hidden rounded-lg">
             <div className="flex flex-col gap-5 p-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 max-w-3xl">
                 <div className="flex flex-wrap items-center gap-2">
@@ -589,7 +589,7 @@ export default function DesignAgentPage() {
           </section>
 
           <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            <section className="min-w-0 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+            <section className="status-strip min-w-0 overflow-hidden rounded-lg">
               <div className="border-b border-[var(--border)] px-5 pt-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -645,7 +645,7 @@ export default function DesignAgentPage() {
               </div>
             </section>
 
-            <aside className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+            <aside className="status-strip overflow-hidden rounded-lg">
               {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} />}
               <div className="border-b border-[var(--border)] p-5">
                 <p className="page-kicker">Independent critique</p>

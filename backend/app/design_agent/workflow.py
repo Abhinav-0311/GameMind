@@ -39,6 +39,7 @@ from app.models.design_agent import (
     DesignAgentRun,
 )
 from app.models.document import Document
+from app.models.design_decision import DesignDecision
 from app.services.rag_service import RAGService
 
 
@@ -286,15 +287,28 @@ class DesignAgentWorkflow:
             started = time.perf_counter()
             try:
                 if existing:
+                    resolved_decisions = (run.model_config or {}).get(
+                        "resolved_decisions", []
+                    )
                     self._complete_execution(
                         db,
                         execution,
                         started,
-                        details={"evidence_snapshot_id": str(existing.id), "reused": True},
+                        details={
+                            "evidence_snapshot_id": str(existing.id),
+                            "resolved_decision_count": len(resolved_decisions),
+                            "resolved_decision_ids": [
+                                item.get("decision_id")
+                                for item in resolved_decisions
+                                if item.get("decision_id")
+                            ],
+                            "reused": True,
+                        },
                     )
                     return {
                         "evidence_snapshot_id": str(existing.id),
                         "evidence_items": existing.items,
+                        "resolved_decisions": resolved_decisions,
                     }
 
                 plan = ResearchPlan.model_validate(state["plan"])
@@ -304,6 +318,24 @@ class DesignAgentWorkflow:
                     game_project_id=run.game_project_id,
                     document_ids=state["document_ids"],
                 )
+                resolved_decisions = [
+                    {
+                        "decision_id": str(decision.id),
+                        "document_id": str(decision.document_id),
+                        "title": decision.title,
+                        "guidance": decision.guidance,
+                        "decision": decision.decision.strip(),
+                    }
+                    for decision in db.query(DesignDecision).filter(
+                        DesignDecision.game_project_id == run.game_project_id,
+                        DesignDecision.document_id.in_(
+                            [UUID(document_id) for document_id in state["document_ids"]]
+                        ),
+                        DesignDecision.status == "resolved",
+                        DesignDecision.decision.isnot(None),
+                    ).order_by(DesignDecision.updated_at.asc()).all()
+                    if decision.decision and decision.decision.strip()
+                ]
                 snapshot = DesignAgentEvidenceSnapshot(
                     run_id=run.id,
                     game_project_id=run.game_project_id,
@@ -312,6 +344,10 @@ class DesignAgentWorkflow:
                     items=evidence,
                 )
                 run.retrieval_revision = 1
+                run.model_config = {
+                    **(run.model_config or {}),
+                    "resolved_decisions": resolved_decisions,
+                }
                 db.add(snapshot)
                 db.commit()
                 db.refresh(snapshot)
@@ -329,12 +365,17 @@ class DesignAgentWorkflow:
                             )
                             for section_name in plan.required_sections
                         },
+                        "resolved_decision_count": len(resolved_decisions),
+                        "resolved_decision_ids": [
+                            item["decision_id"] for item in resolved_decisions
+                        ],
                         "reused": False,
                     },
                 )
                 return {
                     "evidence_snapshot_id": str(snapshot.id),
                     "evidence_items": evidence,
+                    "resolved_decisions": resolved_decisions,
                 }
             except Exception as error:
                 db.rollback()
@@ -363,7 +404,6 @@ class DesignAgentWorkflow:
             content = validate_generated_blueprint(
                 content,
                 state["evidence_items"],
-                require_actionable=self.provider.name == "nvidia",
             )
             artifact = DesignAgentArtifact(
                 run_id=run.id,
@@ -385,7 +425,13 @@ class DesignAgentWorkflow:
         return self._provider_node(
             state,
             "generate_blueprint",
-            lambda: self.provider.generate(state["plan"], state["evidence_items"]),
+            lambda: self.provider.generate(
+                {
+                    **state["plan"],
+                    "resolved_decisions": state.get("resolved_decisions", []),
+                },
+                state["evidence_items"],
+            ),
             persist,
         )
 
@@ -545,7 +591,6 @@ class DesignAgentWorkflow:
             content = validate_generated_blueprint(
                 content,
                 state["evidence_items"],
-                require_actionable=self.provider.name == "nvidia",
             )
             validate_structured_revision(
                 state["current_artifact"],
@@ -610,7 +655,11 @@ class DesignAgentWorkflow:
                         "blueprint_id": str(existing.blueprint_id),
                     }
 
-                content = BlueprintContent.model_validate(state["current_artifact"]).model_dump()
+                content = validate_generated_blueprint(
+                    state["current_artifact"],
+                    state["evidence_items"],
+                    require_actionable=self.provider.name == "nvidia",
+                )
                 first_document = db.query(Document).filter(
                     Document.id == UUID(run.document_ids[0]),
                     Document.game_project_id == run.game_project_id,

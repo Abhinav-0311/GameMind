@@ -3,7 +3,11 @@ import json
 import pytest
 
 from app.config import Settings
-from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, RetrievalPlanOutput
+from app.design_agent.contracts import (
+    BLUEPRINT_SECTION_KEYS,
+    BlueprintContent,
+    RetrievalPlanOutput,
+)
 from app.design_agent.llm_provider import (
     CompletionRequest,
     CompletionResult,
@@ -36,6 +40,23 @@ class CapturingProvider:
             provider_name="nvidia",
             model_name="configured-test-model",
             metadata={"reasoning_discarded": True},
+        )
+
+
+class BlueprintCapturingProvider:
+    name = "capture"
+
+    def __init__(self, content: dict):
+        self.content = content
+        self.requests: list[CompletionRequest] = []
+
+    def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.requests.append(request)
+        assert request.response_model is BlueprintContent
+        return CompletionResult(
+            content=BlueprintContent.model_validate(self.content).model_dump(),
+            provider_name="nvidia",
+            model_name="configured-test-model",
         )
 
 
@@ -87,6 +108,49 @@ def test_evidence_compaction_preserves_citation_provenance_and_bounds_prompt_siz
     assert compacted[0]["matched_sections"] == ["summary", "quest_hooks"]
     assert compacted[0]["content_truncated"] is True
     assert all(len(item["content"]) == 600 for item in compacted)
+
+
+def test_generation_is_single_pass_and_has_no_cyberrakshak_specific_instructions():
+    evidence = [
+        {
+            "chunk_id": "frostpeak-npcs",
+            "content": "Scout Mira guides the player through Frostpeak Observatory.",
+            "title": "Frostpeak GDD",
+            "chunk_index": 0,
+            "similarity": 0.98,
+            "matched_sections": ["npc_archetypes", "quest_hooks"],
+        }
+    ]
+    expected_content = MockDesignAgentProvider().generate(
+        {"objective": "Build Frostpeak."}, evidence
+    ).content
+    low_level = BlueprintCapturingProvider(expected_content)
+    provider = NvidiaDesignAgentProvider(llm_provider=low_level)
+
+    result = provider.generate(
+        {
+            "objective": "Build Frostpeak.",
+            "resolved_decisions": [
+                {
+                    "decision_id": "decision-1",
+                    "title": "MVP scope",
+                    "decision": "Ship the observatory tutorial before the open world.",
+                }
+            ],
+        },
+        evidence,
+    )
+
+    assert result.content == expected_content
+    assert result.model_name == "configured-test-model"
+    assert len(low_level.requests) == 1
+    prompt = low_level.requests[0].messages[1]["content"].lower()
+    assert "cyberrakshak" not in prompt
+    assert "training sandbox" not in prompt
+    assert "prioritize patch" not in prompt
+    assert "jay" not in prompt
+    assert "resolved_decisions" in prompt
+    assert "binding human design direction" in prompt
 
 
 def test_missing_nvidia_key_falls_back_to_mock_with_visible_degradation():

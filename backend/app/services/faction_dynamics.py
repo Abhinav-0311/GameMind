@@ -56,7 +56,9 @@ class FactionDynamicsEngine:
             lock_connection.close()
 
     @staticmethod
-    def shift_standing(db: Session, faction_a: str, faction_b: str, delta: float) -> Dict[str, Any]:
+    def shift_standing(
+        db: Session, faction_a: str, faction_b: str, delta: float, game_project_id: str = "default_project"
+    ) -> Dict[str, Any]:
         """
         Shifts the standing between Faction A and Faction B.
         Locks entities in alphabetical order to prevent concurrent deadlocks.
@@ -65,10 +67,10 @@ class FactionDynamicsEngine:
         lock_connection = FactionDynamicsEngine._acquire_standing_lock(db, faction_a, faction_b)
         try:
             # Alphabetical row ordering remains useful for related graph updates.
-            graph_repo._lock_entities_ordered([faction_a, faction_b], db)
+            graph_repo._lock_entities_ordered([faction_a, faction_b], db, game_project_id=game_project_id)
 
             active_rel = graph_repo.get_active_relationship(
-                db, faction_a, faction_b, "standing", for_update=True
+                db, faction_a, faction_b, "standing", game_project_id=game_project_id, for_update=True
             )
             old_weight = active_rel.weight if active_rel else 50.0
 
@@ -78,7 +80,8 @@ class FactionDynamicsEngine:
                     source_slug=faction_a,
                     target_slug=faction_b,
                     rel_type="standing",
-                    weight=50.0
+                    weight=50.0,
+                    game_project_id=game_project_id,
                 )
 
             new_weight = max(0.0, min(100.0, old_weight + delta))
@@ -87,7 +90,8 @@ class FactionDynamicsEngine:
                 source_slug=faction_a,
                 target_slug=faction_b,
                 rel_type="standing",
-                new_weight=new_weight
+                new_weight=new_weight,
+                game_project_id=game_project_id,
             )
 
             duration = time.time() - start_time
@@ -120,20 +124,23 @@ class FactionDynamicsEngine:
             FactionDynamicsEngine._release_standing_lock(lock_connection, faction_a, faction_b)
 
     @staticmethod
-    def propagate_reputation(db: Session, source_faction: str, entity_slug: str, delta: float) -> int:
+    def propagate_reputation(
+        db: Session, source_faction: str, entity_slug: str, delta: float, game_project_id: str = "default_project"
+    ) -> int:
         """
         Propagates standing/reputation changes of an entity (e.g. player or NPC) with a faction
         to other connected factions based on alliance/hostility relationships.
         Locks all involved entities in alphabetical order to avoid deadlocks.
         """
         # 1. Discover connected factions first to build lock set
-        src_faction_ent = graph_repo.get_entity_by_slug(db, source_faction)
+        src_faction_ent = graph_repo.get_entity_by_slug(db, source_faction, game_project_id=game_project_id)
         if not src_faction_ent:
             return 0
 
         # Find all active standing relationships involving the source faction
         rels = db.query(WorldRelationship).filter(
             WorldRelationship.rel_type == "standing",
+            WorldRelationship.game_project_id == game_project_id,
             WorldRelationship.valid_to.is_(None),
             (WorldRelationship.source_id == src_faction_ent.id) | (WorldRelationship.target_id == src_faction_ent.id)
         ).all()
@@ -141,7 +148,10 @@ class FactionDynamicsEngine:
         connected_factions: Dict[str, float] = {} # faction_slug -> standing weight
         for rel in rels:
             other_id = rel.target_id if rel.source_id == src_faction_ent.id else rel.source_id
-            other_ent = db.query(WorldEntity).filter(WorldEntity.id == other_id).first()
+            other_ent = db.query(WorldEntity).filter(
+                WorldEntity.id == other_id,
+                WorldEntity.game_project_id == game_project_id,
+            ).first()
             if other_ent:
                 connected_factions[other_ent.slug] = rel.weight
 
@@ -149,19 +159,25 @@ class FactionDynamicsEngine:
         lock_slugs = sorted(list({source_faction, entity_slug} | set(connected_factions.keys())))
         
         # alphabetical lock ordering required
-        graph_repo._lock_entities_ordered(lock_slugs, db)
+        graph_repo._lock_entities_ordered(lock_slugs, db, game_project_id=game_project_id)
 
         updates_count = 0
 
         # 2. Update reputation with the source faction
-        src_rep_rel = graph_repo.get_active_relationship(db, source_faction, entity_slug, "reputation")
+        src_rep_rel = graph_repo.get_active_relationship(
+            db, source_faction, entity_slug, "reputation", game_project_id=game_project_id
+        )
         old_src_rep = src_rep_rel.weight if src_rep_rel else 50.0
         new_src_rep = max(0.0, min(100.0, old_src_rep + delta))
 
         if src_rep_rel:
-            graph_repo.update_relationship(db, source_faction, entity_slug, "reputation", weight=new_src_rep)
+            graph_repo.update_relationship(
+                db, source_faction, entity_slug, "reputation", weight=new_src_rep, game_project_id=game_project_id
+            )
         else:
-            graph_repo.create_relationship(db, source_faction, entity_slug, "reputation", weight=new_src_rep)
+            graph_repo.create_relationship(
+                db, source_faction, entity_slug, "reputation", weight=new_src_rep, game_project_id=game_project_id
+            )
         
         updates_count += 1
         TelemetryService.record_narrative_metric(
@@ -184,14 +200,20 @@ class FactionDynamicsEngine:
             if shift == 0.0:
                 continue
 
-            rep_rel = graph_repo.get_active_relationship(db, fac_slug, entity_slug, "reputation")
+            rep_rel = graph_repo.get_active_relationship(
+                db, fac_slug, entity_slug, "reputation", game_project_id=game_project_id
+            )
             old_rep = rep_rel.weight if rep_rel else 50.0
             new_rep = max(0.0, min(100.0, old_rep + shift))
 
             if rep_rel:
-                graph_repo.update_relationship(db, fac_slug, entity_slug, "reputation", weight=new_rep)
+                graph_repo.update_relationship(
+                    db, fac_slug, entity_slug, "reputation", weight=new_rep, game_project_id=game_project_id
+                )
             else:
-                graph_repo.create_relationship(db, fac_slug, entity_slug, "reputation", weight=new_rep)
+                graph_repo.create_relationship(
+                    db, fac_slug, entity_slug, "reputation", weight=new_rep, game_project_id=game_project_id
+                )
             
             updates_count += 1
             TelemetryService.record_narrative_metric(

@@ -104,9 +104,12 @@ class MemoryService:
         memory.chroma_indexed = True
         db.commit()
 
-    def sync_unindexed_memories(self, db: Session) -> dict:
+    def sync_unindexed_memories(self, db: Session, game_project_id: str = "default_project") -> dict:
         """Sweeps PostgreSQL database for unindexed memories and attempts to index them."""
-        unindexed = db.query(NPCMemory).filter(NPCMemory.chroma_indexed == False).all()
+        unindexed = db.query(NPCMemory).filter(
+            NPCMemory.chroma_indexed == False,
+            NPCMemory.game_project_id == game_project_id,
+        ).all()
         processed = 0
         failed = 0
 
@@ -151,7 +154,9 @@ class MemoryService:
         adjacent_slugs = set()
         if npc_slug:
             try:
-                subgraph = graph_traversal_service.get_subgraph(db=db, seeds=[npc_slug], depth=2)
+                subgraph = graph_traversal_service.get_subgraph(
+                    db=db, seeds=[npc_slug], depth=2, game_project_id=game_project_id
+                )
                 for node in subgraph.get("nodes", []):
                     adjacent_slugs.add(node["slug"])
             except Exception as ex:
@@ -225,7 +230,9 @@ class MemoryService:
             if npc_slug:
                 try:
                     from app.services.emotion_engine import EmotionEngine
-                    emotions = EmotionEngine.get_emotional_state(db, npc_slug, player_id)
+                    emotions = EmotionEngine.get_emotional_state(
+                        db, npc_slug, player_id, game_project_id=game_project_id
+                    )
                     
                     emotion_keywords = {
                         "trust": {"trust", "believe", "friend", "ally", "trusted", "honesty"},

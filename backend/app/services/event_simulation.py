@@ -11,7 +11,9 @@ class EventChainSimulator:
     MAX_BRANCHES = 50
 
     @classmethod
-    def simulate_narrative_paths(cls, db: Session, starting_triggers: List[str]) -> Dict[str, Any]:
+    def simulate_narrative_paths(
+        cls, db: Session, starting_triggers: List[str], game_project_id: str = "default_project"
+    ) -> Dict[str, Any]:
         """
         Runs a simulation of narrative events starting from a list of trigger slugs.
         Enforces MAX_SIMULATION_DEPTH = 5 and MAX_BRANCHES = 50.
@@ -65,17 +67,24 @@ class EventChainSimulator:
 
             # Query active outgoing transitions from curr_node in the graph database
             # We look for relationships of type "triggers", "leads_to", "next", etc.
-            curr_ent = db.query(WorldEntity).filter(WorldEntity.slug == curr_node).first()
+            curr_ent = db.query(WorldEntity).filter(
+                WorldEntity.slug == curr_node,
+                WorldEntity.game_project_id == game_project_id,
+            ).first()
             outgoing_transitions: List[str] = []
             
             if curr_ent:
                 rels = db.query(WorldRelationship).filter(
                     WorldRelationship.source_id == curr_ent.id,
+                    WorldRelationship.game_project_id == game_project_id,
                     WorldRelationship.rel_type.in_(["triggers", "leads_to", "next"]),
                     WorldRelationship.valid_to.is_(None)
                 ).all()
                 for r in rels:
-                    tgt = db.query(WorldEntity).filter(WorldEntity.id == r.target_id).first()
+                    tgt = db.query(WorldEntity).filter(
+                        WorldEntity.id == r.target_id,
+                        WorldEntity.game_project_id == game_project_id,
+                    ).first()
                     if tgt:
                         outgoing_transitions.append(tgt.slug)
 
