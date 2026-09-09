@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import time
@@ -14,6 +15,7 @@ from app.design_agent.contracts import (
     RetrievalPlanOutput,
     build_section_queries,
 )
+from app.design_agent.grounding import review_targets
 from app.design_agent.llm_provider import (
     CompletionRequest,
     CompletionResult,
@@ -223,7 +225,12 @@ class NvidiaDesignAgentProvider:
                 "If a resolved decision conflicts with supplied evidence, preserve the conflict "
                 "as an assumption requiring human confirmation. Set a quest's runtime binding "
                 "only when the evidence explicitly supplies its quest giver, difficulty, rewards, "
-                "and every objective target; otherwise leave runtime null."
+                "and every objective target; otherwise leave runtime null. Keep the complete "
+                "JSON compact: no more than three short items in any list, except a quest may "
+                "have four ordered objectives. Do not repeat the same fact across fields. For a "
+                "section with no section-matched evidence, return content as an empty object, "
+                "an empty citations list, Low confidence, and one warning that human input is "
+                "required; do not invent a proposal for that section."
             ),
             payload={"plan": plan, "evidence": compacted_evidence},
         )
@@ -252,19 +259,43 @@ class NvidiaDesignAgentProvider:
         rejection_reason: str,
     ) -> ProviderResult:
         compacted_evidence = self._compact_evidence(evidence)
-        return self._invoke(
+        result = self._invoke(
             node_name="revise",
             expected_model=BlueprintContent,
             instruction=(
                 "Revise the blueprint to address the human rejection reason. Reuse "
-                "only the supplied evidence and preserve every unrelated section "
-                "exactly. Materially update the targeted section's structured fields; "
-                "a revision note without corrected design data is not a valid revision."
+                "only the supplied evidence and preserve unrelated source facts, but "
+                "return a compact complete replacement rather than copying prose exactly. "
+                "Materially update the targeted section's structured fields; a revision "
+                "note without corrected design data is not a valid revision. Do not repeat "
+                "facts across fields. Limit every list to three short items, except a quest "
+                "may have four ordered objectives. For every section without section-matched "
+                "evidence, return content as an empty object, an empty citations list, Low "
+                "confidence, and one warning that human input is required."
             ),
             payload={
                 "artifact": artifact,
                 "evidence": compacted_evidence,
                 "rejection_reason": rejection_reason,
+            },
+        )
+        # The hosted model returns a complete BlueprintContent object, but a
+        # human rejection authorizes changes only to its named sections. Keep
+        # every other section byte-for-byte from the prior artifact so a
+        # cosmetic model rewrite cannot bypass the human review boundary.
+        targets = review_targets(rejection_reason)
+        revised = copy.deepcopy(artifact)
+        for section_name in targets:
+            revised[section_name] = result.content[section_name]
+        return replace(
+            result,
+            content=revised,
+            metadata={
+                **result.metadata,
+                "revision_targets": targets,
+                "preserved_unrelated_sections": [
+                    section for section in BLUEPRINT_SECTION_KEYS if section not in targets
+                ],
             },
         )
 

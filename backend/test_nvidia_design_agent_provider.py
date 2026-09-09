@@ -1,3 +1,4 @@
+import copy
 import json
 
 import pytest
@@ -151,6 +152,41 @@ def test_generation_is_single_pass_and_has_no_cyberrakshak_specific_instructions
     assert "jay" not in prompt
     assert "resolved_decisions" in prompt
     assert "binding human design direction" in prompt
+    assert "keep the complete json compact" in prompt
+    assert "section with no section-matched evidence" in prompt
+
+
+def test_revision_preserves_sections_not_named_in_human_rejection():
+    evidence = [
+        {
+            "chunk_id": "frostpeak-quest",
+            "content": "Scout Mira asks the player to restore the observatory relay.",
+            "title": "Frostpeak GDD",
+            "chunk_index": 0,
+            "similarity": 0.98,
+            "matched_sections": ["quest_hooks", "npc_archetypes"],
+        }
+    ]
+    original = MockDesignAgentProvider().generate(
+        {"objective": "Build Frostpeak."}, evidence
+    ).content
+    model_replacement = copy.deepcopy(original)
+    model_replacement["quest_hooks"]["content"]["quests"] = []
+    model_replacement["summary"]["content"]["overview"] = "Unrelated model rewrite"
+
+    provider = NvidiaDesignAgentProvider(
+        llm_provider=BlueprintCapturingProvider(model_replacement)
+    )
+    result = provider.revise(
+        original,
+        evidence,
+        "Revise quest hooks to remove unsupported rewards.",
+    )
+
+    assert result.content["quest_hooks"] == model_replacement["quest_hooks"]
+    assert result.content["summary"] == original["summary"]
+    assert result.metadata["revision_targets"] == ["quest_hooks"]
+    assert "summary" in result.metadata["preserved_unrelated_sections"]
 
 
 def test_missing_nvidia_key_falls_back_to_mock_with_visible_degradation():

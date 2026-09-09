@@ -81,6 +81,36 @@ def test_section_retrieval_falls_back_to_individual_queries_after_batch_hnsw_fai
     assert results[0]["matched_sections"]
     assert calls[-2:] == [["overview"], ["quests"]]
 
+
+def test_section_retrieval_uses_scoped_lexical_fallback_when_hnsw_has_no_match(monkeypatch):
+    rag = RAGService()
+
+    class FragmentedCollection:
+        def count(self):
+            return 2
+
+        def query(self, **_kwargs):
+            raise RuntimeError("Cannot return the results in a contigious 2D array")
+
+        def get(self, *, where, include):
+            assert where == {"game_project_id": "project-a"}
+            assert include == ["documents", "metadatas"]
+            return {
+                "ids": ["chunk-level", "chunk-other"],
+                "documents": ["Training Sandbox teaches movement.", "Unrelated lore."],
+                "metadatas": [{"chunk_index": 0}, {"chunk_index": 1}],
+            }
+
+    monkeypatch.setattr(rag, "collection", FragmentedCollection())
+    results = rag.query_lore_sections(
+        {"level_design_suggestions": "Training Sandbox level"},
+        limit_per_section=2,
+        game_project_id="project-a",
+    )
+
+    assert results[0]["chunk_id"] == "chunk-level"
+    assert results[0]["matched_sections"] == ["level_design_suggestions"]
+
 def test_document_upload_local_demo(db_session):
     """Verify document upload writes to the local vector collection."""
     rag = RAGService()

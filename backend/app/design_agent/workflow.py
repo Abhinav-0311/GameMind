@@ -397,14 +397,11 @@ class DesignAgentWorkflow:
                     "current_artifact": existing.content,
                 }
 
-            content = ground_blueprint_citations(
+            content = validate_generated_blueprint(
                 result.content,
                 state["evidence_items"],
             )
-            content = validate_generated_blueprint(
-                content,
-                state["evidence_items"],
-            )
+            content = ground_blueprint_citations(content, state["evidence_items"])
             artifact = DesignAgentArtifact(
                 run_id=run.id,
                 game_project_id=run.game_project_id,
@@ -584,14 +581,11 @@ class DesignAgentWorkflow:
                     "revision_count": run.revision_count,
                 }
 
-            content = ground_blueprint_citations(
+            content = validate_generated_blueprint(
                 result.content,
                 state["evidence_items"],
             )
-            content = validate_generated_blueprint(
-                content,
-                state["evidence_items"],
-            )
+            content = ground_blueprint_citations(content, state["evidence_items"])
             validate_structured_revision(
                 state["current_artifact"],
                 content,

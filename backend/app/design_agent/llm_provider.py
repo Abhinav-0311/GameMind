@@ -12,7 +12,7 @@ from app.design_agent.provider import ProviderUsage
 
 
 NVIDIA_NANO_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
-NVIDIA_SUPER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+NVIDIA_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class NodeModelConfig:
     temperature: float
     max_retries: int
     max_tokens: int
+    disable_thinking: bool = False
 
 
 def _plan_model_config() -> NodeModelConfig:
@@ -46,6 +47,11 @@ def _artifact_model_config(*, max_tokens: int) -> NodeModelConfig:
         temperature=0.0,
         max_retries=2,
         max_tokens=max_tokens,
+        # Super 120B otherwise spends the structured-output budget on private
+        # reasoning, causing valid JSON artifacts to be truncated.
+        disable_thinking=os.getenv(
+            "NVIDIA_ARTIFACT_DISABLE_THINKING", "true"
+        ).strip().lower() in {"1", "true", "yes", "on"},
     )
 
 
@@ -266,6 +272,8 @@ class NvidiaProvider:
                 }
                 if guided_json_schema is not None:
                     payload["guided_json"] = guided_json_schema
+                if config.disable_thinking:
+                    payload["chat_template_kwargs"] = {"enable_thinking": False}
                 response = self._client.post(
                     f"{self.base_url}/chat/completions",
                     headers={

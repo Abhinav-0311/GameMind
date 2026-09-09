@@ -113,10 +113,57 @@ class RAGService:
                     if "contigious 2d array" not in str(error).lower():
                         raise
                     if candidate_limit == 1:
-                        logger.warning("Chroma HNSW could not return evidence for one section query.")
+                        logger.warning(
+                            "Chroma HNSW could not return evidence for one section query; "
+                            "using scoped lexical fallback."
+                        )
+                        fallback = self._scoped_lexical_fallback(
+                            query_text, n_results, where
+                        )
                         for key in aggregated:
-                            aggregated[key].append([])
+                            aggregated[key].append(fallback[key])
         return aggregated
+
+    def _scoped_lexical_fallback(
+        self,
+        query_text: str,
+        n_results: int,
+        where: dict,
+    ) -> dict:
+        """Rank scoped stored chunks when Chroma's HNSW query is fragmented.
+
+        The collection already uses this deterministic lexical embedding. This
+        fallback therefore preserves the same project/document boundary and
+        ranking semantics without returning invented evidence.
+        """
+        try:
+            stored = self.collection.get(
+                where=where,
+                include=["documents", "metadatas"],
+            )
+        except Exception as error:
+            logger.warning("Scoped lexical fallback could not load chunks: %s", error)
+            return {key: [] for key in ("ids", "distances", "documents", "metadatas")}
+
+        ids = stored.get("ids") or []
+        documents = stored.get("documents") or []
+        metadatas = stored.get("metadatas") or []
+        query_vector = self._local_embeddings([query_text])[0]
+        ranked = []
+        for index, document in enumerate(documents):
+            if index >= len(ids) or not isinstance(document, str):
+                continue
+            document_vector = self._local_embeddings([document])[0]
+            similarity = sum(a * b for a, b in zip(query_vector, document_vector))
+            ranked.append((similarity, str(ids[index]), document, metadatas[index] if index < len(metadatas) else {}))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        selected = ranked[:n_results]
+        return {
+            "ids": [item[1] for item in selected],
+            "distances": [max(0.0, 1.0 - item[0]) for item in selected],
+            "documents": [item[2] for item in selected],
+            "metadatas": [item[3] for item in selected],
+        }
 
     def _query_collection(self, query_texts: list[str], n_results: int, where: dict) -> dict:
         """Query Chroma with a narrow fallback for its known batch HNSW failure."""
@@ -142,8 +189,14 @@ class RAGService:
                             n_results,
                             where,
                         )
-                    logger.warning("Chroma HNSW index could not return a single live match; returning no evidence.")
-                    return self._empty_query_rows(query_texts)
+                    logger.warning(
+                        "Chroma HNSW index could not return a single live match; "
+                        "using scoped lexical fallback."
+                    )
+                    fallback = self._scoped_lexical_fallback(
+                        query_texts[0], n_results, where
+                    )
+                    return {key: [fallback[key]] for key in fallback}
 
                 logger.warning(
                     "Chroma HNSW index could not return %s matches; retrying with %s.",

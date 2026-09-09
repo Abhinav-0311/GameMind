@@ -104,7 +104,7 @@ def test_node_model_config_uses_nano_by_default_and_allows_explicit_plan_overrid
     monkeypatch.delenv("NVIDIA_ARTIFACT_MODEL", raising=False)
     monkeypatch.delenv("NVIDIA_ARTIFACT_API_KEY_ENV", raising=False)
     default_artifact = _artifact_model_config(max_tokens=8000)
-    assert default_artifact.model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    assert default_artifact.model == "nvidia/nemotron-3-super-120b-a12b"
     assert default_artifact.api_key_env == "NVIDIA_SUPER_API_KEY"
 
     monkeypatch.setenv("NVIDIA_ARTIFACT_MODEL", "meta/llama-3.1-8b-instruct")
@@ -228,6 +228,34 @@ def test_nvidia_provider_sends_native_json_schema_when_requested():
 
     assert result.content["objective"]
     assert captured[0]["guided_json"] == ResearchPlan.model_json_schema()
+
+
+def test_nvidia_provider_disables_thinking_for_artifact_nodes(monkeypatch):
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return _completion(_valid_plan())
+
+    monkeypatch.setenv("NVIDIA_ARTIFACT_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+    monkeypatch.setenv("NVIDIA_ARTIFACT_DISABLE_THINKING", "true")
+    monkeypatch.setitem(
+        NODE_MODEL_CONFIG,
+        "generate_blueprint",
+        _artifact_model_config(max_tokens=128),
+    )
+    provider = NvidiaProvider(
+        base_url="https://integrate.api.nvidia.com/v1",
+        timeout_seconds=25,
+        repair_enabled=True,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        key_reader=lambda _name: "test-secret",
+        sleep=lambda _seconds: None,
+    )
+
+    provider.complete(_request("generate_blueprint"))
+
+    assert captured[0]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_nvidia_provider_discards_reasoning_and_parses_visible_content_only():

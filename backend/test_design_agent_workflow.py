@@ -16,6 +16,7 @@ from app.design_agent.workflow import DesignAgentWorkflow
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
     DesignAgentArtifact,
+    DesignAgentCritique,
     DesignAgentEvidenceSnapshot,
     DesignAgentReviewEvent,
     DesignAgentRun,
@@ -311,6 +312,35 @@ def test_incomplete_nvidia_draft_reaches_review_but_cannot_be_approved(db_sessio
         assert db_session.query(GameBlueprint).filter(
             GameBlueprint.game_project_id == project_id
         ).count() == 0
+    finally:
+        app.dependency_overrides.pop(get_design_agent_service, None)
+
+
+def test_nvidia_critique_verdict_blocks_approval_before_structural_finalization(db_session):
+    project_id = f"agent_critique_gate_{uuid.uuid4().hex[:8]}"
+    document, chunks = create_source(db_session, project_id)
+    service = make_service(db_session, CountingRAG(chunks), IncompleteNvidiaProvider())
+
+    try:
+        run = start_run(service, document.id, project_id)
+        critique = db_session.query(DesignAgentCritique).filter(
+            DesignAgentCritique.run_id == uuid.UUID(run["id"])
+        ).one()
+        critique.content = {
+            **critique.content,
+            "verdict": "needs_revision",
+            "quality_scorecard": {"passed": True, "blockers": []},
+        }
+        db_session.commit()
+
+        approval = client.post(
+            f"/api/v1/design-agent/runs/{run['id']}/review",
+            headers={"X-Game-Project-ID": project_id},
+            json={"decision": "approve"},
+        )
+
+        assert approval.status_code == 409
+        assert "Independent critique must be resolved" in approval.json()["detail"]
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)
 

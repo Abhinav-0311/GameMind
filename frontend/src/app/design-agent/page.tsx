@@ -113,7 +113,9 @@ function ValueView({ value, depth = 0 }: { value: unknown; depth?: number }) {
       <dl className={depth > 0 ? "space-y-2" : "divide-y divide-[var(--border)]"}>
         {Object.entries(value as Record<string, unknown>).map(([key, entry]) => (
           <div key={key} className={depth > 0 ? "grid gap-1 sm:grid-cols-[8rem_1fr]" : "grid gap-2 py-5 first:pt-0 last:pb-0 sm:grid-cols-[10rem_1fr]"}>
-            <dt className="text-xs font-semibold text-[var(--text-secondary)]">{titleCase(key)}</dt>
+            <dt className={`text-xs font-semibold ${key === "assumptions" ? "text-amber-800 dark:text-amber-200" : "text-[var(--text-secondary)]"}`}>
+              {key === "assumptions" ? "Review required" : key === "source_chunk_ids" ? "Evidence references" : titleCase(key)}
+            </dt>
             <dd className="min-w-0 text-sm leading-6 text-[var(--foreground)]">
               <ValueView value={entry} depth={depth + 1} />
             </dd>
@@ -164,6 +166,46 @@ function PreApprovalScorecard({ scorecard }: { scorecard: DesignAgentQualityScor
   );
 }
 
+function ApprovalGate({ scorecard, needsRevision, reviewable }: { scorecard?: DesignAgentQualityScorecard; needsRevision: boolean; reviewable: boolean }) {
+  const blockers = scorecard?.blockers ?? [];
+  const blocked = needsRevision || (scorecard ? !scorecard.passed : false);
+  if (!reviewable) {
+    return (
+      <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Approval status">
+        <p className="page-kicker">Approval status</p>
+        <p className="mt-2 text-sm font-bold text-[var(--foreground)]">Review checkpoint pending</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">GameMind is still preparing the draft or its independent critique. Approval is unavailable until the workflow pauses here.</p>
+      </section>
+    );
+  }
+  if (!blocked) {
+    return (
+      <section className="border-b border-emerald-500/25 bg-emerald-500/5 p-5" aria-label="Approval status">
+        <p className="page-kicker">Approval status</p>
+        <p className="mt-2 text-sm font-bold text-emerald-800 dark:text-emerald-200">Ready for your judgment</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">System checks are clear. Review the cited draft, then approve only when you agree with it.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="border-b border-amber-500/30 bg-amber-500/8 p-5" aria-label="Approval blocked">
+      <p className="page-kicker">Approval status</p>
+      <div className="mt-2 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-[var(--foreground)]">Approval is blocked</h3>
+          <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">Request a revision or resolve the review items before this draft can become runtime intent.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200">Review needed</span>
+      </div>
+      {blockers.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Approval blockers">
+          {blockers.map((blocker) => <li key={blocker} className="rounded-md border border-amber-500/25 bg-[var(--surface)] px-2 py-1 text-xs font-semibold text-[var(--foreground)]">{blocker}</li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function LoadingView() {
   return (
     <div className="page-shell" aria-busy="true" aria-label="Loading design-agent workspace">
@@ -202,6 +244,8 @@ export default function DesignAgentPage() {
   const activeSectionData = activeRun?.current_artifact?.content?.[activeSection];
   const critiqueFindings = activeRun?.critique?.content.findings ?? [];
   const preApprovalScorecard = activeRun?.critique?.content.quality_scorecard;
+  const needsRevision = activeRun?.critique?.content.verdict === "needs_revision";
+  const approvalBlocked = needsRevision || Boolean(preApprovalScorecard && !preApprovalScorecard.passed);
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
@@ -646,6 +690,7 @@ export default function DesignAgentPage() {
             </section>
 
             <aside className="status-strip overflow-hidden rounded-lg">
+              <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} reviewable={reviewable} />
               {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} />}
               <div className="border-b border-[var(--border)] p-5">
                 <p className="page-kicker">Independent critique</p>
@@ -687,9 +732,10 @@ export default function DesignAgentPage() {
                       type="button"
                       className="btn-primary w-full"
                       onClick={() => submitReview("approve")}
-                      disabled={action !== null}
+                      disabled={action !== null || approvalBlocked}
+                      title={approvalBlocked ? "Resolve the listed review blockers before approval." : undefined}
                     >
-                      {action === "approve" ? "Finalizing…" : "Approve run"}
+                      {action === "approve" ? "Finalizing…" : approvalBlocked ? "Approval blocked" : "Approve run"}
                     </button>
                     <button
                       type="button"

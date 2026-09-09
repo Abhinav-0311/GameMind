@@ -18,13 +18,13 @@ BLUEPRINT_SECTION_KEYS = (
 SECTION_RETRIEVAL_FOCUS = {
     "summary": "game overview premise genre player role target platform",
     "narrative_direction": "story narrative lore history factions conflict themes ending",
-    "art_style_direction": "art style visual direction palette environment character aesthetic",
+    "art_style_direction": "low-poly 3D cyber-infiltration visual hat colour walls of fire malware enemies visual style environment character aesthetic",
     "npc_archetypes": "characters NPC roles personality dialogue relationship companion antagonist",
-    "npc_memory_design": "NPC memory continuity reactions choices trust relationship persistent events",
-    "level_design_suggestions": "level mission stage progression objectives environment Level 1 Level 10",
-    "gameplay_systems": "core gameplay loop mechanics controls scoring progression combat puzzle stealth",
+    "npc_memory_design": "PATCH rule-based dynamic dialogue player behaviour repeated mistakes stealth success combat route low health mission reactions choices",
+    "level_design_suggestions": "Training Sandbox Password Vault Phishing Office Malware Warehouse Firewall Fortress QR Market Social Engineering Plaza Ransomware Ruins The Reveal Hunt Jay level progression",
+    "gameplay_systems": "enter mission identify target stealth bold puzzle speed wrong interaction rating detection damage time data integrity PowerRush scoring combat",
     "quest_hooks": "quests missions objectives rewards side quests story tasks",
-    "unity_runtime_preview": "Unity engine platform runtime integration build target prefabs scenes data",
+    "unity_runtime_preview": "Unity 6000.2.7f2 PC Android build targets AR marker image tracking shared systems player profile leaderboard PATCH dialogue",
 }
 BlueprintSectionKey = Literal[
     "summary",

@@ -205,6 +205,25 @@ class DesignAgentService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail="The review artifact or its frozen evidence snapshot is unavailable.",
                 )
+            critique = db.query(DesignAgentCritique).filter(
+                DesignAgentCritique.run_id == run.id,
+                DesignAgentCritique.artifact_id == artifact.id,
+                DesignAgentCritique.game_project_id == game_project_id,
+            ).first()
+            critique_content = critique.content if critique else {}
+            scorecard = critique_content.get("quality_scorecard") or {}
+            blockers = scorecard.get("blockers") or []
+            if critique_content.get("verdict") == "needs_revision" or (
+                scorecard and not scorecard.get("passed", False)
+            ):
+                detail = ", ".join(str(blocker) for blocker in blockers) or "Independent critique"
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This draft needs revision before approval: "
+                        f"{detail} must be resolved."
+                    ),
+                )
             try:
                 validate_generated_blueprint(
                     artifact.content,

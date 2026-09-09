@@ -212,6 +212,7 @@ export interface DesignAgentQualityScorecard {
   passed: boolean;
   blockers: string[];
   unresolved_assumptions: { record: string; assumption: string }[];
+  unsupported_sections?: string[];
 }
 
 export interface DesignAgentCritique {

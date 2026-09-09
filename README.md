@@ -183,12 +183,12 @@ NVIDIA_NANO_API_KEY=your-local-nano-key
 NVIDIA_SUPER_API_KEY=your-local-super-key
 ```
 
-The planner uses `nvidia/llama-3.1-nemotron-nano-8b-v1`. Blueprint generation,
-critique, and revision use `nvidia/llama-3.3-nemotron-super-49b-v1.5`. These
-assignments are fixed per workflow node so the two keys and model
-responsibilities cannot be mixed accidentally. GameMind validates only the
-visible response content; provider reasoning fields are discarded and never
-stored in workflow artifacts or traces. Never commit a real API key.
+The planner uses the configured NVIDIA planning model. Blueprint generation,
+critique, and revision default to `nvidia/nemotron-3-super-120b-a12b`. These
+assignments are fixed per workflow node. For Super 120B structured artifacts,
+GameMind disables private reasoning so the response budget is available for
+valid JSON; visible content is validated and provider reasoning is never stored
+in workflow artifacts or traces. Never commit a real API key.
 
 ## Local Setup
 

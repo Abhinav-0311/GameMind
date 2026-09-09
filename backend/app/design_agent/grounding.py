@@ -6,6 +6,7 @@ from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, BlueprintContent
 
 
 SECTION_KEYWORDS = (
+    ("summary", "summary"),
     ("level", "level_design_suggestions"),
     ("npc", "npc_archetypes"),
     ("character", "npc_archetypes"),
@@ -46,6 +47,70 @@ def _cited_evidence_text(record: dict[str, Any], evidence_by_id: dict[str, dict[
         for source_id in record["source_chunk_ids"]
         if source_id in evidence_by_id
     ).casefold()
+
+
+def _normalise_for_quote_match(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9']+", value.casefold()))
+
+
+def _mark_generated_dialogue_for_review(
+    validated: dict[str, Any],
+    evidence_by_id: dict[str, dict[str, Any]],
+) -> None:
+    """Keep creative dialogue useful, but never present it as a GDD fact.
+
+    A character citation can ground *who* speaks and the scenario, while the
+    line itself may be a useful model proposal. Exact source lines stay factual;
+    everything else is explicitly a narrative-review draft before runtime use.
+    """
+    for npc in validated["npc_archetypes"]["content"]["npcs"]:
+        source_text = _normalise_for_quote_match(
+            _cited_evidence_text(npc, evidence_by_id)
+        )
+        has_generated_hook = any(
+            (normalised := _normalise_for_quote_match(hook))
+            and normalised not in source_text
+            for hook in npc["dialogue_hooks"]
+        )
+        if has_generated_hook:
+            npc["assumptions"] = list(dict.fromkeys([
+                *npc["assumptions"],
+                "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+            ]))
+
+
+def _mark_generated_quest_details_for_review(
+    validated: dict[str, Any],
+    evidence_by_id: dict[str, dict[str, Any]],
+) -> None:
+    """Expose generated quest design as a proposal when it is not a GDD fact."""
+    for quest in validated["quest_hooks"]["content"]["quests"]:
+        source_text = _normalise_for_quote_match(
+            _cited_evidence_text(quest, evidence_by_id)
+        )
+        fields = {
+            "objective": [quest["objective"]],
+            "reward": [quest["reward"]] if quest.get("reward") else [],
+            "objectives": quest["objectives"],
+            "failure states": quest["failure_states"],
+            "dialogue hooks": quest["dialogue_hooks"],
+        }
+        generated_fields = [
+            label
+            for label, values in fields.items()
+            if any(
+                (normalised := _normalise_for_quote_match(value))
+                and normalised not in source_text
+                for value in values
+            )
+        ]
+        if generated_fields:
+            quest["assumptions"] = list(dict.fromkeys([
+                *quest["assumptions"],
+                "Generated quest "
+                + ", ".join(generated_fields)
+                + " are creative proposals and require design approval before runtime use.",
+            ]))
 
 
 def _reject_unsupported_quest_details(
@@ -110,6 +175,55 @@ def _add_integration_steps(validated: dict[str, Any]) -> None:
         quest["implementation_notes"] = list(dict.fromkeys(quest["implementation_notes"] + generated_steps))
 
 
+def _enforce_nested_record_citation_closure(
+    validated: dict[str, Any],
+    evidence_by_id: dict[str, dict[str, Any]],
+) -> None:
+    """Retain NPC and quest records only when their evidence matches their section.
+
+    A model-provided ``source_chunk_ids`` list proves only that a chunk was in
+    the frozen snapshot. It does not prove that the chunk supports an NPC or
+    quest claim. This turns records without section-routed evidence into a
+    visible, non-executable review blocker instead of quietly retaining them.
+    """
+    for section_name, record_key, label_key in (
+        ("npc_archetypes", "npcs", "name"),
+        ("quest_hooks", "quests", "title"),
+    ):
+        section = validated[section_name]
+        retained = []
+        blocked_labels = []
+        for record in section["content"][record_key]:
+            supported_ids = [
+                source_id
+                for source_id in record["source_chunk_ids"]
+                if section_name in set(
+                    evidence_by_id.get(source_id, {}).get("matched_sections") or []
+                )
+            ]
+            if not supported_ids:
+                blocked_labels.append(str(record.get(label_key) or "Untitled record"))
+                continue
+            record["source_chunk_ids"] = list(dict.fromkeys(supported_ids))
+            retained.append(record)
+
+        section["content"][record_key] = retained
+        if blocked_labels:
+            section["warnings"].append(
+                "Blocked "
+                f"{len(blocked_labels)} {record_key} without section-matched frozen evidence: "
+                + ", ".join(blocked_labels)
+                + ". Add a source-grounded design decision before generating it."
+            )
+        # Canonicalize the outer citation list from the records that survived
+        # closure so the UI, critique, and approval gate see the same evidence.
+        section["citations"] = list(dict.fromkeys(
+            source_id
+            for record in retained
+            for source_id in record["source_chunk_ids"]
+        ))
+
+
 def assess_artifact_quality(content: dict[str, Any]) -> dict[str, Any]:
     """Return transparent, deterministic review signals before human approval.
 
@@ -118,6 +232,11 @@ def assess_artifact_quality(content: dict[str, Any]) -> dict[str, Any]:
     designer's judgment of creative quality.
     """
     validated = BlueprintContent.model_validate(content).model_dump()
+    unsupported_sections = [
+        section_name
+        for section_name in BLUEPRINT_SECTION_KEYS
+        if not validated[section_name]["citations"]
+    ]
     npcs = validated["npc_archetypes"]["content"]["npcs"]
     quests = validated["quest_hooks"]["content"]["quests"]
     records = [*npcs, *quests]
@@ -125,7 +244,7 @@ def assess_artifact_quality(content: dict[str, Any]) -> dict[str, Any]:
     cited_records = sum(bool(record["source_chunk_ids"]) for record in records)
     actionable_npcs = sum(bool(npc["dialogue_hooks"]) for npc in npcs)
     actionable_quests = sum(
-        bool(quest["objectives"] and quest["failure_states"] and quest["dependencies"])
+        bool(quest["objectives"] and quest["failure_states"])
         for quest in quests
     )
     integration_ready = sum(bool(record["implementation_notes"]) for record in records)
@@ -143,14 +262,26 @@ def assess_artifact_quality(content: dict[str, Any]) -> dict[str, Any]:
 
     completeness_total = len(npcs) + len(quests)
     completeness = ratio(actionable_npcs + actionable_quests, completeness_total)
-    grounding = ratio(cited_records, total_records)
+    record_grounding = ratio(cited_records, total_records)
+    section_grounding = ratio(
+        len(BLUEPRINT_SECTION_KEYS) - len(unsupported_sections),
+        len(BLUEPRINT_SECTION_KEYS),
+    )
+    grounding = min(record_grounding, section_grounding)
     integration = ratio(integration_ready, total_records)
+    # A draft with unresolved implementation assumptions or unsupported
+    # sections is not integration-ready, even if every record happens to have
+    # mechanical integration steps. Reflect that in the numeric value as well
+    # as the pass/fail flag so the UI never shows a perfect score for a blocked
+    # artifact.
+    if unresolved or unsupported_sections:
+        integration = 0.0
     consistency = 0.0 if duplicate_records else 1.0
     metrics = [
-        {"key": "grounding", "label": "Grounding", "value": grounding, "passed": grounding == 1.0, "detail": "Every NPC and quest cites frozen GDD evidence."},
-        {"key": "completeness", "label": "Completeness", "value": completeness, "passed": completeness == 1.0, "detail": "NPCs need dialogue hooks; quests need objectives, failure states, and dependencies."},
+        {"key": "grounding", "label": "Grounding", "value": grounding, "passed": grounding == 1.0, "detail": "Every generated section and every NPC or quest record cites frozen GDD evidence."},
+        {"key": "completeness", "label": "Completeness", "value": completeness, "passed": completeness == 1.0, "detail": "NPCs need dialogue hooks; quests need objectives and failure states. Dependencies may be empty when the GDD does not support one."},
         {"key": "consistency", "label": "Contradiction checks", "value": consistency, "passed": consistency == 1.0, "detail": "Checks for duplicate NPC names and quest IDs; human review still assesses narrative conflicts."},
-        {"key": "integration_readiness", "label": "Integration readiness", "value": integration, "passed": integration == 1.0 and not unresolved, "detail": "Each record has integration steps and no unresolved assumptions remain."},
+        {"key": "integration_readiness", "label": "Integration readiness", "value": integration, "passed": integration == 1.0, "detail": "Each record has integration steps, no unresolved assumptions remain, and every section has source support."},
     ]
     blockers = [metric["label"] for metric in metrics if not metric["passed"]]
     return {
@@ -159,6 +290,7 @@ def assess_artifact_quality(content: dict[str, Any]) -> dict[str, Any]:
         "passed": not blockers,
         "blockers": blockers,
         "unresolved_assumptions": unresolved,
+        "unsupported_sections": unsupported_sections,
     }
 
 
@@ -209,6 +341,9 @@ def validate_generated_blueprint(
                     raise ValueError(
                         f"{section_name} references source chunks outside the frozen evidence snapshot."
                     )
+        _enforce_nested_record_citation_closure(validated, evidence_by_id)
+        _mark_generated_dialogue_for_review(validated, evidence_by_id)
+        _mark_generated_quest_details_for_review(validated, evidence_by_id)
         for npc in validated["npc_archetypes"]["content"]["npcs"]:
             hooks = npc["dialogue_hooks"]
             complete_hooks = [hook for hook in hooks if not _looks_truncated_dialogue(hook)]
@@ -219,12 +354,16 @@ def validate_generated_blueprint(
                 )
         required = actionable_sections or {"npc_archetypes", "quest_hooks"}
         if require_actionable and "npc_archetypes" in required:
+            if not validated["npc_archetypes"]["content"]["npcs"]:
+                raise ValueError("No NPC has section-matched frozen evidence for approval.")
             for npc in validated["npc_archetypes"]["content"]["npcs"]:
                 if not npc["dialogue_hooks"]:
                     raise ValueError(
                         f"NPC '{npc['name']}' has no cited dialogue hook; omit it or provide a usable hook."
                     )
         if require_actionable and "quest_hooks" in required:
+            if not validated["quest_hooks"]["content"]["quests"]:
+                raise ValueError("No quest has section-matched frozen evidence for approval.")
             for quest in validated["quest_hooks"]["content"]["quests"]:
                 if not quest["objectives"]:
                     raise ValueError(
@@ -236,11 +375,19 @@ def validate_generated_blueprint(
 
 
 def review_target(rejection_reason: str) -> str:
+    """Return the first matched section for legacy single-target callers."""
+    return review_targets(rejection_reason)[0]
+
+
+def review_targets(rejection_reason: str) -> list[str]:
+    """Resolve every section explicitly mentioned by a human review reason."""
     reason = rejection_reason.lower()
+    targets = []
     for keyword, section_name in SECTION_KEYWORDS:
         if re.search(rf"\b{keyword}\w*\b", reason):
-            return section_name
-    return "summary"
+            if section_name not in targets:
+                targets.append(section_name)
+    return targets or ["summary"]
 
 
 def ground_blueprint_citations(
@@ -262,7 +409,7 @@ def ground_blueprint_citations(
             citation_id = str(citation)
             item = evidence_by_id.get(citation_id)
             matched_sections = set(item.get("matched_sections") or []) if item else set()
-            section_matches = not matched_sections or section_name in matched_sections
+            section_matches = section_name in matched_sections
             if item and section_matches and citation_id not in valid_citations:
                 valid_citations.append(citation_id)
             else:
@@ -305,29 +452,34 @@ def validate_structured_revision(
     after: dict[str, Any],
     rejection_reason: str,
 ) -> str:
-    """Require a targeted content change and reject unrelated section drift."""
-    target = review_target(rejection_reason)
+    """Require a human-targeted change and reject unrelated section drift."""
+    targets = set(review_targets(rejection_reason))
     before_validated = BlueprintContent.model_validate(before).model_dump()
     after_validated = BlueprintContent.model_validate(after).model_dump()
 
-    before_target = copy.deepcopy(before_validated[target]["content"])
-    after_target = copy.deepcopy(after_validated[target]["content"])
-    for metadata_key in ("human_revision", "review_directive", "review_adjustments"):
-        before_target.pop(metadata_key, None)
-        after_target.pop(metadata_key, None)
-    if before_target == after_target:
+    changed_targets = []
+    for target in targets:
+        before_target = copy.deepcopy(before_validated[target]["content"])
+        after_target = copy.deepcopy(after_validated[target]["content"])
+        for metadata_key in ("human_revision", "review_directive", "review_adjustments"):
+            before_target.pop(metadata_key, None)
+            after_target.pop(metadata_key, None)
+        if before_target != after_target:
+            changed_targets.append(target)
+    if not changed_targets:
         raise ValueError(
-            f"Revision did not materially change structured section '{target}'."
+            "Revision did not materially change any human-targeted section: "
+            + ", ".join(sorted(targets))
         )
 
     changed_unrelated = [
         section_name
         for section_name in BLUEPRINT_SECTION_KEYS
-        if section_name != target
+        if section_name not in targets
         and before_validated[section_name] != after_validated[section_name]
     ]
     if changed_unrelated:
         raise ValueError(
             "Revision changed unrelated sections: " + ", ".join(changed_unrelated)
         )
-    return target
+    return ",".join(sorted(changed_targets))
