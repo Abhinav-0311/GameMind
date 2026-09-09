@@ -128,6 +128,37 @@ namespace GameMind.Contracts
     }
 
     [Serializable]
+    public class ApprovedRuntimeNpcArtifactDto
+    {
+        public string slug;
+        public string name;
+        public string archetype;
+        public string dialogue_style;
+        public List<string> dialogue_hooks;
+    }
+
+    [Serializable]
+    public class ApprovedRuntimeQuestArtifactDto
+    {
+        public string design_id;
+        public string runtime_quest_id;
+        public string title;
+        public string objective;
+        public List<string> objectives;
+        public List<string> failure_states;
+        public List<string> dependencies;
+        public List<string> dialogue_hooks;
+    }
+
+    [Serializable]
+    public class ApprovedRuntimeDesignArtifactsDto
+    {
+        public string contract_version;
+        public List<ApprovedRuntimeNpcArtifactDto> npcs;
+        public List<ApprovedRuntimeQuestArtifactDto> quests;
+    }
+
+    [Serializable]
     public class BlueprintRuntimeBundleResponse
     {
         public string api_version;
@@ -137,6 +168,7 @@ namespace GameMind.Contracts
         public List<QuestDto> quests;
         public List<MemoryDto> memories;
         public List<WorldFlagDto> world_flags;
+        public ApprovedRuntimeDesignArtifactsDto approved_design;
     }
 
     [Serializable]
