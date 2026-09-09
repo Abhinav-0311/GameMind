@@ -124,7 +124,13 @@ class RevisionJudgment(BaseModel):
 
 
 class DesignAgentEvaluationCreate(BaseModel):
-    rubric_version: Literal["cyberrakshak-v1"] = "cyberrakshak-v1"
+    """A compact, reusable evaluation rubric for any reviewed GDD run.
+
+    ``cyberrakshak-v1`` remains accepted for historical scorecards; new runs
+    should use the project-neutral default.
+    """
+
+    rubric_version: Literal["gdd-v1", "cyberrakshak-v1"] = "gdd-v1"
     citation_judgments: list[CitationJudgment] = Field(min_length=1)
     claim_judgments: list[ClaimJudgment] = Field(min_length=1)
     critique_judgments: list[CritiqueJudgment] = Field(min_length=1)

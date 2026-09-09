@@ -22,6 +22,15 @@ interface NextAction {
   action: string;
 }
 
+function hasMaterializedRuntimeRecords(blueprint: BlueprintResponse) {
+  const manifest = blueprint.materialization_manifest;
+  if (!manifest) return false;
+  return ["npcs", "quest_ids", "memory_ids", "flag_keys"].some((key) => {
+    const value = manifest[key];
+    return Array.isArray(value) && value.length > 0;
+  });
+}
+
 export default function WorkspaceOverview() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
@@ -76,7 +85,8 @@ export default function WorkspaceOverview() {
 
   const hasDocuments = documents.length > 0;
   const hasBlueprints = blueprints.length > 0;
-  const runtimeReadyCount = blueprints.filter((blueprint) => blueprint.materialization_manifest).length;
+  const approvedBlueprints = blueprints.filter((blueprint) => blueprint.status === "approved");
+  const runtimeReadyCount = blueprints.filter(hasMaterializedRuntimeRecords).length;
   const hasRuntimeData = runtimeReadyCount > 0;
   const isLocalMode = health?.ai_mode === "local_demo";
 
@@ -92,19 +102,21 @@ export default function WorkspaceOverview() {
 
     if (!hasBlueprints) {
       return {
-        label: "Generate a blueprint",
-        description: "Convert one source document into narrative, NPC, quest, memory, level, and runtime sections.",
-        href: "/blueprints",
-        action: "Open blueprints",
+        label: "Start a reviewed design run",
+        description: "Use your indexed GDD as fixed evidence, then inspect the draft and independent critique before approval.",
+        href: "/design-agent",
+        action: "Open review",
       };
     }
 
     if (!hasRuntimeData) {
       return {
-        label: "Approve runtime data",
-        description: "Materialize the approved blueprint so the simulator or a game client can consume stable records.",
+        label: approvedBlueprints.length > 0 ? "Materialize reviewed runtime data" : "Review a blueprint before runtime",
+        description: approvedBlueprints.length > 0
+          ? "Materialize only explicit runtime bindings so the simulator or a game client can consume stable records."
+          : "Inspect the source evidence and blueprint sections, then approve only the design you are ready to make runtime data.",
         href: "/blueprints",
-        action: "Materialize",
+        action: approvedBlueprints.length > 0 ? "Open materialization" : "Open blueprints",
       };
     }
 
@@ -114,7 +126,7 @@ export default function WorkspaceOverview() {
       href: "/vertical-slice",
       action: "Open runtime test",
     };
-  }, [hasBlueprints, hasDocuments, hasRuntimeData]);
+  }, [approvedBlueprints.length, hasBlueprints, hasDocuments, hasRuntimeData]);
 
   const productModes: ProductMode[] = [
     {
@@ -150,7 +162,8 @@ export default function WorkspaceOverview() {
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
             GameMind helps new game developers convert GDDs, lore, NPC notes, quest ideas, and level concepts into
-            grounded blueprints and engine-ready runtime data without requiring paid model APIs.
+            grounded blueprints and engine-ready runtime data. Local evidence checks run first; NVIDIA review is an
+            explicit, governed choice.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -191,7 +204,7 @@ export default function WorkspaceOverview() {
         <StatusTile label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
         <StatusTile label="Blueprints" value={isLoading ? "--" : String(blueprints.length)} />
         <StatusTile label="Runtime ready" value={isLoading ? "--" : String(runtimeReadyCount)} />
-        <StatusTile label="AI cost" value="$0" accent />
+        <StatusTile label="AI review" value="opt-in" accent />
       </section>
 
       <section id="product-modes" className="mt-14">
@@ -283,8 +296,8 @@ function FirstRunWorkspace() {
     },
     {
       number: "03",
-      title: "Build from evidence",
-      body: "Generate a blueprint only after the source is searchable, then inspect the citations behind each section.",
+      title: "Review before runtime",
+      body: "Generate from indexed evidence, inspect citations and critique, then approve and materialize only explicit runtime data.",
     },
   ];
 
@@ -305,7 +318,7 @@ function FirstRunWorkspace() {
               Open sources
             </Link>
             <Link href="/blueprints" className="btn-secondary">
-              See blueprint workflow
+              Preview blueprint workflow
             </Link>
           </div>
 

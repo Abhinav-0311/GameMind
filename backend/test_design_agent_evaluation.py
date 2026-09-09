@@ -189,6 +189,21 @@ def test_scorecard_thresholds_fail_honestly():
     assert metrics[1]["value"] == 1
 
 
+def test_generic_gdd_rubric_is_the_default_for_new_evaluations():
+    payload = DesignAgentEvaluationCreate(
+        citation_judgments=[
+            {"section": "summary", "chunk_id": uuid.uuid4(), "relevant": True},
+        ],
+        claim_judgments=[{"claim": "A supported source claim.", "supported": True}],
+        critique_judgments=[{"finding_index": 0, "useful": True}],
+        revision_judgments=[
+            {"requirement": "Correct the reviewed design artifact.", "applied": True},
+        ],
+    )
+
+    assert payload.rubric_version == "gdd-v1"
+
+
 def test_cyberrakshak_end_to_end_scorecard_persists_after_restart(db_session):
     project_id = f"cyberrakshak_eval_{uuid.uuid4().hex[:8]}"
     document, chunks = create_cyberrakshak_source(db_session, project_id)

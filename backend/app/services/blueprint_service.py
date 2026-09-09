@@ -225,6 +225,21 @@ class BlueprintService:
             chunks,
             game_project_id,
         )
+        proposal_sources = [
+            source.title
+            for source in supporting_documents
+            if source.source_kind == "change_proposal"
+        ]
+        if proposal_sources:
+            proposal_names = ", ".join(proposal_sources)
+            proposal_warning = (
+                f"Includes proposed input from {proposal_names}. Treat claims that originate in this change proposal "
+                "as assumptions until a human approves them or they are added to a revised GDD."
+            )
+            for section in sections.values():
+                warnings = section.setdefault("warnings", [])
+                if proposal_warning not in warnings:
+                    warnings.append(proposal_warning)
 
         blueprint = GameBlueprint(
             title=f"Blueprint: {document.title}",

@@ -114,6 +114,79 @@ def test_generate_blueprint_uses_selected_supporting_sources(db_session):
     assert data["npc_archetypes"]["content"]["npcs"][0]["name"] == "Lyra"
 
 
+def test_change_proposal_is_visible_as_an_assumption_in_generated_sections(db_session):
+    rag = RAGService()
+    project_id = f"proposal_warning_{uuid.uuid4().hex[:8]}"
+    primary = rag.process_document(
+        db=db_session,
+        file_name="main_gdd.md",
+        file_bytes=b"# GDD\nOverview: Explore an ancient observatory.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="gdd",
+    )
+    proposal = rag.process_document(
+        db=db_session,
+        file_name="stealth_proposal.md",
+        file_bytes=b"# Change Proposal\nFeature Proposal: Add a stealth takedown route.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="change_proposal",
+    )
+
+    response = client.post(
+        "/api/v1/blueprints/generate",
+        headers={"X-Game-Project-ID": project_id},
+        json={"document_id": str(primary.id), "supporting_document_ids": [str(proposal.id)]},
+    )
+
+    assert response.status_code == 201
+    warning = "Includes proposed input from stealth_proposal.md."
+    assert any(warning in item for item in response.json()["summary"]["warnings"])
+    assert any(warning in item for item in response.json()["gameplay_systems"]["warnings"])
+
+
+def test_change_impact_preview_returns_candidate_sections_without_claiming_a_change(db_session):
+    rag = RAGService()
+    project_id = f"proposal_impact_{uuid.uuid4().hex[:8]}"
+    primary = rag.process_document(
+        db=db_session,
+        file_name="main_gdd.md",
+        file_bytes=(
+            b"# GDD\nOverview: Explore an ancient observatory.\n"
+            b"# Gameplay Systems\nStealth traversal helps players avoid guards."
+        ),
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="gdd",
+    )
+    blueprint = client.post(
+        "/api/v1/blueprints/generate",
+        headers={"X-Game-Project-ID": project_id},
+        json={"document_id": str(primary.id)},
+    ).json()
+    proposal = rag.process_document(
+        db=db_session,
+        file_name="stealth_proposal.md",
+        file_bytes=b"# Change Proposal\nAdd an observatory stealth takedown route for guards.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="change_proposal",
+    )
+
+    response = client.get(
+        f"/api/v1/blueprints/{blueprint['id']}/change-impact/{proposal.id}",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["proposal_title"] == "stealth_proposal.md"
+    summary = next(item for item in data["impacts"] if item["section"] == "Game summary")
+    assert "observatory" in summary["matched_terms"]
+    assert summary["message"].startswith("Candidate review area")
+
+
 def test_generate_blueprint_rejects_cross_project_supporting_source(db_session):
     rag = RAGService()
     primary = rag.process_document(

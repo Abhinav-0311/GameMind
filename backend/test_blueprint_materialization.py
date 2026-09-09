@@ -477,8 +477,21 @@ def test_runtime_bundle_rejects_an_unapproved_blueprint(db_session, make_bluepri
     assert response.status_code == 409
     assert "Only an approved blueprint" in response.json()["detail"]
 
-def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_session, make_blueprint):
-    """Unity demo bundles still load when a materialization skipped duplicate matching records."""
+def test_runtime_bundle_rejects_an_approved_but_unmaterialized_blueprint(db_session, make_blueprint):
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    blueprint = make_blueprint(project_id, "approved")
+
+    response = client.get(
+        f"/api/v1/blueprints/{blueprint.id}/runtime-bundle",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 409
+    assert "must be materialized" in response.json()["detail"]
+
+
+def test_runtime_bundle_rejects_skipped_records_instead_of_guessing_a_bundle(db_session, make_blueprint):
+    """A runtime bundle may expose only records explicitly owned by its manifest."""
     project_id = f"project_{uuid.uuid4().hex[:6]}"
     bp = make_blueprint(project_id, "approved")
 
@@ -549,12 +562,8 @@ def test_runtime_bundle_falls_back_to_matching_records_when_manifest_empty(db_se
         f"/api/v1/blueprints/{bp.id}/runtime-bundle",
         headers={"X-Game-Project-ID": project_id}
     )
-    assert response.status_code == 200
-    bundle = response.json()
-    assert [npc["slug"] for npc in bundle["npcs"]] == ["eldrin"]
-    assert [quest["title"] for quest in bundle["quests"]] == ["Reclaim Ash Pass Objective"]
-    assert [memory["memory_text"] for memory in bundle["memories"]] == ["Ember Siege historical memories"]
-    assert [flag["flag_key"] for flag in bundle["world_flags"]] == ["east-gate"]
+    assert response.status_code == 409
+    assert "did not produce runtime records" in response.json()["detail"]
 
 def test_latest_runtime_bundle_returns_newest_materialized_blueprint(make_blueprint):
     """Unity can auto-load the newest materialized bundle without a pasted blueprint ID."""

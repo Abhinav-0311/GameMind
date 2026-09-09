@@ -310,6 +310,7 @@ class RAGService:
             ("quest_brief", r"\b(?:quest brief|quest design|quest hooks?|mission design)\b"),
             ("level_brief", r"\b(?:level brief|level design|level layout|environment design)\b"),
             ("technical_brief", r"\b(?:technical brief|technical design|performance requirements?|engine constraints?)\b"),
+            ("change_proposal", r"\b(?:change proposal|design proposal|feature proposal)\b"),
             ("lore", r"\b(?:lore|world bible|setting bible|codex)\b"),
         )
         for source_kind, pattern in checks:

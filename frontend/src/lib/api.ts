@@ -890,6 +890,15 @@ export const api = {
     return res.json();
   },
 
+  async getBlueprintChangeImpact(blueprintId: string, proposalDocumentId: string): Promise<BlueprintChangeImpactResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/change-impact/${proposalDocumentId}`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Could not preview change impact");
+    }
+    return res.json();
+  },
+
   async materializeBlueprint(blueprintId: string, confirmIncomplete: boolean = false): Promise<MaterializationReportResponse> {
     const res = await fetch(`${API_BASE_URL}/api/v1/blueprints/${blueprintId}/materialize`, {
       method: "POST",
@@ -1152,6 +1161,17 @@ export interface BlueprintComparisonResponse {
   base_blueprint_id: string;
   revised_blueprint_id: string;
   changed_sections: BlueprintComparisonSection[];
+}
+
+export interface BlueprintChangeImpactResponse {
+  blueprint_id: string;
+  proposal_document_id: string;
+  proposal_title: string;
+  impacts: Array<{
+    section: string;
+    matched_terms: string[];
+    message: string;
+  }>;
 }
 
 export interface BlueprintExportResponse {

@@ -109,90 +109,6 @@ class BlueprintMaterializerService:
         ))
         graph_cache.increment_entity_stamp(npc.slug)
 
-    def _resolve_fallback_runtime_records(
-        self,
-        db: Session,
-        blueprint: GameBlueprint,
-        game_project_id: str
-    ) -> Dict[str, List[Any]]:
-        """Resolve project-scoped records that match a materialized blueprint's source content.
-
-        This is intentionally narrower than returning all project records. It exists for demo
-        databases where records were created by an earlier blueprint run, causing a later
-        materialization to skip duplicates and leave an empty manifest.
-        """
-        npc_slugs = []
-        for npc in blueprint.npc_archetypes.get("content", {}).get("npcs", []):
-            name = self._normalize_npc_name(npc.get("name", ""))
-            if not name:
-                continue
-            slug = self._slugify_runtime_id(name)
-            if slug:
-                npc_slugs.append(slug)
-
-        quest_titles = [
-            self._clean_runtime_text(quest.get("title"), "Unnamed Quest")
-            for quest in blueprint.quest_hooks.get("content", {}).get("quests", [])
-        ]
-        quest_titles = [title for title in quest_titles if title]
-
-        memory_subjects = [
-            self._clean_runtime_text(memory.get("subject"), "")
-            for memory in blueprint.npc_memory_design.get("content", {}).get("memory_nodes", [])
-        ]
-        memory_subjects = [subject for subject in memory_subjects if subject]
-
-        flag_keys = [
-            state_flag[0]
-            for element in blueprint.level_design_suggestions.get("content", {}).get("interactive_elements", [])
-            if (state_flag := self._derive_world_state_flag(element))
-        ]
-
-        npcs = []
-        if npc_slugs:
-            npcs = db.query(NPCProfile).filter(
-                NPCProfile.slug.in_(npc_slugs),
-                NPCProfile.game_project_id == game_project_id
-            ).all()
-
-        quests = []
-        if quest_titles:
-            quests = db.query(Quest).filter(
-                Quest.title.in_(quest_titles),
-                Quest.game_project_id == game_project_id
-            ).all()
-            if quests:
-                objectives = db.query(QuestObjective).filter(
-                    QuestObjective.quest_id.in_([quest.id for quest in quests])
-                ).order_by(QuestObjective.objective_index).all()
-                objectives_by_quest = {}
-                for objective in objectives:
-                    objectives_by_quest.setdefault(objective.quest_id, []).append(objective)
-                for quest in quests:
-                    quest.objectives = objectives_by_quest.get(quest.id, [])
-
-        memories = []
-        if memory_subjects and npcs:
-            memories = db.query(NPCMemory).filter(
-                NPCMemory.npc_id.in_([npc.id for npc in npcs]),
-                NPCMemory.memory_text.in_(memory_subjects),
-                NPCMemory.game_project_id == game_project_id
-            ).all()
-
-        world_flags = []
-        if flag_keys:
-            world_flags = db.query(WorldStateFlag).filter(
-                WorldStateFlag.flag_key.in_(flag_keys),
-                WorldStateFlag.game_project_id == game_project_id
-            ).all()
-
-        return {
-            "npcs": npcs,
-            "quests": quests,
-            "memories": memories,
-            "world_flags": world_flags
-        }
-
     def materialize_blueprint(self, db: Session, blueprint_id: UUID, game_project_id: str) -> Dict[str, Any]:
         # 1. Fetch blueprint scoped by project
         blueprint = db.query(GameBlueprint).filter(
@@ -574,18 +490,19 @@ class BlueprintMaterializerService:
             )
 
         manifest = blueprint.materialization_manifest
-        if not manifest:
-            # Return empty structure if not yet materialized
-            return {
-                "api_version": "1.1",
-                "blueprint_id": blueprint.id,
-                "game_project_id": game_project_id,
-                "npcs": [],
-                "quests": [],
-                "memories": [],
-                "world_flags": [],
-                "approved_design": self._approved_design_artifacts(blueprint, []),
-            }
+        if not isinstance(manifest, dict) or not manifest.get("last_materialized_at"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Blueprint must be materialized before it can provide a runtime bundle.",
+            )
+        if not any(manifest.get(key) for key in ("npcs", "quest_ids", "memory_ids", "flag_keys")):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Materialization completed but did not produce runtime records. "
+                    "Review skipped items and add explicit runtime bindings before runtime use."
+                ),
+            )
 
         # Query only database records listed inside manifest to enforce strict provenance
         npcs = []
@@ -637,19 +554,6 @@ class BlueprintMaterializerService:
                 WorldStateFlag.flag_key.in_(manifest["flag_keys"]),
                 WorldStateFlag.game_project_id == game_project_id
             ).all()
-
-        if (
-            manifest.get("last_materialized_at")
-            and not npcs
-            and not quests
-            and not memories
-            and not world_flags
-        ):
-            fallback_records = self._resolve_fallback_runtime_records(db, blueprint, game_project_id)
-            npcs = fallback_records["npcs"]
-            quests = fallback_records["quests"]
-            memories = fallback_records["memories"]
-            world_flags = fallback_records["world_flags"]
 
         return {
             "api_version": "1.1",

@@ -7,9 +7,9 @@
 GameMind is a local-first AI game design and runtime intelligence platform for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard, exported for a team, or consumed by a game runtime.
 
 The project combines a FastAPI backend, LangGraph orchestration, PostgreSQL,
-ChromaDB vector search, a Next.js developer dashboard, and Unity C# runtime
-scripts. It is designed to run in a zero-cost local demo mode without mandatory
-paid AI APIs, while keeping the AI provider layer optional and swappable.
+local retrieval, a Next.js developer dashboard, optional task-routed NVIDIA
+inference, and Unity C# runtime scripts. It runs in a zero-cost local demo mode
+without mandatory hosted AI APIs; NVIDIA review is an explicit, governed choice.
 
 **Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and engine-ready runtime data.
 
@@ -45,6 +45,7 @@ Use GameMind as a game design command center without integrating a game engine.
 
 - Create a named workspace for each game.
 - Upload GDDs, lore files, NPC sheets, quest notes, level briefs, and technical constraints.
+- Add a **Change proposal** when a team introduces an idea outside the current GDD; it remains explicitly proposed until review and approval.
 - Review a GDD for missing decisions, conflicts, and unsupported assumptions.
 - Track and resolve design decisions against source evidence.
 - Generate multi-source blueprints for narrative, art direction, NPCs, quests, memory, level ideas, and gameplay systems.
@@ -57,15 +58,15 @@ This mode is useful for students, writers, designers, and indie teams that need 
 The dashboard is deliberately organised around one clear path:
 
 ```text
-Workspace -> Sources -> GDD review -> Decisions -> Blueprint -> Evidence -> Project brief
+Workspace -> Sources -> Local GDD review -> Cited design run -> Independent critique -> Human approval -> Project brief
 ```
 
 1. Create or select a **workspace**. A workspace scopes documents, decisions, blueprints, and runtime data to one game.
 2. In **Sources**, add a GDD or supporting notes. GameMind identifies the source type, rejects exact duplicate content, and preserves later uploads as revisions instead of overwriting evidence.
 3. Open the source review to see what is specified, what conflicts, and which product decisions still need an answer.
 4. Use **Decisions** to resolve those questions in one place. When a decision needs a technical brief, download the local template, complete its placeholders, upload it as a **Technical brief**, attach it to the decision, and then mark the decision resolved.
-5. In **Blueprints**, choose a primary GDD and, when useful, add supporting source documents. Review structured sections, warnings, readiness, and citations before approving anything.
-6. Open a citation to inspect the exact source chunk, then export the blueprint as a Markdown project brief for a teammate, portfolio review, or implementation handoff.
+5. In **Design Agent**, choose the indexed GDD and objective. The normal flow freezes local evidence, generates a cited draft, independently critiques it, and pauses for human review. Hosted NVIDIA is requested only after explicit consent.
+6. In **Blueprints**, inspect structured sections, warnings, readiness, and citations. Open a citation to inspect its exact source chunk, then export a Markdown project brief for a teammate, portfolio review, or implementation handoff.
 
 Runtime materialization is optional and comes only after the blueprint is reviewed. This keeps the dashboard useful for planning even when a team has no engine integration yet.
 
@@ -86,10 +87,11 @@ Unity is included as one proof-of-integration adapter. It is not the whole produ
 
 - Upload and index game documents such as GDDs, lore files, character notes, and quest rules.
 - Keep source lineages through revisions and prevent duplicate files from polluting a workspace.
-- Query the lore index with citations, confidence scores, and local Chroma retrieval.
+- Query the lore index with citations, confidence scores, and local source retrieval.
 - Generate source-grounded, multi-source game blueprints with local rules, templates, and schema validation.
 - Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, gameplay systems, quest hooks, and runtime previews.
 - Turn missing or conflicting GDD details into visible, resolvable design decisions.
+- Keep GDD-external improvements as labelled proposal sources so generated sections show them as assumptions rather than original-GDD facts.
 - Run a durable design-agent workflow that plans, retrieves evidence, generates,
   critiques, pauses for approval, revises after rejection, and finalizes an
   immutable blueprint.
@@ -117,7 +119,7 @@ Generic AI agents help write code or brainstorm. GameMind demonstrates how an AI
 - **Vector Search:** ChromaDB
 - **Game Runtime:** Unity, C#
 - **Infrastructure:** Docker Compose
-- **AI Mode:** zero-cost local demo by default, optional provider integrations
+- **AI Mode:** zero-cost local demo by default; opt-in NVIDIA NIM routing for hosted review
 
 ## Architecture
 
@@ -126,9 +128,9 @@ Next.js Dashboard
   -> FastAPI REST API
     -> PostgreSQL for durable project data
     -> LangGraph for checkpointed design-agent workflows and human review
-    -> ChromaDB for local document retrieval
+    -> Local lexical/vector retrieval for document evidence
     -> Local rule/template providers for zero-cost generation
-    -> Optional future hosted provider interface
+    -> Optional NVIDIA NIM provider: Lightning plans/retrieval routing, Super generates, critiques, and revises structured artifacts
   -> Runtime clients consume stable REST contracts
      -> Unity adapter
      -> Future Godot/Unreal/custom clients
@@ -163,7 +165,7 @@ The default project mode is local-first:
 
 - No external model key is required.
 - No paid hosted model key is required.
-- ChromaDB local embeddings are used for the demo retrieval path.
+- Local lexical embeddings are used for the demo retrieval path; ChromaDB remains available for vector-backed deployments.
 - Rule/template generation is used for blueprint and runtime behavior in the MVP.
 - The durable design-agent workflow uses its deterministic mock provider by default.
 - NVIDIA-hosted design-agent inference is optional and disabled by default.
@@ -180,12 +182,15 @@ To opt into NVIDIA locally, set these values only in `.env`:
 LLM_PROVIDER=nvidia
 DESIGN_AGENT_FALLBACK_TO_MOCK=true
 NVIDIA_NANO_API_KEY=your-local-nano-key
-NVIDIA_SUPER_API_KEY=your-local-super-key
+NVIDIA_PLAN_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
+NVIDIA_ARTIFACT_MODEL=nvidia/nemotron-3-super-120b-a12b
+NVIDIA_ARTIFACT_API_KEY_ENV=NVIDIA_NANO_API_KEY
 ```
 
 The planner uses the configured NVIDIA planning model. Blueprint generation,
-critique, and revision default to `nvidia/nemotron-3-super-120b-a12b`. These
-assignments are fixed per workflow node. For Super 120B structured artifacts,
+critique, and revision use the configured Super model. These assignments are
+fixed per workflow node. A separate artifact key is optional only when the
+account requires one. For Super 120B structured artifacts,
 GameMind disables private reasoning so the response budget is available for
 valid JSON; visible content is validated and provider reasoning is never stored
 in workflow artifacts or traces. Never commit a real API key.
@@ -243,7 +248,7 @@ Check backend health:
 curl http://localhost:8000/health
 ```
 
-Expected local demo mode:
+Example healthy response (provider fields vary with your local `.env`):
 
 ```json
 {
@@ -252,22 +257,22 @@ Expected local demo mode:
   "chromadb": "healthy",
   "ai_mode": "local_demo",
   "llm_provider": "mock",
-  "embedding_provider": "chroma_default",
-  "vector_collection": "lore_chunks_local",
+  "embedding_provider": "local_lexical",
+  "vector_collection": "lore_chunks_local_lexical_v1",
   "vector_dimension": 384
 }
 ```
 
 ## Demo Flow
 
-1. Create a workspace, then open **Sources** and click **Load Frostpeak demo**. You can also upload `docs/demo/sample_gdd_frostpeak.md`.
+1. Create a workspace, then open **Sources** and click **Load Frostpeak demo**. You can also upload `docs/demo/sample_gdd_frostpeak.md`. For the portfolio walkthrough, use the CyberRakshak GDD and acceptance notes in `docs/demo/`.
 2. Inspect the source review and open **Decisions** to resolve the extracted open questions. For an implementation question, download the technical-brief template, complete it, upload it as a **Technical brief**, and attach it before resolving the decision.
 3. Open **Blueprints**, select the primary GDD, and optionally add supporting sources.
 4. Generate the blueprint, inspect its readiness and section citations, and use **View source** to verify any important claim.
 5. Export a **Project brief** when you want a portable Markdown handoff.
 6. Only when runtime testing is useful, approve and materialize the blueprint, then use the simulator or Unity adapter to test dialogue, quests, and hints.
 
-For a presenter-friendly walkthrough, use [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
+For the dashboard-first CyberRakshak walkthrough, use [docs/demo/cyberrakshak_dashboard_demo.md](docs/demo/cyberrakshak_dashboard_demo.md). The older local Frostpeak-to-Unity script remains in [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
 The matching silent browser walkthrough is [assets/demo/gamemind-cyberrakshak-walkthrough.webm](assets/demo/gamemind-cyberrakshak-walkthrough.webm).
 For release readiness, use [docs/demo/mvp_acceptance_checklist.md](docs/demo/mvp_acceptance_checklist.md).
 For dashboard-only usage, use [docs/workflows/dashboard_workspace.md](docs/workflows/dashboard_workspace.md).
@@ -279,7 +284,7 @@ Implemented:
 
 - Named project workspaces with scoped data isolation.
 - Source ingestion, source-type classification, duplicate prevention, and immutable source revisions.
-- Local Chroma retrieval with citations and exact source-chunk tracing.
+- Local source retrieval with citations and exact source-chunk tracing.
 - GDD reviews, decision tracking, evidence attachment, and source-coverage checks.
 - Multi-source blueprint generation, quality/readiness review, comparison, and Markdown project-brief export.
 - Blueprint approval and optional materialization.
@@ -292,8 +297,8 @@ Implemented:
 - Optional NVIDIA inference with per-node models, bounded retries, timeout,
   structured-output repair, token/latency traces, and visible mock fallback.
 - A governed Design Agent console with cited artifacts, independent critique,
-  run-level review, trace inspection, immutable exports, and an immutable
-  five-metric CyberRakshak quality scorecard.
+  run-level review, trace inspection, immutable exports, and a project-neutral
+  five-metric GDD quality scorecard.
 - Section-aware batched retrieval, shared deterministic GDD extraction,
   citation grounding, and structured revision safeguards validated against all
   ten CyberRakshak levels.
@@ -310,7 +315,7 @@ Implemented:
 Remaining product work:
 
 - Add a cleaner public demo video/GIF.
-- Add guided first-run onboarding and a deliberate empty-workspace experience.
+- Record a cleaner public demo video/GIF using the CyberRakshak walkthrough.
 - Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
 - Package engine-neutral API examples and integration starter kits more clearly.
 - Validate semantic quality against additional real GDDs using the same

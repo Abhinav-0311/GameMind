@@ -17,7 +17,7 @@ def get_rag_service():
     return RAGService()
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
-SOURCE_KINDS = {"gdd", "lore", "npc_sheet", "quest_brief", "level_brief", "technical_brief", "general"}
+SOURCE_KINDS = {"gdd", "lore", "npc_sheet", "quest_brief", "level_brief", "technical_brief", "change_proposal", "general"}
 DEMO_FROSTPEAK_FILE_NAME = "sample_gdd_frostpeak.md"
 DEMO_FROSTPEAK_PATH = Path(__file__).resolve().parents[3] / "docs" / "demo" / DEMO_FROSTPEAK_FILE_NAME
 

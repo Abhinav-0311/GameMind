@@ -50,7 +50,7 @@ class DocumentDetailResponse(DocumentResponse):
 
 
 class SourceKindUpdate(BaseModel):
-    source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|general)$")
+    source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|change_proposal|general)$")
 
 
 class TechnicalBriefTemplateResponse(BaseModel):
@@ -138,6 +138,19 @@ class BlueprintComparisonResponse(BaseModel):
     base_blueprint_id: UUID
     revised_blueprint_id: UUID
     changed_sections: List[BlueprintComparisonSection] = []
+
+
+class BlueprintChangeImpactItem(BaseModel):
+    section: str
+    matched_terms: List[str] = []
+    message: str
+
+
+class BlueprintChangeImpactResponse(BaseModel):
+    blueprint_id: UUID
+    proposal_document_id: UUID
+    proposal_title: str
+    impacts: List[BlueprintChangeImpactItem] = []
 
 
 class GameProjectCreate(BaseModel):

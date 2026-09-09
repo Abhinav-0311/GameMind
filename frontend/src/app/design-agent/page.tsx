@@ -801,7 +801,7 @@ export default function DesignAgentPage() {
             <section className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
               <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="page-kicker">CyberRakshak rubric · {evaluation.rubric_version}</p>
+                  <p className="page-kicker">Quality rubric · {evaluation.rubric_version}</p>
                   <h2 className="mt-2 text-lg font-bold">Quality scorecard</h2>
                   <p className="mt-1 text-sm text-[var(--text-secondary)]">
                     Human judgments are stored beside system-verified persistence checks.

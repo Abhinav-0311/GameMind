@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   api,
+  BlueprintChangeImpactResponse,
   BlueprintExportResponse,
   BlueprintComparisonResponse,
   BlueprintProvenanceResponse,
@@ -215,6 +216,9 @@ export default function BlueprintsDashboard() {
   const [compareTargetId, setCompareTargetId] = useState("");
   const [comparison, setComparison] = useState<BlueprintComparisonResponse | null>(null);
   const [isComparing, setIsComparing] = useState(false);
+  const [proposalDocumentId, setProposalDocumentId] = useState("");
+  const [changeImpact, setChangeImpact] = useState<BlueprintChangeImpactResponse | null>(null);
+  const [isAssessingImpact, setIsAssessingImpact] = useState(false);
   const [isExportingBrief, setIsExportingBrief] = useState(false);
   const [sourceReview, setSourceReview] = useState<GddReviewResponse | null>(null);
   const [isReviewingSource, setIsReviewingSource] = useState(false);
@@ -364,6 +368,7 @@ export default function BlueprintsDashboard() {
   const activeSection = reviewSections.find((section) => section.id === activeSectionId) || reviewSections[0];
   const selectedDocument = documents.find((doc) => doc.id === selectedDocId);
   const supportingDocuments = documents.filter((doc) => doc.id !== selectedDocId);
+  const proposalDocuments = documents.filter((doc) => doc.source_kind === "change_proposal");
   const blueprintIsApproved = activeBlueprint?.status === "approved";
   const blueprintIsMaterialized = Boolean(activeBlueprint?.materialization_manifest);
   const readiness = readinessState && readinessState.blueprintId === activeBlueprint?.id ? readinessState.value : null;
@@ -565,6 +570,19 @@ export default function BlueprintsDashboard() {
       setError(err instanceof Error ? err.message : "Could not compare blueprints.");
     } finally {
       setIsComparing(false);
+    }
+  };
+
+  const handlePreviewChangeImpact = async () => {
+    if (!activeBlueprint || !proposalDocumentId) return;
+    setIsAssessingImpact(true);
+    setError(null);
+    try {
+      setChangeImpact(await api.getBlueprintChangeImpact(activeBlueprint.id, proposalDocumentId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not preview change impact.");
+    } finally {
+      setIsAssessingImpact(false);
     }
   };
 
@@ -909,6 +927,40 @@ export default function BlueprintsDashboard() {
                           </div>
                         </details>
                       )}
+                      {proposalDocuments.length > 0 && (
+                        <details className="mt-5 border-t border-[var(--border)] pt-4">
+                          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
+                            Preview a change proposal
+                          </summary>
+                          <p className="mt-2 max-w-2xl text-xs leading-5 text-[var(--text-secondary)]">
+                            This finds overlapping terms in the current blueprint. It identifies candidate areas to review; it does not apply or approve the proposal.
+                          </p>
+                          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <label className="min-w-0 flex-1 text-sm font-semibold text-[var(--foreground)]" htmlFor="change-proposal">
+                              Proposal source
+                              <select
+                                id="change-proposal"
+                                value={proposalDocumentId}
+                                onChange={(event) => {
+                                  setProposalDocumentId(event.target.value);
+                                  setChangeImpact(null);
+                                }}
+                                className="mt-2 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--foreground)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                              >
+                                <option value="">Choose a proposal</option>
+                                {proposalDocuments.map((document) => (
+                                  <option key={document.id} value={document.id}>
+                                    {document.title} · revision {document.revision_number}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button type="button" onClick={handlePreviewChangeImpact} disabled={!proposalDocumentId || isAssessingImpact} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                              {isAssessingImpact ? "Checking impact" : "Preview impact"}
+                            </button>
+                          </div>
+                        </details>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -968,6 +1020,26 @@ export default function BlueprintsDashboard() {
                       {comparison.changed_sections.map((section) => (
                         <li key={section.section} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]">
                           {section.section} · warnings {section.before_warnings} to {section.after_warnings}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+
+              {changeImpact && (
+                <section className="border border-[var(--border)] bg-[var(--card-muted)] px-5 py-4">
+                  <p className="page-kicker">Change-impact preview</p>
+                  <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">Review {changeImpact.proposal_title}</h2>
+                  {changeImpact.impacts.length === 0 ? (
+                    <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">No matching terms were found in this blueprint. Review the proposal manually before deciding whether to regenerate a blueprint.</p>
+                  ) : (
+                    <ul className="mt-3 space-y-3" aria-label="Candidate change-impact areas">
+                      {changeImpact.impacts.map((impact) => (
+                        <li key={impact.section} className="border-l-2 border-[var(--accent)] pl-3 text-sm leading-6 text-[var(--text-secondary)]">
+                          <span className="font-semibold text-[var(--foreground)]">{impact.section}</span>
+                          <span> · matched: {impact.matched_terms.join(", ")}</span>
+                          <p className="mt-1">{impact.message}</p>
                         </li>
                       ))}
                     </ul>

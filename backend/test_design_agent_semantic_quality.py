@@ -1,4 +1,6 @@
 import copy
+import json
+from pathlib import Path
 
 import pytest
 
@@ -91,6 +93,38 @@ def _cyber_evidence():
     ]
 
 
+def _frostpeak_evidence():
+    source = (
+        Path(__file__).resolve().parent
+        / "docs"
+        / "demo"
+        / "sample_gdd_frostpeak.md"
+    ).read_text(encoding="utf-8")
+    section_names = [
+        "summary",
+        "narrative_direction",
+        "art_style_direction",
+        "npc_archetypes",
+        "npc_memory_design",
+        "level_design_suggestions",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview",
+    ]
+    return [{
+        "chunk_id": "33333333-3333-3333-3333-333333333333",
+        "content": source,
+        "document_id": "44444444-4444-4444-4444-444444444444",
+        "title": "sample_gdd_frostpeak.md",
+        "chunk_index": 0,
+        "game_project_id": "frostpeak",
+        "similarity": 0.95,
+        "confidence": "High",
+        "matched_sections": section_names,
+        "section_similarities": {section_name: 0.95 for section_name in section_names},
+    }]
+
+
 def test_mock_generation_extracts_all_ten_cyberrakshak_levels():
     provider = MockDesignAgentProvider()
     result = provider.generate({"objective": "Build CyberRakshak"}, _cyber_evidence())
@@ -107,6 +141,21 @@ def test_mock_generation_extracts_all_ten_cyberrakshak_levels():
     assert content["level_design_suggestions"]["citations"] == [
         "11111111-1111-1111-1111-111111111111"
     ]
+
+
+def test_frostpeak_fixture_keeps_artifacts_source_isolated_from_cyberrakshak():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Create a cited Frostpeak design artifact."},
+        _frostpeak_evidence(),
+    ).content
+    validated = validate_generated_blueprint(content, _frostpeak_evidence())
+    serialized = json.dumps(validated)
+
+    assert "Frostpeak" in serialized
+    assert "Eldrin" in serialized
+    assert "Kaelen" in serialized
+    assert "Ash Pass" in serialized
+    assert "CyberRakshak" not in serialized
 
 
 def test_section_queries_include_concrete_gdd_vocabulary_for_sparse_sections():

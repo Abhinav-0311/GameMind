@@ -1,4 +1,4 @@
-export const sourceKinds = ["gdd", "lore", "npc_sheet", "quest_brief", "level_brief", "technical_brief", "general"] as const;
+export const sourceKinds = ["gdd", "lore", "npc_sheet", "quest_brief", "level_brief", "technical_brief", "change_proposal", "general"] as const;
 
 export type SourceKind = (typeof sourceKinds)[number];
 
@@ -32,6 +32,11 @@ export const sourceKindMeta: Record<SourceKind, { label: string; impact: string[
     label: "Technical brief",
     impact: ["Gameplay systems", "Runtime"],
     description: "Strengthens platform, control, performance, and runtime constraints.",
+  },
+  change_proposal: {
+    label: "Change proposal",
+    impact: ["Review only", "No runtime change until approval"],
+    description: "A new idea outside the current GDD. It remains a visible proposal until reviewed and approved.",
   },
   general: {
     label: "General game notes",
