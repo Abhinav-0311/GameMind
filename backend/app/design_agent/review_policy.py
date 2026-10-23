@@ -11,7 +11,7 @@ from app.models.design_agent import DesignAgentCritique, DesignAgentEvidenceSnap
 
 def requires_design_quality_review(run, confirmed_proposals=None):
     config = run.model_config or {}
-    return bool(run.provider_name == "nvidia" or confirmed_proposals
+    return bool(run.provider_name in {"nvidia", "gemini"} or confirmed_proposals
                 or config.get("fresh_dialogue") or config.get("defer_runtime") is True
                 or config.get("allow_unspecified_memory") is True)
 
@@ -80,7 +80,7 @@ def _trusted_model_review(artifact, snapshot, critique, request):
     original = critique.content
     provenance = original.get("model_review_provenance")
     # Legacy, recovered and fallback reviews cannot acquire trusted origins later.
-    if (critique.provider_name != "nvidia" or not isinstance(provenance, dict)
+    if (critique.provider_name not in {"nvidia", "gemini"} or not isinstance(provenance, dict)
             or provenance.get("version") != 1 or provenance.get("clean") is not True):
         return None
     try:

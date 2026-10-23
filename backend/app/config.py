@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Locate the project root (.env directory) relative to this file
@@ -38,6 +39,12 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "mock"
     LOCAL_MODEL_NAME: str = "local-rule-engine"
     DESIGN_AGENT_PROVIDER: str | None = None
+    # Unset preserves explicit legacy NVIDIA selection; otherwise local/mock is the default.
+    LLM_PROFILE: Literal["test", "dev", "showcase"] | None = None
+    GEMINI_API_KEY: str | None = None
+    GEMINI_DEV_MODEL: str = ""
+    GEMINI_SHOWCASE_MODEL: str = ""
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
     DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
     DESIGN_AGENT_EXECUTION_MODE: str = "inline"
     DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0

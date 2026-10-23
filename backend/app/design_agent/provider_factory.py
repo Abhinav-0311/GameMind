@@ -12,6 +12,14 @@ def build_design_agent_provider(
 ) -> DesignAgentProvider:
     """Build the configured provider without weakening the local default."""
 
+    if app_settings.LLM_PROFILE == "test":
+        return MockDesignAgentProvider()
+    if app_settings.LLM_PROFILE in {"dev", "showcase"}:
+        from app.design_agent.gemini_provider import GeminiProvider, GeminiDesignAgentProvider
+        primary = GeminiDesignAgentProvider(llm_provider=GeminiProvider(app_settings))
+        return (ResilientDesignAgentProvider(primary=primary, fallback=MockDesignAgentProvider())
+                if app_settings.DESIGN_AGENT_FALLBACK_TO_MOCK else primary)
+
     provider_name = (
         app_settings.DESIGN_AGENT_PROVIDER or app_settings.LLM_PROVIDER
     ).strip().lower()
@@ -37,3 +45,13 @@ def build_design_agent_provider(
         primary=primary,
         fallback=MockDesignAgentProvider(),
     )
+
+
+def validate_llm_startup(app_settings: Settings = settings) -> None:
+    if app_settings.LLM_PROFILE in {"dev", "showcase"}:
+        from app.design_agent.gemini_provider import GeminiProvider
+        provider = GeminiProvider(app_settings)
+        try:
+            provider.validate_models()
+        finally:
+            provider.close()

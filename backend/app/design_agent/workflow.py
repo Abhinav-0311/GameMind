@@ -154,8 +154,8 @@ class DesignAgentWorkflow:
                         or job.operation != "retry_critique" or job.game_project_id != run.game_project_id
                         or job.payload.get("artifact_id") != str(artifact_id)
                         or job.payload.get("failed_execution_id") != str(failed_execution_id)
-                        or (self.provider.name == "nvidia" and job.payload.get("hosted_provider_consent") is not True)
-                        or (self.provider.name == "nvidia" and ((run.model_config or {}).get("hosted_provider_consent") is not True
+                        or (self.provider.name in {"nvidia", "gemini"} and job.payload.get("hosted_provider_consent") is not True)
+                        or (self.provider.name in {"nvidia", "gemini"} and ((run.model_config or {}).get("hosted_provider_consent") is not True
                             or set((run.model_config or {}).get("consented_document_ids", [])) != set(run.document_ids)))
                         or not artifact or artifact.id != artifact_id or artifact.immutable
                         or not failed or failed.id != failed_execution_id or failed.status != "failed"
@@ -545,7 +545,7 @@ class DesignAgentWorkflow:
                 raw_review, state["current_artifact"],
                 review_request=saved_review_request(run), evidence=state["evidence_items"],
             )
-            if result.provider_name == "nvidia" and result.metadata.get("finding_review_provenance"):
+            if result.provider_name in {"nvidia", "gemini"} and result.metadata.get("finding_review_provenance"):
                 critique_content["model_review_provenance"] = copy.deepcopy(result.metadata["finding_review_provenance"])
             critique = DesignAgentCritique(
                 run_id=run.id,
@@ -794,7 +794,7 @@ class DesignAgentWorkflow:
                 content = validate_generated_blueprint(
                     state["current_artifact"],
                     state["evidence_items"],
-                    require_actionable=self.provider.name == "nvidia",
+                    require_actionable=self.provider.name in {"nvidia", "gemini"},
                 )
                 if (run.model_config or {}).get("defer_runtime") is True:
                     # Server-owned final snapshot metadata, never model authority.

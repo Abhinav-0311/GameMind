@@ -148,10 +148,10 @@ class DesignAgentService:
             )
 
         provider = self.workflow.provider if self._workflow is not None else build_design_agent_provider()
-        if provider.name == "nvidia" and not payload.hosted_provider_consent:
+        if provider.name in {"nvidia", "gemini"} and not payload.hosted_provider_consent:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Explicit consent is required before selected evidence is sent to the configured NVIDIA provider.",
+                detail="Explicit consent is required before selected evidence is sent to the configured hosted provider.",
             )
         run = DesignAgentRun(
             game_project_id=game_project_id,
@@ -162,8 +162,8 @@ class DesignAgentService:
             model_config={
                 "phase": "phase_8",
                 **provider.configuration(),
-                "hosted_provider_consent": provider.name == "nvidia",
-                "consented_document_ids": document_id_values if provider.name == "nvidia" else [],
+                "hosted_provider_consent": provider.name in {"nvidia", "gemini"},
+                "consented_document_ids": document_id_values if provider.name in {"nvidia", "gemini"} else [],
                 "degraded": False,
                 "fresh_dialogue": payload.fresh_dialogue,
                 "dialogue_policy": payload.dialogue_policy,
@@ -255,7 +255,7 @@ class DesignAgentService:
             raise HTTPException(status_code=409, detail="Refresh the run; only its exact failed critique and current unreviewed draft can be retried.")
         if self.workflow.provider.name != run.provider_name:
             raise HTTPException(status_code=409, detail="The configured provider changed. Start a new run with fresh provider consent.")
-        if run.provider_name == "nvidia" and (not payload.hosted_provider_consent
+        if run.provider_name in {"nvidia", "gemini"} and (not payload.hosted_provider_consent
                 or not (run.model_config or {}).get("hosted_provider_consent")
                 or set((run.model_config or {}).get("consented_document_ids", [])) != set(run.document_ids)):
             raise HTTPException(status_code=409, detail="Explicit consent for the saved draft and selected source excerpts is required.")

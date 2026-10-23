@@ -69,7 +69,7 @@ class NvidiaDesignAgentProvider:
                     "max_tokens": config.max_tokens,
                     "max_retries": config.max_retries,
                 }
-                for node_name, config in NODE_MODEL_CONFIG.items()
+                for node_name, config in getattr(self.llm_provider, "node_model_config", NODE_MODEL_CONFIG).items()
             },
             "fallback_enabled": False,
             "evidence_payload": {
@@ -1048,7 +1048,7 @@ class NvidiaDesignAgentProvider:
                                  "findings[].reference.evidence_chunk_id", "findings[].reference.evidence_quote"]})
         provenance = build_review_provenance(
             result.content, artifact, evidence, review_request,
-            clean=(result.provider_name == "nvidia" and not any(result.metadata.get(key)
+            clean=(result.provider_name in {"nvidia", "gemini"} and not any(result.metadata.get(key)
                    for key in ("recovery_requires_review", "local_recovery", "degraded"))),
         )
         if result.metadata.get("recovery_requires_review"):

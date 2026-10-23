@@ -90,13 +90,54 @@ implemented in the design-agent provider, not every endpoint with an AI label.
 
 For hosted design work, configure `.env` deliberately using `.env.example`:
 
-- `LLM_PROVIDER=nvidia`, or an explicit `DESIGN_AGENT_PROVIDER=nvidia` override.
+- Leave `LLM_PROFILE` unset; use `LLM_PROVIDER=nvidia`, or an explicit
+  `DESIGN_AGENT_PROVIDER=nvidia` override.
 - Planning uses `NVIDIA_PLAN_MODEL` and the key named by `NVIDIA_PLAN_API_KEY_ENV`.
 - Generation/critique/revision use `NVIDIA_ARTIFACT_MODEL` and the key named by
   `NVIDIA_ARTIFACT_API_KEY_ENV`. Point this selector to `NVIDIA_SUPER_API_KEY` when
   using a separate artifact key; it may intentionally share the planning key.
 - Decide explicitly whether mock fallback is allowed. Fallback is degraded local
   output, never successful hosted generation.
+
+### Gemini profiles (opt-in)
+
+`LLM_PROFILE=test` runs offline with no key. With no profile and no explicit legacy
+NVIDIA selection, mock is also the default. To retain legacy NVIDIA routing,
+leave `LLM_PROFILE` unset; its existing provider/model/key settings still apply.
+
+For Gemini, set `GEMINI_API_KEY` and the model IDs in `.env` (never commit keys):
+
+- `LLM_PROFILE=dev`: all nodes use `GEMINI_DEV_MODEL` (example: `gemini-3.5-flash-lite`).
+- `LLM_PROFILE=showcase`: planning uses `GEMINI_DEV_MODEL`; generation, critique and
+  revision use `GEMINI_SHOWCASE_MODEL` (example: `gemini-3.8-flash`).
+
+API and worker startup check every distinct configured model with Google's model
+API and fail clearly if unavailable. No model ID is silently substituted. Requests
+use the Google GenAI SDK Interactions API with `store=false`, no server-side
+conversation chaining, and the existing local validation/repair and degraded
+fallback. Hosted source transfer still requires explicit consent. A 429 is never
+retried; fallback, if enabled, records `provider_rate_limited` in the degraded trace.
+
+Free-tier Gemini input/output may be used by Google to improve its products;
+use demo or non-confidential GDDs. See [Google's unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
+Stateless requests do not override those terms.
+
+Manual smoke (inside an SDK-equipped backend environment, **not pytest**):
+`LLM_PROFILE=dev python smoke_gemini.py`. On PowerShell, set `$env:LLM_PROFILE='dev'`
+first. It sends one synthetic planner request and prints the result; its one-call
+budget blocks retries/repairs. It deliberately does not run the separate startup
+model lookup, so there is exactly one outbound request when credentials/configuration
+are valid. The smoke has not been run against Google as part of automated tests.
+
+From the repository root with Docker, after setting the Gemini key/model variables:
+
+```powershell
+docker compose build backend
+docker compose run --rm --no-deps -e LLM_PROFILE=dev backend python smoke_gemini.py
+```
+
+This builds dependencies and runs the smoke in a separate container; it does not
+restart the application container or run migrations.
 
 Keep keys out of Git. Actual model availability/quality is recorded in MVP.md.
 The configured pair is Nano Omni for planning and Nemotron 3.5 Super for design

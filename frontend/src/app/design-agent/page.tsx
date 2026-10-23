@@ -330,11 +330,11 @@ export default function DesignAgentPage() {
       ? [{ section: proposal.section, record_id: proposal.record_id, assumption: proposal.assumption }] : []);
   const rawCritiqueBlocked = activeRun?.critique?.content.verdict === "needs_revision"
     || critiqueFindings.some((finding) => finding.severity === "high")
-    || (activeRun?.provider_name === "nvidia" && (activeRun.critique?.content.verdict !== "ready_for_review"
-      || activeRun.critique?.artifact_id !== artifactId || !preApprovalScorecard));
+    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (activeRun?.critique?.content.verdict !== "ready_for_review"
+      || activeRun?.critique?.artifact_id !== artifactId || !preApprovalScorecard));
   const needsRevision = Boolean(activeRun?.critique && !critiqueIsCurrent)
     || (activeRun?.status === "awaiting_review" && Boolean(activeRun.critique?.id) && !findingReview)
-    || (activeRun?.provider_name === "nvidia" && (!preApprovalScorecard || activeRun.critique?.artifact_id !== artifactId))
+    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (!preApprovalScorecard || activeRun?.critique?.artifact_id !== artifactId))
     || (findingReview ? findingReview.critique_blocked : rawCritiqueBlocked);
   const confirmationReady = Boolean(preApprovalScorecard && !preApprovalScorecard.passed
     && preApprovalScorecard.blockers.length === 1 && preApprovalScorecard.blockers[0] === "Integration readiness"
@@ -838,7 +838,7 @@ export default function DesignAgentPage() {
             <p className="page-kicker">Governed AI review</p>
             <h2 id="start-agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{critiqueRetry ? "Retry this draft's critique?" : "Start a cited review?"}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-              {critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured NVIDIA provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured NVIDIA provider to create a cited draft and independent critique. No provider request is made until you confirm."}
+              {critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured hosted provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm."}
             </p>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button type="button" onClick={() => { setStartConsentOpen(false); setCritiqueRetry(null); }} disabled={action === "start" || action === "critique"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
@@ -904,7 +904,7 @@ export default function DesignAgentPage() {
                 </details>
                 {activeRun.degraded && (
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                    NVIDIA did not complete this run in time, so GameMind preserved the workflow using deterministic local output. Review the result as orchestration proof, not hosted-model quality.
+                    The hosted provider did not complete this run, so GameMind preserved the workflow using deterministic local output. Review the result as orchestration proof, not hosted-model quality.
                   </p>
                 )}
               </div>

@@ -203,6 +203,7 @@ class NvidiaProvider:
     """Minimal NVIDIA transport implementing one governed completion operation."""
 
     name = "nvidia"
+    node_model_config = NODE_MODEL_CONFIG
     _RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
     @staticmethod
@@ -825,11 +826,11 @@ class NvidiaProvider:
         return combined, 1
 
     def complete(self, request: CompletionRequest) -> CompletionResult:
-        if request.node_name not in NODE_MODEL_CONFIG:
+        if request.node_name not in self.node_model_config:
             raise ValueError(
                 f"No model configuration exists for node '{request.node_name}'."
             )
-        config = NODE_MODEL_CONFIG[request.node_name]
+        config = self.node_model_config[request.node_name]
         api_key = (self._key_reader(config.api_key_env) or "").strip()
         if not api_key:
             raise NvidiaConfigurationError(

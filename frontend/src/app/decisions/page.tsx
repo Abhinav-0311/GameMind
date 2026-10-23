@@ -174,7 +174,7 @@ function DecisionsContent() {
       setAgentRunId(run.id);
       setAgentConsentOpen(false);
       setNotice(run.degraded
-        ? "The NVIDIA review fell back to local mock output. Inspect the review trace before relying on it."
+        ? "The hosted review fell back to local mock output. Inspect the review trace before relying on it."
         : "A governed review is now preparing a cited draft and independent critique.");
     } catch (reason) {
       setAgentConsentOpen(false);
