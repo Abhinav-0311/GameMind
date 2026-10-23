@@ -75,11 +75,21 @@ class DialogueService:
         ordered_chunks = []
         retrieved_chunks_meta = []
         
+        if request.source_document_id:
+            from app.models.document import Document
+            source_document = db.query(Document.id).filter(
+                Document.id == request.source_document_id,
+                Document.game_project_id == game_project_id,
+            ).first()
+            if source_document is None:
+                raise ValueError("Selected lore source was not found in the active workspace.")
+
         if request.selected_chunk_ids:
             from app.models.document import Document
             chunks = db.query(DocumentChunk).join(Document).filter(
                 DocumentChunk.id.in_(request.selected_chunk_ids),
-                Document.game_project_id == game_project_id
+                Document.game_project_id == game_project_id,
+                *([DocumentChunk.document_id == request.source_document_id] if request.source_document_id else []),
             ).all()
             chunk_map = {chunk.id: chunk for chunk in chunks}
             

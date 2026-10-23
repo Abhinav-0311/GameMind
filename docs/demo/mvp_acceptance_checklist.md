@@ -1,5 +1,12 @@
 # GameMind MVP Acceptance Checklist
 
+> Historical local-demo checklist, retained as context. The current release
+> definition, phase standing and mandatory working checklist are in
+> [MVP.md](../../MVP.md). The old list below is not acceptance sign-off, does not
+> make Unity a dashboard-MVP prerequisite, and does not authorize its commands.
+> In particular, verify a fresh disposable target before any backend test command;
+> the shared test fixture resets its target schema.
+
 Use this checklist before recording a demo, pushing a release branch, or presenting the project.
 
 ## 1. Local Stack

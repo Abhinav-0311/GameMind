@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   api,
+  requestFailureMessage,
   BlueprintChangeImpactResponse,
   BlueprintExportResponse,
   BlueprintComparisonResponse,
@@ -101,8 +102,10 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function statusLabel(blueprint: BlueprintResponse | null) {
+function statusLabel(blueprint: BlueprintResponse | null, readiness: BlueprintReadinessResponse | null = null) {
   if (!blueprint) return "No blueprint";
+  if (readiness?.status === "runtime_deferred") return "Design approved";
+  if (blueprint.materialization_manifest && readiness && !readiness.can_serve_runtime) return "Needs repair";
   if (blueprint.materialization_manifest) return "Materialized";
   if (blueprint.status === "approved") return "Approved";
   return "Draft";
@@ -110,6 +113,7 @@ function statusLabel(blueprint: BlueprintResponse | null) {
 
 function readinessLabel(readiness: BlueprintReadinessResponse | null) {
   if (!readiness) return "Checking runtime";
+  if (readiness.status === "runtime_deferred") return "Runtime deferred";
   if (readiness.status === "runtime_ready") return "Runtime ready";
   if (readiness.status === "runtime_review") return "Runtime review";
   if (readiness.status === "runtime_blocked") return "Approval blocked";
@@ -203,6 +207,7 @@ export default function BlueprintsDashboard() {
   const [activeBlueprint, setActiveBlueprint] = useState<BlueprintResponse | null>(null);
   const [activeSectionId, setActiveSectionId] = useState("summary");
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isMaterializing, setIsMaterializing] = useState(false);
@@ -227,25 +232,26 @@ export default function BlueprintsDashboard() {
 
   const loadInitialData = async () => {
     setIsLoading(true);
+    setLoadError(null);
     setError(null);
 
     try {
       const [docs, existingBlueprints] = await Promise.all([api.getDocuments(), api.getBlueprints()]);
       setDocuments(docs);
       setBlueprints(existingBlueprints);
-
-      if (docs.length > 0) {
-        setSelectedDocId((current) => current || docs[0].id);
-      }
-
-      if (existingBlueprints.length > 0) {
-        setActiveBlueprint((current) => current || existingBlueprints[0]);
-      }
+      const requestedDocumentId = new URLSearchParams(window.location.search).get("document");
+      const selectedDocument = docs.find((document) => document.id === requestedDocumentId) ?? docs[0];
+      setSelectedDocId(selectedDocument?.id ?? "");
+      setActiveBlueprint(
+        requestedDocumentId
+          ? existingBlueprints.find((blueprint) => blueprint.document_id === selectedDocument?.id) ?? null
+          : existingBlueprints[0] ?? null,
+      );
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.warn("Blueprint workspace unavailable:", err);
       }
-      setError("Could not load blueprints. Start Docker and refresh this page.");
+      setLoadError(requestFailureMessage(err, "Blueprint workspace"));
     } finally {
       setIsLoading(false);
     }
@@ -401,7 +407,7 @@ export default function BlueprintsDashboard() {
     },
     {
       label: "Review",
-      detail: activeBlueprint ? statusLabel(activeBlueprint) : "Waiting",
+      detail: activeBlueprint ? statusLabel(activeBlueprint, readiness) : "Waiting",
       complete: Boolean(activeBlueprint && activeBlueprint.status !== "draft"),
       active: Boolean(activeBlueprint && activeBlueprint.status === "draft"),
     },
@@ -475,6 +481,7 @@ export default function BlueprintsDashboard() {
 
   const handleMaterialize = async (confirmIncomplete: boolean = false) => {
     if (!activeBlueprint) return;
+    if (readiness?.status === "runtime_deferred") return;
     if (!confirmIncomplete && readiness && !readiness.can_materialize) {
       setMaterializationReviewOpen(true);
       return;
@@ -588,6 +595,19 @@ export default function BlueprintsDashboard() {
 
   const comparableBlueprints = blueprints.filter((blueprint) => blueprint.id !== activeBlueprint?.id);
 
+  if (isLoading || loadError) {
+    return (
+      <main className="page-shell" aria-busy={isLoading}>
+        <p className="page-kicker">Blueprint studio</p>
+        <h1 className="display-title mt-4 text-3xl">{isLoading ? "Loading blueprint workspace" : "Blueprint workspace unavailable"}</h1>
+        {loadError && <div role="alert" className="mt-6">
+          <p className="text-sm leading-6 text-[var(--text-secondary)]">{loadError}</p>
+          <button className="btn-secondary mt-4" onClick={loadInitialData}>Retry blueprints</button>
+        </div>}
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <section className="flex flex-col gap-6 py-3 lg:flex-row lg:items-end lg:justify-between">
@@ -618,8 +638,8 @@ export default function BlueprintsDashboard() {
             </button>
           )}
           {activeBlueprint && blueprintIsApproved && !blueprintIsMaterialized && (
-            <button type="button" onClick={() => handleMaterialize()} disabled={isMaterializing || !readiness} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
-              {isMaterializing ? "Materializing" : !readiness ? "Checking runtime" : readiness.can_materialize ? "Materialize" : "Review runtime"}
+            <button type="button" onClick={() => handleMaterialize()} disabled={isMaterializing || !readiness || readiness.status === "runtime_deferred"} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+              {isMaterializing ? "Materializing" : !readiness ? "Checking runtime" : readiness.status === "runtime_deferred" ? "Runtime deferred" : readiness.can_materialize ? "Materialize" : "Review runtime"}
             </button>
           )}
         </div>
@@ -686,8 +706,10 @@ export default function BlueprintsDashboard() {
                     id="source-document"
                     value={selectedDocId}
                     onChange={(event) => {
-                      setSelectedDocId(event.target.value);
-                      setSupportingDocIds((current) => current.filter((id) => id !== event.target.value));
+                      const nextDocumentId = event.target.value;
+                      setSelectedDocId(nextDocumentId);
+                      setActiveBlueprint(blueprints.find((blueprint) => blueprint.document_id === nextDocumentId) ?? null);
+                      setSupportingDocIds((current) => current.filter((id) => id !== nextDocumentId));
                       setSourceReview(null);
                     }}
                     className="min-h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
@@ -813,6 +835,7 @@ export default function BlueprintsDashboard() {
                       type="button"
                       onClick={() => {
                         setActiveBlueprint(blueprint);
+                        setSelectedDocId(blueprint.document_id || "");
                         setActiveSectionId("summary");
                         setExportData(null);
                         setRuntimeBundle(null);
@@ -855,7 +878,7 @@ export default function BlueprintsDashboard() {
                           {activeBlueprint.title}
                         </h2>
                         <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--foreground)]">
-                          {statusLabel(activeBlueprint)}
+                          {statusLabel(activeBlueprint, readiness)}
                         </span>
                         {activeBlueprint.source_document_ids.length > 1 && (
                           <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
@@ -880,7 +903,9 @@ export default function BlueprintsDashboard() {
                         )}
                       </div>
                       <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                        Review one design area at a time. Approval is the point where draft design becomes runtime intent.
+                        {readiness?.status === "runtime_deferred"
+                          ? "Reviewed design only. Runtime integration was deferred; export and materialization remain blocked."
+                          : "Review one design area at a time. Runtime integration requires its own readiness checks after design approval."}
                       </p>
                       {readiness && (readiness.missing_required.length > 0 || readiness.blockers.length > 0) && (
                         <div className="mt-5 max-w-3xl border-l-2 border-rose-500/60 pl-4" role="alert">
@@ -967,11 +992,11 @@ export default function BlueprintsDashboard() {
                       <button type="button" onClick={handleExportBrief} disabled={isExportingBrief} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                         {isExportingBrief ? "Exporting brief" : "Export brief"}
                       </button>
-                      <button type="button" onClick={handleExport} className="btn-secondary">
+                      <button type="button" onClick={handleExport} disabled={readiness?.status === "runtime_deferred"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                         Export JSON
                       </button>
                       {blueprintIsMaterialized && (
-                        <button type="button" onClick={handleRuntimeBundle} className="btn-secondary">
+                        <button type="button" onClick={handleRuntimeBundle} disabled={readiness?.status === "runtime_deferred"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                           Runtime bundle
                         </button>
                       )}
@@ -1436,12 +1461,56 @@ function NpcProfiles({ profiles }: { profiles: Record<string, unknown>[] }) {
               <p className="mt-4 border-t border-[var(--border)] pt-4 text-sm leading-6 text-[var(--text-secondary)]">{dialogueStyle}</p>
             )}
             <ArtifactList label="Dialogue hooks" items={asStringArray(profile.dialogue_hooks)} />
+            <DialogueConditions mappings={profile.dialogue_triggers} />
             <ArtifactList label="Relationship notes" items={asStringArray(profile.relationship_notes)} />
             <ArtifactList label="Integration steps" items={asStringArray(profile.implementation_notes)} />
             <ArtifactList label="Assumptions to confirm" items={asStringArray(profile.assumptions)} muted />
           </article>
         );
       })}
+    </section>
+  );
+}
+
+function DialogueConditions({ mappings }: { mappings: unknown }) {
+  const entries = Array.isArray(mappings)
+    ? mappings.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+  if (entries.length === 0) return null;
+  return (
+    <section className="mt-5">
+      <p className="page-kicker">Dialogue conditions</p>
+      <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">Design proposals, not active game bindings.</p>
+      <div className="mt-2 divide-y divide-[var(--border)]">
+        {entries.map((mapping, index) => {
+          const eligibility = mapping.eligibility && typeof mapping.eligibility === "object" && !Array.isArray(mapping.eligibility)
+            ? mapping.eligibility as Record<string, unknown> : null;
+          const condition = eligibility
+            ? `Stage: ${readableValue(eligibility.stage)}; quest: ${eligibility.quest_id === null ? "not quest-scoped" : readableValue(eligibility.quest_id)}; attempt: ${eligibility.lifecycle === null ? "not quest-scoped" : readableValue(eligibility.lifecycle)}; progress: ${readableValue(eligibility.progress)}.`
+            : "Not supplied in this legacy draft; confirm eligibility before integration.";
+          return (
+            <details key={`${readableValue(mapping.trigger)}-${index}`}>
+              <summary className="min-h-11 cursor-pointer break-words py-3 text-sm font-medium text-[var(--foreground)] outline-none hover:text-[var(--accent)] focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-[var(--accent)] active:opacity-70">
+                Trigger: {readableValue(mapping.trigger)}
+              </summary>
+              <dl className="space-y-4 pb-5">
+                {([
+                  ["Spoken line", readableValue(mapping.text)],
+                  ["Situation", readableValue(mapping.situation)],
+                  ["Eligibility", condition],
+                  ["Repeat and reset", readableValue(mapping.repeat_policy)],
+                  ["Manual check (not executed)", readableValue(mapping.manual_test)],
+                ] as const).map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-xs font-semibold text-[var(--foreground)]">{label}</dt>
+                    <dd className="mt-1 text-sm leading-6 break-words [overflow-wrap:anywhere] text-[var(--text-secondary)]">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          );
+        })}
+      </div>
     </section>
   );
 }

@@ -7,6 +7,8 @@ from app.models.blueprint import GameBlueprint
 class BlueprintReadinessService:
     """Assess whether a blueprint is coherent enough to approve or materialize."""
 
+    RUNTIME_MANIFEST_RECORD_KEYS = ("npcs", "quest_ids", "memory_ids", "flag_keys")
+
     REQUIRED_SECTIONS = {
         "summary": "Game summary",
         "narrative": "Narrative direction",
@@ -180,10 +182,45 @@ class BlueprintReadinessService:
         else:
             status = "runtime_ready"
 
+        manifest = blueprint.materialization_manifest if isinstance(blueprint.materialization_manifest, dict) else {}
+        has_materialization = bool(manifest.get("last_materialized_at"))
+        has_runtime_records = any(manifest.get(key) for key in self.RUNTIME_MANIFEST_RECORD_KEYS)
+        runtime_deferred = (getattr(blueprint, "unity_runtime_preview", None) or {}).get("runtime_deferred") is True
+        runtime_release_reason = "ready"
+        runtime_release_blockers: List[str] = []
+
+        if runtime_deferred:
+            status = "runtime_deferred"
+            runtime_release_reason = "runtime_deferred"
+            runtime_release_blockers.append("Runtime integration explicitly deferred. This blueprint is reviewed design only.")
+        elif blueprint.status != "approved":
+            runtime_release_reason = "unapproved"
+            runtime_release_blockers.append("Only an approved blueprint can provide a runtime bundle.")
+        elif not has_materialization:
+            runtime_release_reason = "unmaterialized"
+            runtime_release_blockers.append("Blueprint must be materialized before it can provide a runtime bundle.")
+        elif not has_runtime_records:
+            runtime_release_reason = "empty_materialization"
+            runtime_release_blockers.append(
+                "Materialization completed but did not produce runtime records. "
+                "Review skipped items and add explicit runtime bindings before runtime use."
+            )
+        elif not can_ship:
+            runtime_release_reason = "content_blocked"
+            runtime_release_blockers.extend(
+                [f"Missing required content: {item}." for item in missing_required]
+            )
+            runtime_release_blockers.extend(blockers)
+
+        runtime_release_blockers = list(dict.fromkeys(runtime_release_blockers))
+
         return {
             "status": status,
             "can_approve": can_ship,
-            "can_materialize": can_ship,
+            "can_materialize": can_ship and not runtime_deferred,
+            "can_serve_runtime": not runtime_release_blockers,
+            "runtime_release_reason": runtime_release_reason,
+            "runtime_release_blockers": runtime_release_blockers,
             "missing_required": missing_required,
             "blockers": blockers,
             "advisories": advisories,

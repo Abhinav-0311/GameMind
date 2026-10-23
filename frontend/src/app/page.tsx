@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { api, BlueprintResponse, DocumentResponse, HealthResponse } from "@/lib/api";
+import { api, BlueprintReadinessResponse, BlueprintResponse, DocumentResponse, HealthResponse, requestFailureMessage } from "@/lib/api";
 
 interface ProductMode {
   eyebrow: string;
@@ -34,49 +34,62 @@ function hasMaterializedRuntimeRecords(blueprint: BlueprintResponse) {
 export default function WorkspaceOverview() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
+  const [readinessByBlueprint, setReadinessByBlueprint] = useState<Record<string, BlueprintReadinessResponse>>({});
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [available, setAvailable] = useState({ documents: false, blueprints: false, readiness: false });
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const fetchWorkspace = async () => {
+      if (cancelled) return;
       setIsLoading(true);
       setError(null);
 
-      try {
-        const [docs, healthData, blueprintData] = await Promise.all([
-          api.getDocuments(),
-          api.getHealth(),
-          api.getBlueprints(),
-        ]);
+      const [docs, healthData, blueprintData] = await Promise.allSettled([
+        api.getDocuments(),
+        api.getHealth(),
+        api.getBlueprints(),
+      ]);
+      const readinessResults = await Promise.all(
+        (blueprintData.status === "fulfilled" ? blueprintData.value : [])
+          .filter(hasMaterializedRuntimeRecords)
+          .map(async (blueprint) => {
+            try {
+              return [blueprint.id, await api.getBlueprintReadiness(blueprint.id)] as const;
+            } catch {
+              return null;
+            }
+          })
+      );
+      const nextReadiness = Object.fromEntries(
+        readinessResults.filter((result): result is readonly [string, BlueprintReadinessResponse] => result !== null)
+      );
 
-        if (!cancelled) {
-          setDocuments(docs);
-          setHealth(healthData);
-          setBlueprints(blueprintData);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn("Workspace overview is unavailable:", err);
-          }
-          setError("Start Docker, wait for the backend health check, then refresh this page.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+      if (!cancelled) {
+        setDocuments(docs.status === "fulfilled" ? docs.value : []);
+        setHealth(healthData.status === "fulfilled" ? healthData.value : null);
+        setBlueprints(blueprintData.status === "fulfilled" ? blueprintData.value : []);
+        setReadinessByBlueprint(nextReadiness);
+        const readinessAvailable = blueprintData.status === "fulfilled" && readinessResults.every((result) => result !== null);
+        setAvailable({ documents: docs.status === "fulfilled", blueprints: blueprintData.status === "fulfilled", readiness: readinessAvailable });
+        const failure = [docs, healthData, blueprintData].find((result) => result.status === "rejected");
+        setError(failure?.status === "rejected"
+          ? requestFailureMessage(failure.reason, "Some workspace data")
+          : !readinessAvailable ? "Runtime readiness unavailable. Retry before choosing a runtime action." : null);
+        setIsLoading(false);
       }
     };
 
-    fetchWorkspace();
+    void Promise.resolve().then(fetchWorkspace);
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retry]);
 
   const totalChunks = useMemo(
     () => documents.reduce((sum, doc) => sum + (doc.chunks_count || 0), 0),
@@ -86,11 +99,22 @@ export default function WorkspaceOverview() {
   const hasDocuments = documents.length > 0;
   const hasBlueprints = blueprints.length > 0;
   const approvedBlueprints = blueprints.filter((blueprint) => blueprint.status === "approved");
-  const runtimeReadyCount = blueprints.filter(hasMaterializedRuntimeRecords).length;
+  const runtimeReadyCount = blueprints.filter((blueprint) => readinessByBlueprint[blueprint.id]?.can_serve_runtime).length;
   const hasRuntimeData = runtimeReadyCount > 0;
+  const hasBlockedRuntimeRelease = blueprints.some(
+    (blueprint) => hasMaterializedRuntimeRecords(blueprint) && readinessByBlueprint[blueprint.id] && !readinessByBlueprint[blueprint.id].can_serve_runtime
+  );
   const isLocalMode = health?.ai_mode === "local_demo";
 
   const nextAction: NextAction = useMemo(() => {
+    if (isLoading || !available.documents || !available.blueprints || !available.readiness) {
+      return {
+        label: isLoading ? "Checking workspace" : "Workspace status unavailable",
+        description: "Load the source library and release status before choosing the next design or runtime step.",
+        href: "/workspace",
+        action: "Check workspace",
+      };
+    }
     if (!hasDocuments) {
       return {
         label: "Add your first source document",
@@ -106,6 +130,15 @@ export default function WorkspaceOverview() {
         description: "Use your indexed GDD as fixed evidence, then inspect the draft and independent critique before approval.",
         href: "/design-agent",
         action: "Open review",
+      };
+    }
+
+    if (hasBlockedRuntimeRelease) {
+      return {
+        label: "Repair the runtime release",
+        description: "A materialized blueprint has current quality blockers. Resolve them before using it in a game client.",
+        href: "/blueprints",
+        action: "Review blockers",
       };
     }
 
@@ -126,7 +159,7 @@ export default function WorkspaceOverview() {
       href: "/vertical-slice",
       action: "Open runtime test",
     };
-  }, [approvedBlueprints.length, hasBlueprints, hasDocuments, hasRuntimeData]);
+  }, [approvedBlueprints.length, hasBlueprints, hasBlockedRuntimeRelease, hasDocuments, hasRuntimeData, isLoading, available]);
 
   const productModes: ProductMode[] = [
     {
@@ -194,16 +227,17 @@ export default function WorkspaceOverview() {
       </section>
 
       {error && (
-        <section className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
-          {error}
+        <section role="alert" className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
+          <p>{error}</p>
+          <button className="btn-secondary mt-3" disabled={isLoading} onClick={() => setRetry((value) => value + 1)}>Retry workspace</button>
         </section>
       )}
 
       <section className="grid gap-px overflow-hidden border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-5" aria-label="Workspace status">
-        <StatusTile label="Documents" value={isLoading ? "--" : String(documents.length)} />
-        <StatusTile label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
-        <StatusTile label="Blueprints" value={isLoading ? "--" : String(blueprints.length)} />
-        <StatusTile label="Runtime ready" value={isLoading ? "--" : String(runtimeReadyCount)} />
+        <StatusTile label="Documents" value={isLoading ? "--" : available.documents ? String(documents.length) : "Unavailable"} />
+        <StatusTile label="Chunks" value={isLoading ? "--" : available.documents ? String(totalChunks) : "Unavailable"} />
+        <StatusTile label="Blueprints" value={isLoading ? "--" : available.blueprints ? String(blueprints.length) : "Unavailable"} />
+        <StatusTile label="Runtime ready" value={isLoading ? "--" : available.readiness ? String(runtimeReadyCount) : "Unavailable"} />
         <StatusTile label="AI review" value="opt-in" accent />
       </section>
 
@@ -268,13 +302,13 @@ export default function WorkspaceOverview() {
         <aside className="panel-muted rounded-2xl p-6">
           <p className="page-kicker">Readiness</p>
           <h2 className="mt-4 text-2xl font-semibold tracking-normal text-[var(--foreground)]">
-            {isLoading ? "Checking workspace" : health?.status === "healthy" ? "Workspace is connected" : "Needs attention"}
+            {isLoading ? "Checking workspace" : !error && health?.status === "healthy" ? "Workspace is connected" : "Needs attention"}
           </h2>
           <div className="mt-5 space-y-3">
-            <ReadinessRow label="Backend" value={health?.status ?? "checking"} good={health?.status === "healthy"} loading={isLoading} />
-            <ReadinessRow label="Database" value={health?.database ?? "checking"} good={health?.database === "healthy"} loading={isLoading} />
-            <ReadinessRow label="Vector index" value={health?.chromadb ?? "checking"} good={health?.chromadb === "healthy"} loading={isLoading} />
-            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "checking"} good={Boolean(health?.ai_mode)} loading={isLoading} />
+            <ReadinessRow label="Backend" value={health?.status ?? "unavailable"} good={health?.status === "healthy"} loading={isLoading} />
+            <ReadinessRow label="Database" value={health?.database ?? "unavailable"} good={health?.database === "healthy"} loading={isLoading} />
+            <ReadinessRow label="Vector index" value={health?.chromadb ?? "unavailable"} good={health?.chromadb === "healthy"} loading={isLoading} />
+            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "unavailable"} good={Boolean(health?.ai_mode)} loading={isLoading} />
           </div>
         </aside>
       </section>

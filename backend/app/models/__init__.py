@@ -19,6 +19,7 @@ from app.models.design_agent import (
     DesignAgentCritique,
     DesignAgentEvaluation,
     DesignAgentEvidenceSnapshot,
+    DesignAgentFindingResolution,
     DesignAgentJob,
     DesignAgentNodeExecution,
     DesignAgentReviewEvent,

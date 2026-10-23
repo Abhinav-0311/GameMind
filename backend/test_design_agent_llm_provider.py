@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 
 import httpx
 import pytest
@@ -92,6 +94,7 @@ def test_node_model_config_uses_nano_by_default_and_allows_explicit_plan_overrid
     assert default_plan.model == "nvidia/llama-3.1-nemotron-nano-8b-v1"
     assert default_plan.api_key_env == "NVIDIA_NANO_API_KEY"
     assert default_plan.max_tokens == 300
+    assert default_plan.disable_thinking is True
 
     monkeypatch.setenv("NVIDIA_PLAN_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1.5")
     monkeypatch.setenv("NVIDIA_PLAN_API_KEY_ENV", "NVIDIA_SUPER_API_KEY")
@@ -100,6 +103,7 @@ def test_node_model_config_uses_nano_by_default_and_allows_explicit_plan_overrid
     assert overridden_plan.model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     assert overridden_plan.api_key_env == "NVIDIA_SUPER_API_KEY"
     assert overridden_plan.max_tokens == 1024
+    assert overridden_plan.disable_thinking is True
 
     monkeypatch.delenv("NVIDIA_ARTIFACT_MODEL", raising=False)
     monkeypatch.delenv("NVIDIA_ARTIFACT_API_KEY_ENV", raising=False)
@@ -131,18 +135,30 @@ def test_research_plan_rejects_generic_or_incomplete_section_lists():
     assert complete.required_sections == list(BLUEPRINT_SECTION_KEYS)
 
 
-def test_planner_model_boundary_owns_only_the_retrieval_query():
+def test_planner_model_boundary_owns_search_queries_not_workflow_scope():
+    section_queries = {section: f"evidence for {section}" for section in BLUEPRINT_SECTION_KEYS}
     output = RetrievalPlanOutput.model_validate(
         {
             "retrieval_query": "all game levels NPC memories and quest systems",
+            "section_queries": section_queries,
             "objective": "The model must not own this field.",
             "required_sections": ["summary"],
         }
     )
 
     assert output.model_dump() == {
-        "retrieval_query": "all game levels NPC memories and quest systems"
+        "retrieval_query": "all game levels NPC memories and quest systems",
+        "section_queries": section_queries,
     }
+    assert RetrievalPlanOutput(retrieval_query="legacy query").section_queries == {}
+    for invalid_queries in (
+        {"summary": "overview"},
+        {**section_queries, "outside_workflow": "unrelated"},
+        {**section_queries, "summary": "   "},
+        {**section_queries, "summary": "x" * 501},
+    ):
+        with pytest.raises(ValidationError):
+            RetrievalPlanOutput(retrieval_query="game evidence", section_queries=invalid_queries)
 
 
 def test_scriptable_mock_returns_sequential_responses_for_same_node():
@@ -162,6 +178,40 @@ def test_scriptable_mock_returns_sequential_responses_for_same_node():
     assert second.content["retrieval_query"] == "second query"
     assert first.metadata["script_index"] == 0
     assert second.metadata["script_index"] == 1
+
+
+@pytest.mark.parametrize("valid_retry", [True, False])
+def test_malformed_independent_review_gets_one_fresh_review_not_a_repair(valid_retry):
+    from app.design_agent.contracts import GovernedCritiqueOutput
+    from app.design_agent.llm_provider import NvidiaStructuredOutputError
+
+    finding = {"severity": "high", "section": "summary", "issue": "Source premise is absent.",
+               "recommendation": "Restore the cited premise.", "reference": {
+                   "artifact_path": "/summary/content/description", "artifact_value": None,
+                   "replacement": "A tactical RPG.", "evidence_chunk_id": "source",
+                   "evidence_quote": "A tactical RPG."}}
+    review = {"verdict": "needs_revision", "summary": "The premise is missing.",
+              "source_coverage": {section: "covered" for section in BLUEPRINT_SECTION_KEYS}, "findings": [finding]}
+    calls = []
+    def respond(request):
+        calls.append(json.loads(request.content))
+        return _completion(json.dumps(review) if valid_retry and len(calls) == 2 else '{"findings":[}')
+    request = CompletionRequest(node_name="critique", messages=[{"role": "user", "content": "Review frozen draft and evidence."}],
+                                response_model=GovernedCritiqueOutput)
+    provider = NvidiaProvider(base_url="https://example.test/v1", timeout_seconds=1, repair_enabled=True,
+        key_reader=lambda _: "offline-only", client=httpx.Client(transport=httpx.MockTransport(respond)))
+    if valid_retry:
+        result = provider.complete(request)
+        assert result.content["findings"] == [finding] and result.content["verdict"] == "needs_revision"
+        assert result.metadata["request_attempts"] == 2 and result.metadata["retry_count"] == 1
+        assert result.metadata["independent_review_retries"] == 1
+        assert result.metadata["repair_attempts"] == 0 and not result.metadata["repaired"]
+        assert result.usage.input_tokens == 20 and result.usage.output_tokens == 10
+    else:
+        with pytest.raises(NvidiaStructuredOutputError) as caught:
+            provider.complete(request)
+        assert caught.value.attempts == 2
+    assert len(calls) == 2 and calls[1] == calls[0]
 
 
 def test_nvidia_provider_uses_node_specific_model_and_key():
@@ -198,6 +248,7 @@ def test_nvidia_provider_uses_node_specific_model_and_key():
     )
     assert captured[0]["authorization"] == f"Bearer {expected_secret}"
     assert captured[0]["payload"]["model"] == NODE_MODEL_CONFIG["plan"].model
+    assert captured[0]["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert "response_format" not in captured[0]["payload"]
 
 
@@ -227,7 +278,74 @@ def test_nvidia_provider_sends_native_json_schema_when_requested():
     )
 
     assert result.content["objective"]
-    assert captured[0]["guided_json"] == ResearchPlan.model_json_schema()
+    assert "guided_json" not in captured[0] and "nvext" not in captured[0]
+    assert captured[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "gamemind_response", "strict": True, "schema": ResearchPlan.model_json_schema()},
+    }
+
+
+@pytest.mark.parametrize("status", [400, 422])
+def test_structured_request_rejection_does_not_silently_retry_without_schema(status):
+    calls = []
+    def respond(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(status, json={"error": "private provider details"})
+    provider = NvidiaProvider(base_url="https://example.invalid/v1", timeout_seconds=1, repair_enabled=True,
+        client=httpx.Client(transport=httpx.MockTransport(respond)), key_reader=lambda _: "test-secret")
+    request = CompletionRequest(node_name="revise", messages=[], response_model=ResearchPlan, guided_json=True)
+    with pytest.raises(NvidiaProviderError) as caught:
+        provider.complete(request)
+    assert len(calls) == 1 and caught.value.attempts == 1 and caught.value.code == "request_rejected"
+    assert calls[0]["response_format"]["json_schema"]["strict"] is True
+    assert "private provider details" not in str(caught.value)
+    assert caught.value.diagnostics["http_status"] == status
+
+
+@pytest.mark.parametrize("status,retry_after,attempts,delays,success", [
+    (503, None, 3, [0.5, 1.0], False),
+    (429, "1", 2, [1.0], True),
+    (503, "2", 2, [2.0], True),
+    (503, "0", 2, [0.5], True),
+    (503, "60", 1, [], False),
+    (503, "future-date", 1, [], False),
+    (503, "past-date", 2, [0.5], True),
+    (429, "private-invalid-header", 2, [0.5], True),
+    (429, "NaN", 2, [0.5], True),
+    (429, "-1", 2, [0.5], True),
+    pytest.param(503, "9" * 5000, 1, [], False, id="oversized-cooldown"),
+    (401, "1", 1, [], False),
+    (403, None, 1, [], False),
+])
+def test_http_failure_diagnostics_and_bounded_cooldown(status, retry_after, attempts, delays, success):
+    if retry_after in {"future-date", "past-date"}:
+        offset = 60 if retry_after == "future-date" else -60
+        retry_after = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=offset), usegmt=True)
+    calls, slept = [], []
+
+    def respond(request):
+        calls.append(request)
+        if success and len(calls) == 2:
+            return _completion(_valid_plan())
+        return httpx.Response(status, json={"error": "private response test-secret"},
+            headers={"Retry-After": retry_after} if retry_after is not None else {})
+
+    provider = NvidiaProvider(base_url="https://example.invalid/v1", timeout_seconds=1,
+        repair_enabled=False, client=httpx.Client(transport=httpx.MockTransport(respond)),
+        key_reader=lambda _: "test-secret", sleep=slept.append)
+    if success:
+        assert provider.complete(_request("plan")).metadata["request_attempts"] == attempts
+    else:
+        with pytest.raises(NvidiaProviderError) as caught:
+            provider.complete(_request("plan"))
+        error = caught.value
+        assert error.attempts == attempts and error.diagnostics["http_status"] == status
+        assert error.code == ("authentication_failed" if status in {401, 403} else "provider_unavailable")
+        rendered = str(error) + json.dumps(error.diagnostics)
+        assert "test-secret" not in rendered and "private" not in rendered
+        if status == 503 and attempts == 1:
+            assert error.diagnostics["retry_skipped"] == "retry_after_exceeds_backoff_budget"
+    assert len(calls) == attempts and slept == delays
 
 
 def test_nvidia_provider_disables_thinking_for_artifact_nodes(monkeypatch):
@@ -281,7 +399,7 @@ def test_nvidia_provider_discards_reasoning_and_parses_visible_content_only():
     assert "private reasoning" not in repr(result)
 
 
-def test_nvidia_provider_retries_truncation_with_larger_budget():
+def test_nvidia_provider_keeps_planner_thinking_off_through_truncation_and_repair():
     payloads: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -293,6 +411,8 @@ def test_nvidia_provider_retries_truncation_with_larger_budget():
                 finish_reason="length",
                 reasoning="reasoning consumed the first output budget",
             )
+        if len(payloads) == 2:
+            return _completion("not valid JSON")
         return _completion(_valid_plan())
 
     provider = NvidiaProvider(
@@ -306,10 +426,12 @@ def test_nvidia_provider_retries_truncation_with_larger_budget():
 
     result = provider.complete(_request("plan"))
 
-    assert len(payloads) == 2
+    assert len(payloads) == 3
     assert payloads[1]["max_tokens"] > payloads[0]["max_tokens"]
+    assert all(payload["chat_template_kwargs"] == {"enable_thinking": False} for payload in payloads)
     assert result.metadata["truncation_retries"] == 1
-    assert result.metadata["request_attempts"] == 2
+    assert result.metadata["repair_attempts"] == 1
+    assert result.metadata["request_attempts"] == 3
 
 
 def test_nvidia_provider_stops_after_one_truncation_retry():

@@ -13,6 +13,7 @@ from app.models.quest import Quest, QuestObjective
 from app.models.memory import NPCMemory
 from app.models.world_state import WorldStateFlag
 from app.models.graph import WorldEntity, WorldEntityVersion
+from app.services.blueprint_readiness import BlueprintReadinessService
 from app.services.graph_cache import graph_cache
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,8 @@ class BlueprintMaterializerService:
             )
 
         # Only approved blueprints can be materialized
+        if (getattr(blueprint, "unity_runtime_preview", None) or {}).get("runtime_deferred") is True:
+            raise HTTPException(status_code=409, detail="Runtime integration explicitly deferred. This blueprint cannot be materialized.")
         if blueprint.status != "approved":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -483,26 +486,21 @@ class BlueprintMaterializerService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Blueprint not found or not owned by this project."
             )
-        if blueprint.status != "approved":
+        readiness = BlueprintReadinessService().assess(blueprint)
+        if not readiness["can_serve_runtime"]:
+            if readiness["runtime_release_reason"] in {"unapproved", "unmaterialized", "empty_materialization"}:
+                detail: Any = readiness["runtime_release_blockers"][0]
+            else:
+                detail = {
+                    "message": "Runtime bundle is blocked until the current blueprint content is repaired.",
+                    "readiness": readiness,
+                }
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Only an approved blueprint can provide a runtime bundle.",
+                detail=detail,
             )
 
         manifest = blueprint.materialization_manifest
-        if not isinstance(manifest, dict) or not manifest.get("last_materialized_at"):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Blueprint must be materialized before it can provide a runtime bundle.",
-            )
-        if not any(manifest.get(key) for key in ("npcs", "quest_ids", "memory_ids", "flag_keys")):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Materialization completed but did not produce runtime records. "
-                    "Review skipped items and add explicit runtime bindings before runtime use."
-                ),
-            )
 
         # Query only database records listed inside manifest to enforce strict provenance
         npcs = []

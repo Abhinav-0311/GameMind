@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, MemoryMetrics, NPCCostBreakdown, OverviewMetrics, TelemetryLog } from "@/lib/api";
+import { api, MemoryMetrics, NPCCostBreakdown, OverviewMetrics, TelemetryLog, requestFailureMessage } from "@/lib/api";
 
 const PAGE_SIZE = 12;
 
@@ -11,42 +11,48 @@ export default function AnalyticsDashboard() {
   const [costs, setCosts] = useState<NPCCostBreakdown[]>([]);
   const [memories, setMemories] = useState<MemoryMetrics | null>(null);
   const [logs, setLogs] = useState<TelemetryLog[]>([]);
-  const [totalLogs, setTotalLogs] = useState(0);
+  const [totalLogs, setTotalLogs] = useState<number | null>(null);
   const [selectedNpc, setSelectedNpc] = useState("");
   const [selectedAction, setSelectedAction] = useState("");
   const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLogsLoading, setIsLogsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchCoreMetrics = async () => {
+      if (cancelled) return;
       setIsLoading(true);
       setError(null);
 
-      try {
-        const [overviewData, costsData, memoryData] = await Promise.all([
-          api.getOverviewMetrics(),
-          api.getNPCCosts(),
-          api.getMemoryMetrics(),
-        ]);
-        setOverview(overviewData);
-        setCosts(costsData);
-        setMemories(memoryData);
-      } catch (err) {
-        console.error("Failed to fetch analytics metrics:", err);
-        setError("Observability metrics could not be loaded. Check that the backend is running.");
-      } finally {
+      const [overviewData, costsData, memoryData] = await Promise.allSettled([
+        api.getOverviewMetrics(),
+        api.getNPCCosts(),
+        api.getMemoryMetrics(),
+      ]);
+      if (!cancelled) {
+        setOverview(overviewData.status === "fulfilled" ? overviewData.value : null);
+        setCosts(costsData.status === "fulfilled" ? costsData.value : []);
+        setMemories(memoryData.status === "fulfilled" ? memoryData.value : null);
+        const failure = [overviewData, costsData, memoryData].find((result) => result.status === "rejected");
+        setError(failure?.status === "rejected" ? requestFailureMessage(failure.reason, "Some diagnostics") : null);
         setIsLoading(false);
       }
     };
 
     void Promise.resolve().then(fetchCoreMetrics);
-  }, []);
+    return () => { cancelled = true; };
+  }, [retry]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchLogsData = async () => {
+      if (cancelled) return;
       setIsLogsLoading(true);
+      setLogsError(null);
 
       try {
         const result = await api.getTelemetryLogs({
@@ -55,17 +61,24 @@ export default function AnalyticsDashboard() {
           limit: PAGE_SIZE,
           offset,
         });
-        setLogs(result.logs);
-        setTotalLogs(result.total);
+        if (!cancelled) {
+          setLogs(result.logs);
+          setTotalLogs(result.total);
+        }
       } catch (err) {
-        console.error("Failed to fetch telemetry logs:", err);
+        if (!cancelled) {
+          setLogs([]);
+          setTotalLogs(null);
+          setLogsError(requestFailureMessage(err, "Trace log"));
+        }
       } finally {
-        setIsLogsLoading(false);
+        if (!cancelled) setIsLogsLoading(false);
       }
     };
 
     void Promise.resolve().then(fetchLogsData);
-  }, [selectedAction, selectedNpc, offset]);
+    return () => { cancelled = true; };
+  }, [selectedAction, selectedNpc, offset, retry]);
 
   const actionCounts = useMemo(
     () => new Map((overview?.breakdown_by_action ?? []).map((item) => [item.action, item.count])),
@@ -83,10 +96,11 @@ export default function AnalyticsDashboard() {
   );
 
   const totalTokens = (overview?.total_input_tokens ?? 0) + (overview?.total_output_tokens ?? 0);
-  const issueCount = (overview?.error_count ?? 0) + (overview?.safety_blocked_count ?? 0) + (memories?.failed_chroma_indexing_count ?? 0);
-  const healthLabel = issueCount === 0 ? "Healthy" : `${issueCount} issues`;
+  const issueCount = overview && memories ? overview.error_count + overview.safety_blocked_count + memories.failed_chroma_indexing_count : null;
+  const healthUnknown = issueCount === null || isLogsLoading || Boolean(error || logsError);
+  const healthLabel = healthUnknown ? "Unavailable" : issueCount === 0 ? "Healthy" : `${issueCount} issues`;
   const shownStart = totalLogs === 0 ? 0 : offset + 1;
-  const shownEnd = Math.min(offset + PAGE_SIZE, totalLogs);
+  const shownEnd = Math.min(offset + PAGE_SIZE, totalLogs ?? 0);
 
   const hintMetrics = [
     { label: "Generated", value: actionCounts.get("progressive_hints_generated_total") ?? 0 },
@@ -122,24 +136,26 @@ export default function AnalyticsDashboard() {
             </div>
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-normal ${
-                issueCount === 0 ? "bg-emerald-500/10 text-emerald-800" : "bg-amber-500/10 text-amber-800"
+                !isLoading && !healthUnknown && issueCount === 0 ? "bg-emerald-500/10 text-[var(--foreground)]" : "bg-[var(--card-muted)] text-[var(--foreground)]"
               }`}
             >
-              {issueCount === 0 ? "Clean" : "Review"}
+              {isLoading ? "Checking" : healthUnknown ? "Unknown" : issueCount === 0 ? "Clean" : "Review"}
             </span>
           </div>
           <div className="mt-4 divide-y divide-[var(--border)]">
-            <FactRow label="Paid API cost" value={formatCurrency(overview?.total_cost_usd ?? 0)} />
-            <FactRow label="Errors" value={String(overview?.error_count ?? 0)} />
-            <FactRow label="Memory index failures" value={String(memories?.failed_chroma_indexing_count ?? 0)} />
+            <FactRow label="Paid API cost" value={isLoading ? "Checking" : overview ? formatCurrency(overview.total_cost_usd) : "Unavailable"} />
+            <FactRow label="Errors" value={isLoading ? "Checking" : overview ? String(overview.error_count) : "Unavailable"} />
+            <FactRow label="Memory index failures" value={isLoading ? "Checking" : memories ? String(memories.failed_chroma_indexing_count) : "Unavailable"} />
           </div>
           <Link href="/vertical-slice" className="btn-primary mt-5 w-full">Run Runtime Test</Link>
         </aside>
       </section>
 
-      {error && (
-        <div role="alert" className="mb-6 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
-          {error}
+      {(error || logsError) && (
+        <div role="alert" className="mb-6 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
+          {error && <p>{error}</p>}
+          {logsError && <p>{logsError}</p>}
+          <button className="btn-secondary mt-3" disabled={isLoading || isLogsLoading} onClick={() => setRetry((value) => value + 1)}>Retry diagnostics</button>
         </div>
       )}
 
@@ -148,9 +164,9 @@ export default function AnalyticsDashboard() {
       ) : (
         <>
           <section className="grid gap-3 sm:grid-cols-3">
-            <MetricCard label="Runtime issues" value={String(issueCount)} description="Errors, safety blocks, and index failures" />
-            <MetricCard label="Latency" value={`${Math.round(overview?.avg_latency_ms ?? 0)}ms`} description="Average response time" />
-            <MetricCard label="Trace events" value={String(overview?.total_requests ?? 0)} description={`${totalTokens.toLocaleString()} estimated tokens logged`} />
+            <MetricCard label="Runtime issues" value={issueCount === null ? "Unavailable" : String(issueCount)} description="Errors, safety blocks, and index failures" />
+            <MetricCard label="Latency" value={overview ? `${Math.round(overview.avg_latency_ms)}ms` : "Unavailable"} description="Average response time" />
+            <MetricCard label="Trace events" value={overview ? String(overview.total_requests) : "Unavailable"} description={overview ? `${totalTokens.toLocaleString()} estimated tokens logged` : "Token count unavailable"} />
           </section>
 
           <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -162,7 +178,9 @@ export default function AnalyticsDashboard() {
                 </p>
               </div>
               <div className="space-y-4 p-5">
-                {topActions.length === 0 ? (
+                {!overview ? (
+                  <EmptyText title="Activity unavailable" body="Retry diagnostics to load activity." />
+                ) : topActions.length === 0 ? (
                   <EmptyText title="No activity yet" body="Run dialogue, quest, or hint flows to populate this view." />
                 ) : (
                   topActions.map((action) => (
@@ -180,11 +198,11 @@ export default function AnalyticsDashboard() {
             <div className="panel rounded-xl p-5">
               <h2 className="font-display text-2xl font-semibold text-[var(--foreground)]">Memory store</h2>
               <div className="mt-5 divide-y divide-[var(--border)]">
-                <FactRow label="Active" value={String(memories?.active_memories ?? 0)} />
-                <FactRow label="Archived" value={String(memories?.archived_memories ?? 0)} />
-                <FactRow label="Promoted" value={String(memories?.promoted_memories ?? 0)} />
-                <FactRow label="Avg importance" value={(memories?.average_importance_score ?? 0).toFixed(2)} />
-                <FactRow label="Index failures" value={String(memories?.failed_chroma_indexing_count ?? 0)} />
+                <FactRow label="Active" value={memories ? String(memories.active_memories) : "Unavailable"} />
+                <FactRow label="Archived" value={memories ? String(memories.archived_memories) : "Unavailable"} />
+                <FactRow label="Promoted" value={memories ? String(memories.promoted_memories) : "Unavailable"} />
+                <FactRow label="Avg importance" value={memories ? memories.average_importance_score.toFixed(2) : "Unavailable"} />
+                <FactRow label="Index failures" value={memories ? String(memories.failed_chroma_indexing_count) : "Unavailable"} />
               </div>
             </div>
           </section>
@@ -281,6 +299,10 @@ export default function AnalyticsDashboard() {
                     <div key={item} className="h-20 animate-pulse rounded-md bg-[var(--card-muted)]" />
                   ))}
                 </div>
+              ) : logsError ? (
+                <div className="px-5 py-12 text-center">
+                  <EmptyText title="Trace log unavailable" body="Retry diagnostics to load traces for these filters." />
+                </div>
               ) : logs.length === 0 ? (
                 <div className="px-5 py-12 text-center">
                   <EmptyText title="No traces found" body="Change filters or run a simulator action." />
@@ -292,13 +314,13 @@ export default function AnalyticsDashboard() {
 
             <div className="flex flex-col gap-3 border-t border-[var(--border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-[var(--text-secondary)]">
-                Showing {shownStart}-{shownEnd} of {totalLogs}
+                {isLogsLoading ? "Loading traces" : totalLogs === null ? "Trace count unavailable" : `Showing ${shownStart}-${shownEnd} of ${totalLogs}`}
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
-                  disabled={offset === 0 || isLogsLoading}
+                  disabled={offset === 0 || isLogsLoading || totalLogs === null}
                   className="inline-flex min-h-9 items-center rounded-md border border-[var(--border-strong)] px-3 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Previous
@@ -306,7 +328,7 @@ export default function AnalyticsDashboard() {
                 <button
                   type="button"
                   onClick={() => setOffset((current) => current + PAGE_SIZE)}
-                  disabled={offset + PAGE_SIZE >= totalLogs || isLogsLoading}
+                  disabled={totalLogs === null || offset + PAGE_SIZE >= totalLogs || isLogsLoading}
                   className="inline-flex min-h-9 items-center rounded-md border border-[var(--border-strong)] px-3 text-xs font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
@@ -344,7 +366,7 @@ function MetricCard({
   return (
     <div className="panel-muted rounded-xl p-4">
       <p className="mono-label text-[var(--text-secondary)]">{label}</p>
-      <p className={`mt-3 font-display text-4xl font-semibold ${accent ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>{value}</p>
+      <p className={`mt-3 font-display ${value === "Unavailable" ? "text-xl" : "text-4xl"} font-semibold ${accent ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>{value}</p>
       <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{description}</p>
     </div>
   );
@@ -382,7 +404,7 @@ function TraceRow({ log }: { log: TelemetryLog }) {
           </span>
           <span
             className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-normal ${
-              hasIssue ? "bg-amber-500/10 text-amber-800" : "bg-emerald-500/10 text-emerald-800"
+              hasIssue ? "bg-amber-500/10 text-[var(--warning-text)]" : "bg-emerald-500/10 text-[var(--success-text)]"
             }`}
           >
             {hasIssue ? "Review" : "Success"}
@@ -391,7 +413,7 @@ function TraceRow({ log }: { log: TelemetryLog }) {
         <p className="mt-2 truncate text-sm text-[var(--text-secondary)]">
           {log.model_used} via {log.llm_provider}
         </p>
-        {log.error && <p className="mt-2 text-sm leading-6 text-amber-800">{log.error}</p>}
+        {log.error && <p className="mt-2 text-sm leading-6 text-[var(--warning-text)]">{log.error}</p>}
       </div>
       <div className="text-sm text-[var(--text-secondary)]">
         <span className="font-semibold text-[var(--foreground)]">{log.latency_ms}ms</span>

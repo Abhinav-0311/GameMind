@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.design_agent.contracts import BlueprintContent, build_section_queries
+from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, BlueprintContent, SECTION_RETRIEVAL_FOCUS, build_section_queries
 from app.design_agent.grounding import (
     assess_artifact_quality,
     ground_blueprint_citations,
@@ -158,14 +158,18 @@ def test_frostpeak_fixture_keeps_artifacts_source_isolated_from_cyberrakshak():
     assert "CyberRakshak" not in serialized
 
 
-def test_section_queries_include_concrete_gdd_vocabulary_for_sparse_sections():
+def test_section_queries_are_game_neutral_for_sparse_sections():
     queries = build_section_queries("", "")
 
-    assert "low-poly" in queries["art_style_direction"]
-    assert "rule-based dynamic dialogue" in queries["npc_memory_design"]
-    assert "Training Sandbox" in queries["level_design_suggestions"]
-    assert "wrong interaction" in queries["gameplay_systems"]
-    assert "Unity 6000.2.7f2" in queries["unity_runtime_preview"]
+    assert set(queries) == set(BLUEPRINT_SECTION_KEYS)
+    assert "art style" in queries["art_style_direction"]
+    assert "player behaviour" in queries["npc_memory_design"]
+    assert "level" in queries["level_design_suggestions"]
+    assert "gameplay" in queries["gameplay_systems"]
+    assert "runtime integration" in queries["unity_runtime_preview"]
+    serialized = " ".join(queries.values()).lower()
+    for game_specific_term in ("patch", "training sandbox", "password vault", "powerrush", "6000.2.7f2", "cyber-infiltration"):
+        assert game_specific_term not in serialized
 
 
 def test_blueprint_contract_keeps_phase_two_design_details_traceable():
@@ -351,6 +355,10 @@ def test_quality_scorecard_allows_quests_without_unsupported_dependencies():
     content = MockDesignAgentProvider().generate(
         {"objective": "Build CyberRakshak"}, _cyber_evidence()
     ).content
+    # This case isolates record requirements, not a sparse GDD's section gaps.
+    for section in BLUEPRINT_SECTION_KEYS:
+        if section not in {"npc_archetypes", "quest_hooks"}:
+            content[section]["content"] = {"description": "Explicit design content for this quality fixture."}
     for npc in content["npc_archetypes"]["content"]["npcs"]:
         npc["dialogue_hooks"] = ["Check the route before you trust it."]
     for quest in content["quest_hooks"]["content"]["quests"]:
@@ -504,7 +512,9 @@ class _BatchCollection:
 
     def query(self, *, query_texts, n_results, where, **_kwargs):
         self.calls += 1
-        assert query_texts == ["story evidence", "level evidence"]
+        assert query_texts == ["story evidence", "level evidence",
+                               SECTION_RETRIEVAL_FOCUS["narrative_direction"],
+                               SECTION_RETRIEVAL_FOCUS["level_design_suggestions"]]
         assert n_results == 2
         assert where == {
             "$and": [
@@ -513,9 +523,9 @@ class _BatchCollection:
             ]
         }
         return {
-            "ids": [["shared", "story"], ["shared", "levels"]],
-            "distances": [[0.2, 0.3], [0.1, 0.25]],
-            "documents": [["Shared", "Story"], ["Shared", "Levels"]],
+            "ids": [["shared", "story"], ["shared", "levels"], ["shared"], ["shared"]],
+            "distances": [[0.2, 0.3], [0.1, 0.25], [0.6], [0.7]],
+            "documents": [["Shared", "Story"], ["Shared", "Levels"], ["Shared"], ["Shared"]],
             "metadatas": [
                 [
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 0},
@@ -525,6 +535,8 @@ class _BatchCollection:
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 0},
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 2},
                 ],
+                [{"document_id": "doc-1", "title": "GDD", "chunk_index": 0}],
+                [{"document_id": "doc-1", "title": "GDD", "chunk_index": 0}],
             ],
         }
 

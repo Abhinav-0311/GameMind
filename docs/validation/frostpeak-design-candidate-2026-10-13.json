@@ -1,0 +1,341 @@
+{
+  "provenance": {
+    "author": "Assistant-authored local review candidate, not NVIDIA output",
+    "base_run_id": "4c05934b-40d6-4a0e-8ac9-0df311a09129",
+    "base_artifact_id": "cea14acb-54e2-4898-bdf0-3c4585b48344",
+    "base_artifact_sha256": "4b33c1baab65696dac5513db588f0fd9b7c7d67268c08d526be5b1383705cd32",
+    "base_critique_sha256": "199b12b7fe40e9c7b21d0422ca2160b223f432c47b88196727322b4a807f37b8",
+    "candidate_sha256": "5103d65b34adcf31db0375fe463309b1f26eea5fe3ea1aec7796536d765f6931",
+    "saved_to_project_database": false,
+    "approved": false,
+    "runtime_approved": false,
+    "intended_scope": "New explicit design-only review; not a retrofit of the saved run"
+  },
+  "content": {
+    "summary": {
+      "content": {
+        "genre": "immersive tactical role-playing game",
+        "premise": "Project Frostpeak is an immersive tactical role-playing game set in the frozen ruins of the Northern kingdom of Frostpeak.",
+        "player_role": "The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance in reclaiming their home and restoring the lineage of King Arven from the occupying forces of the Cinder Vanguard."
+      },
+      "citations": [
+        "7399df89-dd3f-41c4-b954-849d34eb7673",
+        "a3e8073e-0c93-4953-8ec9-1d75bef039cc"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Eldrin's connection to Reclaim the Ash Pass quest as a proposal requiring confirmation."
+      ]
+    },
+    "narrative_direction": {
+      "content": {
+        "themes": "Faction choice holds high consequences for gameplay and world state flags.",
+        "lore_background": "The story centers around the aftermath of the Ember Siege of 842. The volcanic nation of Vulcana, led by Warlord Ignis, launched an elemental assault to seize control of Frostpeak's geothermal energy and rich sky-iron deposits. Today, the Cinder Vanguard guards the mines, while rangers launch guerrilla attacks from the Ash Pass to free the frozen city."
+      },
+      "citations": [
+        "7399df89-dd3f-41c4-b954-849d34eb7673",
+        "a3e8073e-0c93-4953-8ec9-1d75bef039cc",
+        "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Eldrin's formal slow ancient-lore voice as a proposal requiring confirmation."
+      ]
+    },
+    "art_style_direction": {
+      "content": {
+        "visual_notes": "We utilize a high-contrast color palette, pairing warm oranges and elemental reds from the Cinder Vanguard's fire engines against deep icy blues and granite grays of the frozen Northern citadel ruins. Characters have sharp, hand-painted textures that highlight the gritty, cold environment.",
+        "visual_theme": "The visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy theme."
+      },
+      "citations": [
+        "7399df89-dd3f-41c4-b954-849d34eb7673",
+        "a3e8073e-0c93-4953-8ec9-1d75bef039cc"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Eldrin's ancient-lore voice visual design as a proposal requiring confirmation."
+      ]
+    },
+    "npc_archetypes": {
+      "content": {
+        "npcs": [
+          {
+            "name": "Eldrin",
+            "archetype": "Archmage of the Watchtower",
+            "dialogue_style": "formal, slow manner and references ancient lore history to guide the player",
+            "source_chunk_ids": [
+              "a3e8073e-0c93-4953-8ec9-1d75bef039cc"
+            ],
+            "dialogue_hooks": [
+              "The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose.",
+              "Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done.",
+              "The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake."
+            ],
+            "dialogue_triggers": [
+              {
+                "trigger": "first_interaction",
+                "situation": "Player first encounters Eldrin at a designer-confirmed location; placement is an unconfirmed proposal",
+                "text": "The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose.",
+                "repeat_policy": "Do not repeat on subsequent interactions; this line plays only once per playthrough.",
+                "manual_test": "Exercise situation: Player first encounters Eldrin at a designer-confirmed location; placement is an unconfirmed proposal. Expect exactly: The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose. Repeat; check policy: Do not repeat on subsequent interactions; this line plays only once per playthrough. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review."
+              },
+              {
+                "trigger": "ash_pass_progress",
+                "situation": "During an active attempt, player has not yet cleared guards or raised the Northern flag, or has completed only one of the two objectives for Reclaim the Ash Pass",
+                "text": "Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done.",
+                "repeat_policy": "Repeat every time the situation is met, but do not play if both objectives are complete.",
+                "manual_test": "Exercise situation: During an active attempt, player has not yet cleared guards or raised the Northern flag, or has completed only one of the two objectives for Reclaim the Ash Pass. Expect exactly: Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done. Repeat; check policy: Repeat every time the situation is met, but do not play if both objectives are complete. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review."
+              },
+              {
+                "trigger": "ash_pass_complete",
+                "situation": "Player has cleared guards and raised the Northern flag for Reclaim the Ash Pass",
+                "text": "The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake.",
+                "repeat_policy": "Do not repeat; this line plays only once upon completion.",
+                "manual_test": "Exercise situation: Player has cleared guards and raised the Northern flag for Reclaim the Ash Pass. Expect exactly: The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake. Repeat; check policy: Do not repeat; this line plays only once upon completion. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review."
+              }
+            ],
+            "relationship_notes": [
+              "Eldrin serves as a high-trust scholar and dialogue advisor to the player."
+            ],
+            "implementation_notes": [
+              "Scene integration proposal: Leave placement unbound; the Watchtower title does not establish a scene location or a tutorial prerequisite. Confirm placement separately. Manual verification: Confirm first greeting plays only on first encounter, progress reminder plays when zero or one objective is complete, and completion line plays only when both flags are true. Test both action orders: clear guards then raise flag, and raise flag then clear guards.",
+              "Dialogue repeat/reset rules: First greeting does not replay; progress reminder repeats while incomplete; completion line does not replay. No scanner-bypass reset. Restart event for quest clears flags and reactivates attempt, but does not reset dialogue triggers beyond standard reactivation.",
+              "Create a stable NPC profile for 'Eldrin' and retain its source_chunk_ids in the review trace.",
+              "Dialogue trigger proposal 'first_interaction': Player first encounters Eldrin at a designer-confirmed location; placement is an unconfirmed proposal. Say: The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose. Repeat policy: Do not repeat on subsequent interactions; this line plays only once per playthrough. Manual check: Exercise situation: Player first encounters Eldrin at a designer-confirmed location; placement is an unconfirmed proposal. Expect exactly: The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose. Repeat; check policy: Do not repeat on subsequent interactions; this line plays only once per playthrough. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review.",
+              "Dialogue trigger proposal 'ash_pass_progress': During an active attempt, player has not yet cleared guards or raised the Northern flag, or has completed only one of the two objectives for Reclaim the Ash Pass. Say: Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done. Repeat policy: Repeat every time the situation is met, but do not play if both objectives are complete. Manual check: Exercise situation: During an active attempt, player has not yet cleared guards or raised the Northern flag, or has completed only one of the two objectives for Reclaim the Ash Pass. Expect exactly: Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done. Repeat; check policy: Repeat every time the situation is met, but do not play if both objectives are complete. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review.",
+              "Dialogue trigger proposal 'ash_pass_complete': Player has cleared guards and raised the Northern flag for Reclaim the Ash Pass. Say: The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake. Repeat policy: Do not repeat; this line plays only once upon completion. Manual check: Exercise situation: Player has cleared guards and raised the Northern flag for Reclaim the Ash Pass. Expect exactly: The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake. Repeat; check policy: Do not repeat; this line plays only once upon completion. Only test a stated reset, then recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed. Flag unspecified rules for review.",
+              "Do not implement listed assumptions until a designer confirms them."
+            ],
+            "assumptions": [
+              "Eldrin is not assigned as quest giver in the GDD; his connection to Reclaim the Ash Pass quest is a proposal requiring confirmation.",
+              "Dialogue trigger mappings are proposed and not verified engine bindings.",
+              "Flag names and event descriptions are proposals requiring confirmation.",
+              "Ordering of objectives (clear guards, raise Northern flag) is not defined in source and is proposed for integration review.",
+              "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+              "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use.",
+              "Scene integration notes are unverified implementation proposals; confirm placement, activation events and source compatibility before runtime use."
+            ],
+            "fresh_dialogue": true
+          }
+        ]
+      },
+      "citations": [
+        "a3e8073e-0c93-4953-8ec9-1d75bef039cc"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Eldrin's connection to Reclaim the Ash Pass quest as a proposal requiring confirmation."
+      ]
+    },
+    "npc_memory_design": {
+      "content": {
+        "rules": [
+          "State contract version 1: clear guards and raise Northern flag as separate objectives, independent boolean flags and observable events; completion requires both flags and reevaluates on each objective update.",
+          "An attempt starts active with every flag false. While active, an event sets ONLY its own flag true, preserving all other progress.",
+          "Concrete proposed failure event: Player dies or fails objective during attempt (e.g., defeated by guards). Sets lifecycle failed without clearing flags.",
+          "Explicit restart proposal, not a GDD fact: Player confirms Restart Quest to begin a new attempt after quest failure. Atomically clear ALL declared flags and set lifecycle active. Selecting Abandon Quest or ordinary dialogue after failure does not authorize restart; abandonment behavior remains undecided.",
+          "Scene integration: Quest activation remains unbound pending a designer decision. Manual verification: Test zero state (no flags), partial states (each flag alone), and complete state (both flags). Test both action orders. Confirm failure sets lifecycle failed, and restart clears flags and reactivates.",
+          "Dialogue repeat/reset rules as proposals: First greeting plays once; progress reminder repeats while any objective incomplete; completion line plays once on completion. No scanner-bypass reset. Reset does not bypass situation eligibility."
+        ]
+      },
+      "citations": [
+        "3fd09852-5213-4a6a-90c1-02c92efd40fb",
+        "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm failure and restart events as proposals requiring confirmation.",
+        "Human input required to confirm flag names and event descriptions as proposals requiring confirmation."
+      ]
+    },
+    "level_design_suggestions": {
+      "content": {
+        "levels": [
+          {
+            "focus": "Starting layout centers on the Geothermal Vents zone. Players navigate a vertical cliffside path interspersed with active volcanic vents, sky-iron ore veins, and steam checkpoints. The level culminates at the monumental East Gate, which remains barricaded by Cinder Vanguard defenses.",
+            "title": "Geothermal Vents zone",
+            "number": 1
+          }
+        ]
+      },
+      "citations": [
+        "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Ash Pass location as part of level design for quest restart and flag clearing as a proposal requiring confirmation."
+      ]
+    },
+    "gameplay_systems": {
+      "content": {
+        "systems": [
+          "Hook 1 mechanics: distinct dialogue trigger mappings, one per situation (first greeting, Ash Pass reminder while incomplete, completion only after both actions).",
+          "Quest design: Reclaim the Ash Pass uses state_contract version 1 with independent boolean flags for clear guards and raise Northern flag.",
+          "Dialogue system: Eldrin's formal slow ancient-lore voice anchors proposed spoken lines; no scanner-bypass reset for dialogue."
+        ]
+      },
+      "citations": [
+        "3fd09852-5213-4a6a-90c1-02c92efd40fb",
+        "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Hook 1 mechanics and distinct dialogue trigger mappings as proposals requiring confirmation."
+      ]
+    },
+    "quest_hooks": {
+      "content": {
+        "quests": [
+          {
+            "id": "reclaim_ash_pass",
+            "title": "Reclaim the Ash Pass",
+            "objective": "Reclaim the Ash Pass border post",
+            "source_chunk_ids": [
+              "3fd09852-5213-4a6a-90c1-02c92efd40fb",
+              "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+            ],
+            "reward": "100 gold and 250 XP",
+            "objectives": [
+              "Clear guards at the Ash Pass",
+              "Raise the Northern flag at the Ash Pass"
+            ],
+            "failure_states": [
+              "Player defeated by guards or environmental hazards during attempt"
+            ],
+            "dependencies": [],
+            "dialogue_hooks": [
+              "The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose.",
+              "Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done.",
+              "The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake."
+            ],
+            "implementation_notes": [
+              "Scene integration proposal: Leave activation unbound; zone-entry activation and Eldrin as quest giver are not established by the cited GDD. Confirm activation separately. Manual verification: Confirm state_contract version 1 with two independent boolean flags: 'guards_cleared' and 'flag_raised'. Start active with both false. Each objective event sets only its flag true. Completion requires both flags true and reevaluates on each objective update. Test both action orders: clear guards then raise flag, and raise flag then clear guards. Confirm completion line from Eldrin plays only when both flags are true.",
+              "Failure and restart: Concrete proposed failure event (player defeated) sets lifecycle failed without clearing flags. Explicit restart event (player confirms Restart Quest after failure) clears both flags and sets lifecycle active. Dialogue triggers: first greeting on first Eldrin encounter, progress reminder when zero or one flag true, completion line when both flags true. Repeat policies: greeting and completion one-time, progress reminder repeats while incomplete. No scanner-bypass reset.",
+              "Structured state proposal: start an attempt active with all objective flags false. While active, each declared objective event sets only its own flag true; preserve other flags. Do not mutate a completed/failed attempt from objective events.",
+              "Completion proposal: reevaluate after each objective update; set lifecycle to completed only when all required_flags are true. Test every partial state and both action orders; event descriptions are not executable bindings or playtest evidence.",
+              "Failure proposal: while active, a declared failure event sets lifecycle to failed; preserve progress until explicit restart.",
+              "Restart proposal: on the declared restart event atomically set every clear_flags entry false and lifecycle active; verify all flags false and lifecycle active."
+            ],
+            "assumptions": [
+              "Eldrin is not assigned as quest giver in the GDD; his connection to this quest is a clearly labelled proposal requiring confirmation.",
+              "Flag names ('guards_cleared', 'flag_raised') and event descriptions are proposals requiring confirmation.",
+              "Ordering of objectives is not defined in source and is proposed for integration review.",
+              "Failure and restart events are proposals requiring confirmation.",
+              "Dialogue trigger mappings and repeat/reset rules are proposals requiring confirmation.",
+              "Generated quest objectives, failure states, dialogue hooks are creative proposals and require design approval before runtime use.",
+              "Failure rule proposal (not verified in cited GDD): Player defeated by guards or environmental hazards during attempt Requires explicit design confirmation before runtime use.",
+              "Scene integration notes are unverified implementation proposals; confirm placement, activation events and source compatibility before runtime use.",
+              "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+            ],
+            "state_contract": {
+              "version": "1",
+              "objectives": [
+                {
+                  "objective": "Clear guards at the Ash Pass",
+                  "flag": "guards_cleared",
+                  "event": "Defeat all Cinder Vanguard guards at the Ash Pass border post"
+                },
+                {
+                  "objective": "Raise the Northern flag at the Ash Pass",
+                  "flag": "flag_raised",
+                  "event": "Interact with the Northern flag pole at the Ash Pass to raise the flag"
+                }
+              ],
+              "completion": {
+                "required_flags": [
+                  "guards_cleared",
+                  "flag_raised"
+                ],
+                "mode": "all",
+                "reevaluate_on": "each_objective_update",
+                "lifecycle": "completed"
+              },
+              "failure": {
+                "events": [
+                  "Player character is defeated by Cinder Vanguard guards or environmental hazards during the quest attempt"
+                ],
+                "lifecycle": "failed"
+              },
+              "restart": {
+                "event": "Player confirms Restart Quest to begin a new attempt after quest failure",
+                "lifecycle": "active",
+                "clear_flags": [
+                  "guards_cleared",
+                  "flag_raised"
+                ]
+              }
+            },
+            "runtime": null
+          }
+        ]
+      },
+      "citations": [
+        "3fd09852-5213-4a6a-90c1-02c92efd40fb",
+        "579e55e4-13cf-4ef4-8d6c-459f904e765e"
+      ],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Eldrin's connection to Reclaim the Ash Pass quest as a proposal requiring confirmation.",
+        "Human input required to confirm flag names, event descriptions, failure and restart events, and dialogue trigger mappings as proposals requiring confirmation."
+      ]
+    },
+    "unity_runtime_preview": {
+      "content": {},
+      "citations": [],
+      "confidence": "Low",
+      "warnings": [
+        "Human input required to confirm Unity runtime integration as no evidence supports this section.",
+        "No section-matched source citation supports this output."
+      ]
+    }
+  },
+  "assessment": {
+    "baseline_blockers": [
+      "Grounding",
+      "Completeness",
+      "Integration readiness",
+      "Request coverage"
+    ],
+    "baseline_coverage_gaps": [
+      "restart_event_intent",
+      "dialogue_progress_state"
+    ],
+    "legacy_scope_blockers": [
+      "Grounding",
+      "Completeness",
+      "Integration readiness"
+    ],
+    "design_only_blockers": [
+      "Integration readiness"
+    ],
+    "design_only_coverage_gaps": [],
+    "unconfirmed_proposals": 16,
+    "raw_critic_still_blocks": "Independent critique must be resolved.",
+    "unconfirmed_proposals_still_block": "Integration readiness",
+    "changed_paths": [
+      "/npc_archetypes/content/npcs/0/dialogue_hooks/1",
+      "/npc_archetypes/content/npcs/0/dialogue_triggers/0/manual_test",
+      "/npc_archetypes/content/npcs/0/dialogue_triggers/0/situation",
+      "/npc_archetypes/content/npcs/0/dialogue_triggers/1/manual_test",
+      "/npc_archetypes/content/npcs/0/dialogue_triggers/1/situation",
+      "/npc_archetypes/content/npcs/0/dialogue_triggers/1/text",
+      "/npc_archetypes/content/npcs/0/implementation_notes/0",
+      "/npc_archetypes/content/npcs/0/implementation_notes/3",
+      "/npc_archetypes/content/npcs/0/implementation_notes/4",
+      "/npc_memory_design/content/rules/3",
+      "/npc_memory_design/content/rules/4",
+      "/quest_hooks/content/quests/0/dialogue_hooks/1",
+      "/quest_hooks/content/quests/0/implementation_notes/0",
+      "/quest_hooks/content/quests/0/implementation_notes/1",
+      "/quest_hooks/content/quests/0/state_contract/restart/event"
+    ],
+    "nvidia_calls": 0
+  },
+  "proposed_review_request": {
+    "objective": "Create exactly one NPC Eldrin profile, exactly three genuinely new short spoken lines (first greeting; Ash Pass reminder while either or both actions remain incomplete; completion only after both actions), and exactly one Reclaim the Ash Pass quest. Cite Eldrin's formal slow ancient-lore voice and Hook 1 mechanics. Use distinct proposed dialogue trigger mappings, one per situation. Eldrin is not assigned as quest giver in the GDD: his connection to this quest must be a clearly labelled proposal requiring confirmation. Use state_contract version 1: clear guards and raise Northern flag as separate objectives, independent boolean flags and observable events; completion must require both flags and reevaluate on each objective update. Include concrete proposed failure and explicit restart events; restart must clear both flags and reactivate the attempt. Give scene integration and manual verification steps, including zero/partial/complete states and both action orders. Include explicit dialogue repeat/reset rules as proposals; no scanner-bypass reset. Label unsupported wording, controls, flags, ordering, failure/restart rules and character-quest associations as proposals. Preserve exactly 100 gold and 250 XP, invent no extra rewards, timers, dependencies or engine IDs. runtime must be null. Keep other supported blueprint sections concise and grounded. Do not import CyberRakshak characters, locations or terms.",
+    "fresh_dialogue": true,
+    "dialogue_policy": null,
+    "defer_runtime": true
+  },
+  "review_status": "Assistant reviewed selected semantics locally; designer confirmation and a fresh independent critique are still required. Not an approved design or runtime artifact."
+}

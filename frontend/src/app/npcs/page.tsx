@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api, NPCProfile, NPCProfileCreate, NPCProfileUpdate } from "@/lib/api";
+import ModalDialog from "@/components/ModalDialog";
 
 type FormMode = "create" | "edit";
 
@@ -68,6 +69,7 @@ export default function NPCStudioPage() {
   const [showReviewItems, setShowReviewItems] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -200,6 +202,7 @@ export default function NPCStudioPage() {
 
   const saveNpc = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSaving) return;
     setError(null);
     setSuccess(null);
 
@@ -248,7 +251,8 @@ export default function NPCStudioPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deletingNpc) return;
+    if (!deletingNpc || isDeleting) return;
+    setIsDeleting(true);
     setError(null);
     setSuccess(null);
 
@@ -261,6 +265,8 @@ export default function NPCStudioPage() {
       console.error("Failed to delete NPC:", err);
       setError("NPC profile could not be deleted.");
       setDeletingNpc(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -305,7 +311,7 @@ export default function NPCStudioPage() {
           <div className="mt-5 divide-y divide-[var(--border)]">
             <FactRow label="Playable NPCs" value={isLoading ? "--" : String(playableNpcs.length)} />
             <FactRow label="Factions" value={isLoading ? "--" : String(factions.length)} />
-            <FactRow label="Dialogue ready" value={isLoading ? "--" : String(runtimeReadyCount)} />
+            <FactRow label="Profiles with dialogue" value={isLoading ? "--" : String(runtimeReadyCount)} />
             <FactRow label="Needs review" value={isLoading ? "--" : String(reviewNpcs.length)} />
           </div>
           <p className="mt-5 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-xs leading-5 text-[var(--text-secondary)]">
@@ -442,7 +448,7 @@ export default function NPCStudioPage() {
                   <button
                     type="button"
                     onClick={() => setDeletingNpc(selectedNpc)}
-                    className="inline-flex min-h-10 items-center rounded-md border border-rose-500/25 px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+                    className="inline-flex min-h-10 items-center rounded-md border border-rose-500/25 px-4 text-sm font-semibold text-[var(--danger-text)] transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                   >
                     Delete
                   </button>
@@ -463,7 +469,7 @@ export default function NPCStudioPage() {
                 </div>
 
                 <aside className="border-t border-[var(--border)] p-5 lg:border-l lg:border-t-0">
-                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Runtime readiness</h3>
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Profile completeness</h3>
                   <div className="mt-4 space-y-3">
                     <ReadinessItem label="Personality" ready={Boolean(selectedNpc.personality_summary)} />
                     <ReadinessItem label="Dialogue style" ready={Boolean(selectedNpc.dialogue_style)} />
@@ -483,7 +489,7 @@ export default function NPCStudioPage() {
             <div className="px-5 py-16 text-center">
               <h2 className="text-sm font-semibold text-[var(--foreground)]">Select an NPC</h2>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--text-secondary)]">
-                Choose a character from the roster or create the first runtime-ready NPC.
+                Choose a character from the roster or create the first NPC profile. Runtime release is checked from Blueprints.
               </p>
             </div>
           )}
@@ -491,7 +497,7 @@ export default function NPCStudioPage() {
       </section>
 
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-10 backdrop-blur-sm">
+        <ModalDialog labelledBy="npc-form-title" className="max-w-2xl" dismissible={!isSaving} onClose={() => setFormOpen(false)}>
           <form
             onSubmit={saveNpc}
             className="panel w-full max-w-2xl rounded-xl"
@@ -500,7 +506,7 @@ export default function NPCStudioPage() {
               <p className="mono-label text-[var(--text-secondary)]">
                 {formMode === "create" ? "Create character" : "Edit character"}
               </p>
-              <h2 className="mt-2 font-display text-3xl font-semibold text-[var(--foreground)]">
+              <h2 id="npc-form-title" className="mt-2 font-display text-3xl font-semibold text-[var(--foreground)]">
                 {formMode === "create" ? "Add an NPC to the runtime roster." : "Refine this NPC profile."}
               </h2>
             </div>
@@ -559,6 +565,7 @@ export default function NPCStudioPage() {
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}
+                disabled={isSaving}
                 className="inline-flex min-h-10 items-center justify-center rounded-md border border-[var(--border-strong)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 Cancel
@@ -572,13 +579,13 @@ export default function NPCStudioPage() {
               </button>
             </div>
           </form>
-        </div>
+        </ModalDialog>
       )}
 
       {deletingNpc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+        <ModalDialog labelledBy="npc-delete-title" className="max-w-md" dismissible={!isDeleting} onClose={() => setDeletingNpc(null)}>
           <div className="panel w-full max-w-md rounded-xl p-5">
-            <h2 className="font-display text-3xl font-semibold text-[var(--foreground)]">Delete {deletingNpc.name}?</h2>
+            <h2 id="npc-delete-title" className="font-display text-3xl font-semibold text-[var(--foreground)]">Delete {deletingNpc.name}?</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
               This removes the character from the active roster. Use this only when the NPC should no longer appear in
               runtime testing.
@@ -587,6 +594,7 @@ export default function NPCStudioPage() {
               <button
                 type="button"
                 onClick={() => setDeletingNpc(null)}
+                disabled={isDeleting}
                 className="inline-flex min-h-10 items-center justify-center rounded-md border border-[var(--border-strong)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:bg-[var(--card-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 Cancel
@@ -594,13 +602,14 @@ export default function NPCStudioPage() {
               <button
                 type="button"
                 onClick={confirmDelete}
+                disabled={isDeleting}
                 className="inline-flex min-h-10 items-center justify-center rounded-md bg-rose-200 px-4 text-sm font-semibold text-rose-950 transition hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:ring-offset-2 focus:ring-offset-[var(--background)]"
               >
-                Delete NPC
+                {isDeleting ? "Deleting…" : "Delete NPC"}
               </button>
             </div>
           </div>
-        </div>
+        </ModalDialog>
       )}
     </main>
   );
@@ -609,8 +618,8 @@ export default function NPCStudioPage() {
 function Alert({ tone, message }: { tone: "error" | "success"; message: string }) {
   const styles =
     tone === "error"
-      ? "border-rose-500/25 bg-rose-500/10 text-rose-800"
-      : "border-emerald-500/25 bg-emerald-500/10 text-emerald-800";
+      ? "border-rose-500/25 bg-rose-500/10 text-[var(--danger-text)]"
+      : "border-emerald-500/25 bg-emerald-500/10 text-[var(--success-text)]";
 
   return <div role={tone === "error" ? "alert" : "status"} className={`mb-4 rounded-xl border px-4 py-3 text-sm ${styles}`}>{message}</div>;
 }
@@ -639,7 +648,7 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
       <span className="text-sm text-[var(--text-secondary)]">{label}</span>
       <span
         className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-normal ${
-          ready ? "bg-emerald-500/10 text-emerald-800" : "bg-[#e5edf3] text-[var(--text-secondary)]"
+          ready ? "bg-emerald-500/10 text-[var(--success-text)]" : "bg-[var(--card-muted)] text-[var(--text-secondary)]"
         }`}
       >
         {ready ? "Ready" : "Missing"}
@@ -676,7 +685,7 @@ function Field({
         disabled={disabled}
         className="mt-2 min-h-11 w-full rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 text-sm text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-55"
       />
-      {error && <span className="mt-2 block text-xs text-rose-700">{error}</span>}
+      {error && <span className="mt-2 block text-xs text-[var(--danger-text)]">{error}</span>}
     </label>
   );
 }
@@ -704,7 +713,7 @@ function TextArea({
         rows={5}
         className="mt-2 w-full resize-y rounded-md border border-[var(--border-strong)] bg-[var(--card)] px-3 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
       />
-      {error && <span className="mt-2 block text-xs text-rose-700">{error}</span>}
+      {error && <span className="mt-2 block text-xs text-[var(--danger-text)]">{error}</span>}
     </label>
   );
 }

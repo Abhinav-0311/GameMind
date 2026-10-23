@@ -16,7 +16,8 @@ class GddReviewService:
     REQUIRED_DECISIONS = (
         ("Core gameplay loop", r"\b(?:core loop|gameplay loop|mechanics?|player loop)\b", "Describe what the player repeatedly does, why it is rewarding, and how a session advances.", "high", "gdd"),
         ("Progression", r"\b(?:progression|level(?:ling|ing)?|experience|\bxp\b|upgrade|unlock|skill tree)\b", "Define how the player gains capability, access, or mastery over time.", "high", "level_brief"),
-        ("Platform and controls", r"\b(?:platforms?|controls?|input|keyboard|controller|gamepad|touchscreen|mouse)\b", "Name the target platform and the primary input assumptions.", "high", "technical_brief"),
+        # Territorial control is narrative, not a player input decision.
+        ("Platform and controls", r"\b(?:platforms?|controls?(?:[ -]+(?:scheme|layout|mapping)|(?=\s*:))|input|keyboard|controller|gamepad|touchscreen|mouse)\b", "Name the target platform and the primary input assumptions.", "high", "technical_brief"),
         ("Technical constraints", r"\b(?:technical constraints?|performance|frame ?rate|\bfps\b|memory budget|hardware|target device|engine|network(?:ing)?|offline|save system|resolution)\b", "Record engine, performance, save, networking, or hardware constraints that affect scope.", "high", "technical_brief"),
         ("Accessibility", r"\b(?:accessibility|subtitles?|captions?|color ?blind|remapp(?:ing|able)|assist mode|difficulty assist|motion sensitiv(?:ity|e))\b", "Add concrete accessibility requirements such as subtitles, remapping, readable UI, or assist options.", "medium", "technical_brief"),
         ("NPC design", r"\b(?:npc|character|companion|villain|merchant|quest giver)\b", "Identify the first characters, their game role, and why the player interacts with them.", "medium", "npc_sheet"),

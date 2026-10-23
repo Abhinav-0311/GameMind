@@ -1,0 +1,173 @@
+{
+  "provenance": {
+    "run_id": "4c05934b-40d6-4a0e-8ac9-0df311a09129",
+    "artifact_sha256": "4b33c1baab65696dac5513db588f0fd9b7c7d67268c08d526be5b1383705cd32",
+    "critique_sha256": "199b12b7fe40e9c7b21d0422ca2160b223f432c47b88196727322b4a807f37b8",
+    "scope": "Exact selected fields from saved QA output; not a full artifact or runtime test."
+  },
+  "npc": {
+    "name": "Eldrin",
+    "dialogue_style": "formal, slow manner and references ancient lore history to guide the player",
+    "dialogue_triggers": [
+      {
+        "trigger": "first_interaction",
+        "situation": "Player first encounters Eldrin at the Watchtower",
+        "text": "The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose.",
+        "repeat_policy": "Do not repeat on subsequent interactions; this line plays only once per playthrough."
+      },
+      {
+        "trigger": "ash_pass_progress",
+        "situation": "Player has not yet cleared guards or raised the Northern flag, or has completed only one of the two objectives for Reclaim the Ash Pass",
+        "text": "The Ash Pass waits, unbound. The guards stand, the flag lies low. Return when both are seen to.",
+        "repeat_policy": "Repeat every time the situation is met, but do not play if both objectives are complete."
+      },
+      {
+        "trigger": "ash_pass_complete",
+        "situation": "Player has cleared guards and raised the Northern flag for Reclaim the Ash Pass",
+        "text": "The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake.",
+        "repeat_policy": "Do not repeat; this line plays only once upon completion."
+      }
+    ]
+  },
+  "quest": {
+    "id": "reclaim_ash_pass",
+    "title": "Reclaim the Ash Pass",
+    "objectives": [
+      "Clear guards at the Ash Pass",
+      "Raise the Northern flag at the Ash Pass"
+    ],
+    "state_contract": {
+      "failure": {
+        "events": [
+          "Player character is defeated by Cinder Vanguard guards or environmental hazards during the quest attempt"
+        ],
+        "lifecycle": "failed"
+      },
+      "restart": {
+        "event": "Player selects 'Abandon Quest' from quest menu or interacts with Eldrin after quest failure",
+        "lifecycle": "active",
+        "clear_flags": [
+          "guards_cleared",
+          "flag_raised"
+        ]
+      },
+      "version": "1",
+      "completion": {
+        "mode": "all",
+        "lifecycle": "completed",
+        "reevaluate_on": "each_objective_update",
+        "required_flags": [
+          "guards_cleared",
+          "flag_raised"
+        ]
+      },
+      "objectives": [
+        {
+          "flag": "guards_cleared",
+          "event": "Defeat all Cinder Vanguard guards at the Ash Pass border post",
+          "objective": "Clear guards at the Ash Pass"
+        },
+        {
+          "flag": "flag_raised",
+          "event": "Interact with the Northern flag pole at the Ash Pass to raise the flag",
+          "objective": "Raise the Northern flag at the Ash Pass"
+        }
+      ]
+    },
+    "reward": "100 gold and 250 XP",
+    "runtime": null,
+    "dependencies": [],
+    "dialogue_hooks": [
+      "The winds of time carry whispers from the Ash Pass. Speak, seeker, and I shall lend the weight of ages to your purpose.",
+      "The Ash Pass waits, unbound. The guards stand, the flag lies low. Return when both are seen to.",
+      "The Pass is reclaimed. The flag flies true. The ancient ways stir anew in your wake."
+    ]
+  },
+  "voice_evidence": {
+    "chunk_id": "a3e8073e-0c93-4953-8ec9-1d75bef039cc",
+    "content": "the frozen city. Faction choice holds high consequences for gameplay and world state flags.\n\n## Section 3: Art Style Direction\nThe visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy theme. We utilize a high-contrast color palette, pairing warm oranges and elemental reds from the Cinder Vanguard's fire engines against deep icy blues and granite grays of the frozen Northern citadel ruins. Characters have sharp, hand-painted textures that highlight the gritty, cold environment.\n\n## Section 4: NPC Archetypes\nThe game features two key starting NPCs:\n- **NPC Eldrin**: Archmage of the Watchtower. Eldrin serves as a high-trust scholar and dialogue advisor. He speaks in a formal, slow manner and references ancient lore history to guide the player.\n- **NPC Kaelen**: Commander of the Cinder Vanguard garrison. Kaelen is a pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all.\n\n## Section 5: Level Design Suggestions\nThe"
+  },
+  "raw_critic": {
+    "summary": "The draft incorrectly states Eldrin's dialogue_style as 'formal, slow manner and references ancient lore history to guide the player' which is not a verbatim or faithful paraphrase of the GDD's 'He speaks in a formal, slow manner and references ancient lore history to guide the player.' The draft omits the subject 'He speaks' and alters the structure, making it an unsupported paraphrase. Additionally, the draft fails to label Eldrin's dialogue_style as a proposal requiring confirmation, despite it being a creative interpretation not directly quoted from the GDD.",
+    "verdict": "needs_revision",
+    "findings": [
+      {
+        "issue": "The dialogue_style 'formal, slow manner and references ancient lore history to guide the player' is not a faithful paraphrase of the GDD passage 'He speaks in a formal, slow manner and references ancient lore history to guide the player.' The draft omits the subject 'He speaks' and alters the grammatical structure, making it an unsupported creative wording.",
+        "section": "npc_archetypes.content.npcs[0].dialogue_style",
+        "severity": "medium",
+        "recommendation": "Label Eldrin's dialogue_style as a proposal requiring confirmation, or revise it to be a verbatim or faithful paraphrase of the GDD text."
+      }
+    ]
+  },
+  "proposed_progress_line": "Your charge at the Ash Pass is not yet fulfilled. Attend to what remains, seeker, and return when both duties are done.",
+  "fresh_acceptance": {
+    "scope": "Exact selected values and request clauses from bounded QA; replayed within the existing complete test shell, not a full artifact.",
+    "run_id": "f6b2e612-aaec-4907-ac3f-412ae8d14cdf",
+    "artifact_sha256": "afa6085af52712f86fc53c0ddb9155f9e6306a8eb89196b12afdc72dea9786f0",
+    "request_clauses": "Propose concrete failure and confirmed Restart Quest events. A shared incomplete-progress line must fit both partial states without claiming which action remains undone; progress dialogue requires an active attempt.",
+    "progress_trigger": {
+      "text": "The Ash Pass waits, unbound by haste. Return when the path is secured and the standard flies true.",
+      "trigger": "incomplete_progress",
+      "situation": "Either or both objectives of Reclaim the Ash Pass remain uncompleted (guards not cleared OR flag not raised)",
+      "repeat_policy": "May repeat on each interaction while incomplete; does not claim which action remains."
+    },
+    "restart_event": "explicit_quest_restart"
+  },
+  "postfix_acceptance": {
+    "scope": "Exact selected fields from post-fix QA, replayed in the existing complete test shell; not a full artifact or engine test.",
+    "run_id": "31c12240-c0d1-415d-8957-5ce6a805997c",
+    "artifact_sha256": "2c2edb35b630fc4f0aca657cb45968a76926fc8a3d64bed21013aa7a0e2b9637",
+    "critique_sha256": "fc751fb984e2e8e5efdb58529f5f7912db9f321f8766c0bc7e136b85f95cae68",
+    "request_clauses": "Propose concrete failure and confirmed Restart Quest events. A shared incomplete-progress line must fit both partial states without claiming which action remains undone; progress dialogue requires an active attempt.",
+    "progress_trigger": {
+      "text": "The path remains veiled in ash and doubt. Return when the pass is cleared and the standard flies true.",
+      "trigger": "incomplete_progress",
+      "situation": "Player has active Reclaim the Ash Pass quest with one or both objectives incomplete",
+      "repeat_policy": "Repeatable; triggers on every interaction while quest is active and incomplete"
+    },
+    "failure_events": [
+      "quest_failed"
+    ],
+    "failure_states": [
+      "Quest failed"
+    ],
+    "restart_event": "player_confirmed_restart",
+    "critic_replacement": "One task remains undone in the Ash Pass. Return when both are seen through."
+  },
+  "manual_review": {
+    "voice_supported": true,
+    "critic_false_positive_finding_indexes": [
+      0
+    ],
+    "critic_missed_progress_contradiction": true,
+    "states": [
+      {
+        "guards_cleared": false,
+        "flag_raised": false,
+        "progress_eligible": true,
+        "original_line_consistent": true
+      },
+      {
+        "guards_cleared": true,
+        "flag_raised": false,
+        "progress_eligible": true,
+        "original_line_consistent": false,
+        "conflict": "The guards stand contradicts guards_cleared=true."
+      },
+      {
+        "guards_cleared": false,
+        "flag_raised": true,
+        "progress_eligible": true,
+        "original_line_consistent": false,
+        "conflict": "The flag lies low contradicts flag_raised=true."
+      },
+      {
+        "guards_cleared": true,
+        "flag_raised": true,
+        "progress_eligible": false,
+        "original_line_consistent": null
+      }
+    ],
+    "scope": "Human-authored judgments on this exact English case, not a general semantic evaluator or engine proof."
+  }
+}

@@ -59,17 +59,9 @@ def _impact_terms(text: str) -> set[str]:
         if term.lower() not in CHANGE_IMPACT_STOP_WORDS
     }
 
-BLUEPRINT_PROVENANCE_FIELDS = (
-    ("summary", "Game summary"),
-    ("narrative_direction", "Narrative"),
-    ("art_style_direction", "Art style"),
-    ("npc_archetypes", "NPCs"),
-    ("npc_memory_design", "Memory"),
-    ("level_design_suggestions", "Levels"),
-    ("gameplay_systems", "Gameplay systems"),
-    ("quest_hooks", "Quests"),
-    ("unity_runtime_preview", "Runtime"),
-)
+BLUEPRINT_PROVENANCE_FIELDS = tuple(
+    (field, label) for label, field in BLUEPRINT_SECTION_FIELDS
+) + (("unity_runtime_preview", "Runtime"),)
 
 @router.post("/generate", response_model=BlueprintResponse, status_code=status.HTTP_201_CREATED)
 def generate_blueprint(
@@ -164,6 +156,8 @@ def export_blueprint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Blueprint not found or not owned by this project."
         )
+    if (blueprint.unity_runtime_preview or {}).get("runtime_deferred") is True:
+        raise HTTPException(status_code=409, detail="Runtime integration explicitly deferred. Download the design brief instead.")
     return {
         "api_version": "1.0",
         "blueprint_id": blueprint.id,

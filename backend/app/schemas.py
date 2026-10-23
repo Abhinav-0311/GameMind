@@ -226,6 +226,7 @@ class WorkspaceMemberResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Lore search query text")
     limit: Optional[int] = Field(default=5, ge=1, le=20, description="Max number of items to retrieve")
+    include_history: bool = Field(default=False, description="Include superseded source revisions")
 
 class QueryResultResponse(BaseModel):
     chunk_id: str
@@ -235,6 +236,8 @@ class QueryResultResponse(BaseModel):
     chunk_index: Optional[int]
     similarity: float
     confidence: str
+    source_document_id: Optional[str] = None
+    revision_number: Optional[int] = None
 
 class QueryResponse(BaseModel):
     query: str
@@ -313,6 +316,7 @@ class DialogueAssembleRequest(BaseModel):
     npc_slug: str = Field(..., min_length=1, description="Unique NPC slug identification")
     player_message: str = Field(..., min_length=1, description="Raw message input from player")
     selected_chunk_ids: Optional[List[UUID]] = Field(default=None, description="Database chunk identifiers to retrieve context from")
+    source_document_id: Optional[UUID] = Field(default=None, description="Optional source document boundary for lore retrieval")
     player_id: Optional[str] = Field(default="default_player", description="Player identifier for relationship/quest tracking")
     conversation_id: Optional[UUID] = Field(default=None, description="Optional active conversation session identifier")
 
@@ -745,6 +749,9 @@ class BlueprintReadinessResponse(BaseModel):
     status: str
     can_approve: bool
     can_materialize: bool
+    can_serve_runtime: bool
+    runtime_release_reason: str
+    runtime_release_blockers: List[str] = []
     missing_required: List[str] = []
     blockers: List[str] = []
     advisories: List[str] = []

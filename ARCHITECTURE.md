@@ -1,123 +1,105 @@
-# GameMind: System Architecture Documentation
+# GameMind architecture
 
-This document describes the architectural layout, components, and data flows of **GameMind (Release 3C.3)**.
+Current implementation map. Acceptance and future scope belong in [MVP.md](MVP.md),
+not historical Release 2/3 or Phase 1–8 labels.
 
----
+## Components
 
-## 1. System Overview
+```text
+Next.js dashboard
+  → FastAPI /api/v1
+    → PostgreSQL: sources, projects, decisions, runs, artifacts, audit and runtime data
+    → Chroma: project/document-scoped lexical retrieval
+    → LangGraph: persisted design workflow and human-review interrupt
+      → configured mock provider OR NVIDIA planning/artifact tiers
 
-GameMind is an advanced developer narrative workspace that integrates semantic retrieval, character generation, knowledge graphs, and progression testing into a single system.
-
-The platform is structured into three primary runtime tiers:
-1. **Next.js Frontend Workspace:** Client dashboard designed around Vercel/Linear visual guidelines. Exposes editors for documents, NPC profiles, dialogue debuggers, progressive hint testing panels, and real-time telemetry dashboards.
-2. **FastAPI Backend Services:** Houses REST endpoints for lore indexing, graph traversal, conversation planning, memory retrieval, and progressive hints.
-3. **Storage Tier:**
-   - **PostgreSQL Database:** Tracks relational schemas for documents, chunks, NPC profiles, world state nodes, relationships, active quests, and conversation logs.
-   - **ChromaDB Vector Database:** Stores local 384-dimensional text embeddings for fast semantic retrieval of lore and memories.
-
-```mermaid
-graph TD
-    subgraph Client [Frontend Workspace]
-        UI[Next.js Client app]
-        Lib[API Client Hook]
-    end
-
-    subgraph Server [Backend REST Server]
-        API[FastAPI Router]
-        RAG[RAG Service]
-        Graph[Graph Traversal]
-        Memory[Memory Engine]
-        Hints[Progressive Hint Engine]
-        Provider[Local Provider Interface]
-    end
-
-    subgraph Storage [Databases Tier]
-        Postgres[(PostgreSQL DB)]
-        Chroma[(ChromaDB Http Server v0.5.23)]
-    end
-
-    UI -->|HTTP requests| API
-    API --> RAG
-    API --> Graph
-    API --> Memory
-    API --> Hints
-    RAG --> Postgres
-    RAG --> Chroma
-    Memory --> Chroma
-    Memory --> Postgres
-    Graph --> Postgres
-    Hints --> Postgres
-    API --> Provider
-    Provider -->|Default| LocalMock[Local Rule/Mock Provider]
-    Provider -.->|Future adapter| HostedLLM[Hosted Provider API]
+Approved design → implementation brief
+Separately approved runtime bindings → materialization → runtime API → Unity
 ```
 
----
+## Source and local design path
 
-## 2. Component Architectures
+`backend/app/services/rag_service.py` extracts TXT/Markdown/PDF, chunks text
+(1000 characters with 200-character overlap), and maintains source revisions and
+the `lore_chunks_local_lexical_v1` Chroma collection. Its 384-dimensional vectors
+are deterministic lexical embeddings, not a learned semantic embedding model.
 
-### Backend Modules
-The FastAPI backend imports and organizes business services under the following namespaces:
-- **Documents & Query:** Processes text ingestion and performs vector similarity search.
-- **NPCs & Dialogue:** Manages static character profiles and generates local mock/rule-based responses through a provider interface that can later support hosted model adapters.
-- **Graph & State:** Builds entities and relationships. Traverses nodes using DFS/BFS algorithms to resolve world constraints.
-- **Memories:** Tracks episodic player interactions and updates rankings using graph-proximity boosting.
-- **Quests & Hints:** Validates objectives progression and escalates hint levels while enforcing cooldown blocks.
-- **Analytics:** Serves aggregated logs and cost metrics for developer review.
+`gdd_review_service.py` performs local rule-based gap/conflict triage.
+`design_decision_service.py` records human direction and supporting evidence.
+`blueprint_service.py` extracts a local blueprint from primary/supporting sources.
+Local extraction is distinct from fresh hosted content generation.
 
-### Database Architecture (PostgreSQL Schema)
-The PostgreSQL database handles the following entities:
-- `documents` / `document_chunks`: Stores text files and matching paragraph indexes.
-- `npc_profiles`: Represents name, slug, personality, dialogue style, voice, and faction.
-- `npc_memories`: Stores memories linked to specific NPCs with importance scores.
-- `relationships` / `world_states`: Tracks graph nodes, weights, and priority states.
-- `quests`: Stores registered quests, golds, XP, and objective definitions.
-- `conversation_logs` / `telemetry_logs`: Audits LLM token consumption and error states.
+## Hosted design-agent path
 
-### Vector Index Architecture (ChromaDB)
-ChromaDB exposes two distinct persistent collections:
-1. `lore_chunks_local`: Stores lore text blocks mapped to source document IDs.
-2. `npc_memories`: Stores episodic character memories.
-Both collections use **Cosine distance** (`"hnsw:space": "cosine"`) for similarity metrics and clamp vector query limits dynamically against collection sizes to avoid index-range errors.
+`backend/app/design_agent/service.py` enforces project ownership, consent and
+lifecycle boundaries. `provider_factory.py` selects the configured provider.
+`workflow.py` uses LangGraph with PostgreSQL checkpoints:
 
----
-
-## 3. Sequential Data Flows
-
-### Progressive Hint Generation Flow
-
-```mermaid
-sequenceDiagram
-    participant UI as Developer Dashboard
-    participant API as Hints API Router
-    participant Engine as Hint Engine Service
-    participant PG as PostgreSQL DB
-
-    UI->>API: POST /api/v1/hints/generate (quest_id, player_id, hint_level)
-    API->>Engine: generate_hint_with_rules()
-    Engine->>PG: Query quest & player history
-    PG-->>Engine: Returns current level and last requested timestamp
-    Engine->>Engine: Validate level sequence (no level skipping)
-    Engine->>Engine: Check cooldown limits (cooldown active?)
-    alt Validation Failure
-        Engine-->>UI: HTTP 422 (Validation Error details)
-    else Validation Success
-        Engine->>PG: Record hint request & update player state
-        Engine-->>UI: Returns HintResponse (text, spoiler rating, cache status)
-    end
+```text
+plan → retrieve/freeze evidence → generate → critique → human review
+                                                reject → revise → critique
+                                                approve → finalize
 ```
 
----
+Ordinary revision reuses frozen evidence and resolved decisions. Drafts/revisions
+are versioned; finalized snapshots are immutable. `jobs.py` and the optional
+`design_agent_worker` support queued execution; local inline execution also exists.
+Agent brief exports use the final artifact, frozen excerpts and recorded run
+decisions, not later workspace edits. Runtime preview exports also read the final
+artifact; they remain distinct from a materialized runtime bundle.
+Briefs include the frozen GDD excerpts; review source disclosure before sharing.
 
-## 4. Directory Organization
+Contract-v2 corrections normally return bounded `artifact_path`/`replacement`
+changes, not complete rewritten sections. Conservative dialogue-only requests
+reuse the existing compact NPC patch route: profile/quest state stays read-only,
+bound triggers cannot disappear, and eligibility is restored server-side. Its
+governed schema errors are not repaired into different content. Profile/roster or
+multi-section edits retain the existing field contract. Paths stay within selected content/metadata;
+replacement shapes reuse the scoped revision contract's field types/constraints,
+including null/empty fields. Omitted fields are preserved. Invalid value shapes
+fail before application; existing assembly and frozen-citation validation
+run after atomic application to a copy, followed by material-change checks and
+critique. Objective text edits preserve their state keys. Public review requests,
+canonical artifacts and legacy-v1 revisions retain their existing contracts.
 
-| Folder Path | Purpose / Responsibilities |
-| :--- | :--- |
-| **`backend/app/api`** | Declares FastAPI endpoint routes (CORS, requests parsing, routing). |
-| **`backend/app/services`** | Implements core business logic (RAG pipeline, memory ranking, graph traversals, hint checking). |
-| **`backend/app/models`** | Contains SQLAlchemy data structures representing database tables. |
-| **`backend/app/schemas`** | Houses Pydantic models for request/response serialization. |
-| **`backend/app/workers`** | Contains background workers (e.g. cleanup loop for active locks/logs). |
-| **`frontend/src/app`** | Houses Next.js page routes (`/hints`, `/npcs`, `/query`, `/analytics`). |
-| **`frontend/src/components`** | Visual layouts (Sidebars, Dialog modals, Command Palettes). |
-| **`frontend/src/lib`** | Client integrations (TypeScript api wrapper). |
+Known revision validation/provider failures retain the previous reviewed draft and
+return to human review, consuming one revision-budget slot without an automatic
+retry or re-critique. The failed execution stays in the trace; inline callers get
+409 and reload the budget/trace without clearing the correction. Queued rejection
+jobs fail without retrying; a later explicit attempt gets its own budget-bound
+idempotency key. Other workflow failures remain failures; old failed runs are not
+silently repaired. Approval and export still require all existing quality gates.
+
+NVIDIA calls use HTTPX and Pydantic response contracts. Planning and artifact work
+have separate logical routes; generation/critique/revision share the artifact tier.
+Retries, truncation recovery and repair are bounded and traced. A separate critique
+call is not proof of independent semantic correctness. Current quality failures
+remain recorded in MVP.md.
+
+## Trust boundaries
+
+- GDD text, proposals and historical transcripts are data, not instructions.
+- Project scoping applies to source selection, retrieval, runs and exports.
+- Citations identify source text; citation membership alone does not prove a claim.
+- Model findings, local checks and human resolutions remain distinct.
+- Unknown sections are not automatically verified source absence.
+- Design-only approval does not release runtime content or invent engine bindings.
+- No silent mock fallback presented as hosted success; unavailable usage/cost stays honest.
+
+`grounding.py`, `review_policy.py` and `finding_reviews.py` enforce these boundaries.
+They do not turn passing structure checks into general semantic correctness.
+
+## Dashboard, runtime and deployment
+
+`frontend/src/lib/api.ts` handles API access; DashboardLayout owns active-workspace,
+session and theme UI. Page-level state loads sources, decisions, blueprints and
+design-agent runs. The current local and hosted screens still coexist.
+
+Runtime services cover NPC dialogue, quests, hints, memories, graph/world state
+and telemetry. Their generic dialogue provider remains local/mock; hosted NVIDIA
+design generation is a different provider path. Unity consumes REST contracts and
+owns rendering/input/animation, not backend approval policy.
+
+Local authentication may be disabled. Production requires authentication,
+workspace roles, secure session cookies, queued execution and deployment secrets.
+See [deployment](docs/deployment.md) and [domain model](DOMAIN_MODEL.md).

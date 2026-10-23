@@ -33,6 +33,7 @@ function formatPercent(value: number) {
 export default function QueryStudioPage() {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(5);
+  const [includeHistory, setIncludeHistory] = useState(false);
   const [results, setResults] = useState<QueryResult[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -66,7 +67,7 @@ export default function QueryStudioPage() {
     });
 
     try {
-      const response = await api.queryLore(trimmed, limit);
+      const response = await api.queryLore(trimmed, limit, includeHistory);
       setResults(response.results);
       setMessage(response.message || null);
     } catch (err: unknown) {
@@ -156,6 +157,16 @@ export default function QueryStudioPage() {
           </div>
         </form>
 
+        <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={includeHistory}
+            onChange={(event) => setIncludeHistory(event.target.checked)}
+            className="size-4 rounded border-[var(--border-strong)] accent-[var(--accent)]"
+          />
+          Include superseded source revisions
+        </label>
+
         <div className="mt-4 flex flex-wrap gap-2">
           {SAMPLE_QUERIES.map((sample) => (
             <button
@@ -208,6 +219,11 @@ export default function QueryStudioPage() {
                     <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
                       Chunk {bestMatch.chunk_index + 1}
                     </span>
+                    {bestMatch.revision_number && (
+                      <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
+                        Revision {bestMatch.revision_number}
+                      </span>
+                    )}
                     <span className="rounded-full border border-[var(--border)] bg-[var(--card-muted)] px-3 py-1">
                       {results.length} citations found
                     </span>
@@ -219,7 +235,7 @@ export default function QueryStudioPage() {
                   </div>
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                    <Link href="/blueprints" className="btn-primary">
+                    <Link href={`/blueprints?document=${encodeURIComponent(bestMatch.document_id)}`} className="btn-primary">
                       Use source in Blueprint
                     </Link>
                     <Link href="/knowledge" className="btn-secondary">
@@ -328,6 +344,7 @@ function CitationCard({ result, index }: { result: QueryResult; index: number })
             <span className="page-kicker">#{index + 1}</span>
             <h3 className="truncate text-base font-semibold text-[var(--foreground)]">{result.title}</h3>
             <span className="text-xs text-[var(--text-secondary)]">Chunk {result.chunk_index + 1}</span>
+            {result.revision_number && <span className="text-xs text-[var(--text-secondary)]">Revision {result.revision_number}</span>}
           </div>
           <p className="mt-3 max-w-4xl text-sm leading-7 text-[var(--text-secondary)]">{result.content}</p>
         </div>

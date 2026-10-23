@@ -4,337 +4,151 @@
 
 # GameMind
 
-GameMind is a local-first AI game design and runtime intelligence platform for students, new game developers, and indie teams. It turns uploaded game design documents, lore files, NPC notes, quest ideas, and level concepts into structured game systems that can be reviewed in a dashboard, exported for a team, or consumed by a game runtime.
+A dashboard-first assistant for turning game design documents into cited,
+reviewable NPC dialogue, quests and implementation guidance.
 
-The project combines a FastAPI backend, LangGraph orchestration, PostgreSQL,
-local retrieval, a Next.js developer dashboard, optional task-routed NVIDIA
-inference, and Unity C# runtime scripts. It runs in a zero-cost local demo mode
-without mandatory hosted AI APIs; NVIDIA review is an explicit, governed choice.
+**MVP status: NOT ACCEPTED.** Useful hosted generation, correction, reliable
+critique and the complete approval/export journey remain unresolved. See
+[MVP.md](MVP.md) for the single current checklist, blockers and evidence. Passing
+infrastructure tests is not acceptance of generated content. Unity comes last.
 
-**Short description:** Local-first AI game builder that converts GDDs into grounded blueprints, NPCs, quests, memory, hints, and engine-ready runtime data.
-
-## Demo Preview
-
-| Guided workspace | Blueprint review | Runtime test |
-| --- | --- | --- |
-| ![GameMind home dashboard showing the guided GDD to runtime workflow](assets/screenshots/dashboard-home.jpg) | ![Blueprint workspace showing source selection, saved blueprints, and section review](assets/screenshots/blueprint-workspace.jpg) | ![Runtime test page showing dialogue, quest, and hint playtest setup](assets/screenshots/runtime-test.jpg) |
-
-## Why This Exists
-
-New game developers often have ideas, lore, and rough documents, but struggle to convert them into implementation-ready game systems. Generic chatbots can brainstorm, but they do not know the project state, cannot enforce runtime contracts, and do not naturally produce data Unity can consume.
-
-GameMind supports two connected workflows:
+## Product workflow
 
 ```text
-Dashboard Workspace
-Upload GDD -> Search grounded lore -> Generate blueprint -> Review/export design systems
+Workspace → Sources → Local review/decisions → Explicit hosted consent
+          → Draft → Critique → Human review/revision → Approval → Design brief
 ```
 
-```text
-Runtime Integration
-Approve blueprint -> Materialize runtime data -> Test dialogue, quests, and hints -> Connect a game client
-```
+The dashboard must be useful without a game engine. Runtime materialization and
+the existing Unity adapter are downstream features, not prerequisites for a
+design-only brief. GameMind assists a designer; it does not build a complete game
+or guarantee that model output is correct.
 
-The goal is not to replace a designer or developer. The goal is to give early teams a practical assistant that keeps narrative, characters, quests, memory, and runtime data connected.
+## What exists
 
-## Two Product Modes
+- Project-scoped workspaces, authentication and membership roles.
+- TXT/Markdown/PDF ingestion, source revisions, duplicate detection and citations.
+- Local GDD review, design decisions and labelled change-proposal sources.
+- Deterministic local blueprint extraction and a separate hosted design-agent path.
+- Durable LangGraph runs, frozen evidence, versioned drafts, scoped revision,
+  human review and immutable final snapshots.
+- Design-brief export and separately gated runtime materialization/contracts.
+- Runtime NPC, quest, hint, memory and world-state services; a Unity C# adapter.
 
-### 1. Dashboard Workspace
+These are implemented capabilities, not a claim that every end-to-end flow passes.
 
-Use GameMind as a game design command center without integrating a game engine.
+## Stack and code map
 
-- Create a named workspace for each game.
-- Upload GDDs, lore files, NPC sheets, quest notes, level briefs, and technical constraints.
-- Add a **Change proposal** when a team introduces an idea outside the current GDD; it remains explicitly proposed until review and approval.
-- Review a GDD for missing decisions, conflicts, and unsupported assumptions.
-- Track and resolve design decisions against source evidence.
-- Generate multi-source blueprints for narrative, art direction, NPCs, quests, memory, level ideas, and gameplay systems.
-- Open section-level evidence and export a portable Markdown project brief.
+| Area | Technology / entry point |
+| --- | --- |
+| Dashboard | Next.js 16, React 19, TypeScript, Tailwind 4; `frontend/src/app/` |
+| API | Python 3.11, FastAPI, Pydantic; `backend/main.py`, `backend/app/api/v1/` |
+| Durable data | PostgreSQL 15, SQLAlchemy, Alembic; `backend/app/models/`, `backend/alembic/` |
+| Retrieval | ChromaDB 0.5.23 with deterministic 384-dimensional lexical embeddings; `rag_service.py` |
+| Agent | LangGraph with PostgreSQL checkpoints; `backend/app/design_agent/` |
+| Hosted inference | NVIDIA via HTTPX; two logical tiers for planning and artifact work |
+| Runtime | Existing REST services and `Unity/Assets/Scripts/` |
+| Verification | pytest, frontend lint/build, Playwright state checks; `.github/workflows/verify.yml` |
 
-This mode is useful for students, writers, designers, and indie teams that need help organizing a game before runtime integration.
+LangChain Core is a declared dependency; LangGraph, not a separate application
+LangChain chain, owns orchestration. [Architecture](ARCHITECTURE.md) and
+[domain boundaries](DOMAIN_MODEL.md) describe the current implementation.
 
-## Core Dashboard Workflow
+## Local setup
 
-The dashboard is deliberately organised around one clear path:
+Prerequisites: Docker Engine/Compose, Node.js 20 and npm.
 
-```text
-Workspace -> Sources -> Local GDD review -> Cited design run -> Independent critique -> Human approval -> Project brief
-```
+From the repository root in PowerShell (create `.env` only if it is absent):
 
-1. Create or select a **workspace**. A workspace scopes documents, decisions, blueprints, and runtime data to one game.
-2. In **Sources**, add a GDD or supporting notes. GameMind identifies the source type, rejects exact duplicate content, and preserves later uploads as revisions instead of overwriting evidence.
-3. Open the source review to see what is specified, what conflicts, and which product decisions still need an answer.
-4. Use **Decisions** to resolve those questions in one place. When a decision needs a technical brief, download the local template, complete its placeholders, upload it as a **Technical brief**, attach it to the decision, and then mark the decision resolved.
-5. In **Design Agent**, choose the indexed GDD and objective. The normal flow freezes local evidence, generates a cited draft, independently critiques it, and pauses for human review. Hosted NVIDIA is requested only after explicit consent.
-6. In **Blueprints**, inspect structured sections, warnings, readiness, and citations. Open a citation to inspect its exact source chunk, then export a Markdown project brief for a teammate, portfolio review, or implementation handoff.
-
-Runtime materialization is optional and comes only after the blueprint is reviewed. This keeps the dashboard useful for planning even when a team has no engine integration yet.
-
-### 2. Runtime Integration
-
-Use GameMind as a backend intelligence layer for an actual game client.
-
-- Fetch approved runtime bundles.
-- Ask NPC dialogue questions.
-- Request progressive hints.
-- Sync quest state and world flags.
-- Map emotion and animation suggestions into a client-specific presentation layer.
-- Connect Unity today, or build a Godot, Unreal, web, or custom REST adapter later.
-
-Unity is included as one proof-of-integration adapter. It is not the whole product.
-
-## What It Does
-
-- Upload and index game documents such as GDDs, lore files, character notes, and quest rules.
-- Keep source lineages through revisions and prevent duplicate files from polluting a workspace.
-- Query the lore index with citations, confidence scores, and local source retrieval.
-- Generate source-grounded, multi-source game blueprints with local rules, templates, and schema validation.
-- Review narrative direction, art style direction, NPC archetypes, memory design, level suggestions, gameplay systems, quest hooks, and runtime previews.
-- Turn missing or conflicting GDD details into visible, resolvable design decisions.
-- Keep GDD-external improvements as labelled proposal sources so generated sections show them as assumptions rather than original-GDD facts.
-- Run a durable design-agent workflow that plans, retrieves evidence, generates,
-  critiques, pauses for approval, revises after rejection, and finalizes an
-  immutable blueprint.
-- Trace each generated section to its source chunks and export a team-facing Markdown brief.
-- Manage NPC profiles, quests, world state, memory, dialogue assembly, progressive hints, and analytics.
-- Export structured JSON that Unity or another game client can consume for NPC dialogue, quests, hints, emotions, and animation suggestions.
-
-## How It Is Different From ChatGPT/Codex/Claude
-
-GameMind is not a general chat interface. It is a project-specific game-building workflow.
-
-- **Grounded in project files:** responses trace back to uploaded GDD/lore chunks.
-- **Structured outputs:** blueprints, NPCs, quests, memories, and world flags use API contracts instead of free-form chat.
-- **Runtime aware:** the system prepares data for game clients rather than stopping at text suggestions.
-- **Repeatable workflow:** every project follows the same path from source document to runtime test.
-- **Zero-cost MVP:** the current demo works locally without a paid LLM key.
-
-Generic AI agents help write code or brainstorm. GameMind demonstrates how an AI system can become part of a game development pipeline.
-
-## Tech Stack
-
-- **Frontend:** Next.js, TypeScript
-- **Backend:** FastAPI, Python, LangGraph, LangChain Core, SQLAlchemy, Alembic
-- **Database:** PostgreSQL
-- **Vector Search:** ChromaDB
-- **Game Runtime:** Unity, C#
-- **Infrastructure:** Docker Compose
-- **AI Mode:** zero-cost local demo by default; opt-in NVIDIA NIM routing for hosted review
-
-## Architecture
-
-```text
-Next.js Dashboard
-  -> FastAPI REST API
-    -> PostgreSQL for durable project data
-    -> LangGraph for checkpointed design-agent workflows and human review
-    -> Local lexical/vector retrieval for document evidence
-    -> Local rule/template providers for zero-cost generation
-    -> Optional NVIDIA NIM provider: Lightning plans/retrieval routing, Super generates, critiques, and revises structured artifacts
-  -> Runtime clients consume stable REST contracts
-     -> Unity adapter
-     -> Future Godot/Unreal/custom clients
-```
-
-Core backend areas:
-
-- **Document ingestion:** stores source documents and chunks.
-- **RAG retrieval:** searches local vector indexes and returns citations.
-- **Design agent:** orchestrates plan, retrieval, generation, critique, human
-  review, revision, and immutable finalization with PostgreSQL checkpoints.
-- **Blueprint generation:** extracts structured game design sections from source evidence.
-- **Materialization:** converts approved blueprints into NPCs, quests, memories, and world flags.
-- **Runtime APIs:** provide dialogue, quest, hint, and Unity bundle responses.
-- **Telemetry:** records runtime behavior, costs, errors, and memory diagnostics.
-
-## Project Structure
-
-```text
-backend/        FastAPI app, services, models, migrations, tests
-frontend/       Next.js developer dashboard
-Unity/          Unity C# runtime adapter and vertical-slice scene
-docs/demo/      Demo GDD and presentation runbooks
-docs/workflows/ Dashboard workspace workflows
-docs/integrations/ Runtime API and engine integration docs
-docker-compose.yml
-```
-
-## Zero-Cost AI Policy
-
-The default project mode is local-first:
-
-- No external model key is required.
-- No paid hosted model key is required.
-- Local lexical embeddings are used for the demo retrieval path; ChromaDB remains available for vector-backed deployments.
-- Rule/template generation is used for blueprint and runtime behavior in the MVP.
-- The durable design-agent workflow uses its deterministic mock provider by default.
-- NVIDIA-hosted design-agent inference is optional and disabled by default.
-
-Selecting NVIDIA never changes the retrieval or workflow architecture. If NVIDIA
-is unavailable and fallback is enabled, the run continues through the mock
-provider and is explicitly marked as degraded in its run response and trace.
-Hosted-provider cost is reported as unavailable unless an authoritative price is
-configured; it is never presented as a fabricated `$0`.
-
-To opt into NVIDIA locally, set these values only in `.env`:
-
-```env
-LLM_PROVIDER=nvidia
-DESIGN_AGENT_FALLBACK_TO_MOCK=true
-NVIDIA_NANO_API_KEY=your-local-nano-key
-NVIDIA_PLAN_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
-NVIDIA_ARTIFACT_MODEL=nvidia/nemotron-3-super-120b-a12b
-NVIDIA_ARTIFACT_API_KEY_ENV=NVIDIA_NANO_API_KEY
-```
-
-The planner uses the configured NVIDIA planning model. Blueprint generation,
-critique, and revision use the configured Super model. These assignments are
-fixed per workflow node. A separate artifact key is optional only when the
-account requires one. For Super 120B structured artifacts,
-GameMind disables private reasoning so the response budget is available for
-valid JSON; visible content is validated and provider reasoning is never stored
-in workflow artifacts or traces. Never commit a real API key.
-
-## Local Setup
-
-1. Copy the environment example:
-
-```bash
-cp .env.example .env
-```
-
-2. Start backend services:
-
-```bash
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose up -d --build
 ```
 
-This starts PostgreSQL, ChromaDB, and the FastAPI backend. Backend migrations run automatically on local container startup.
+In another terminal:
 
-3. Start the dashboard:
-
-```bash
+```powershell
 cd frontend
-npm install
-npm.cmd run dev
+npm ci
+npm run dev
 ```
 
-Open:
+- Dashboard: <http://localhost:3000>
+- API documentation: <http://localhost:8000/docs>
+- Dependency health: <http://localhost:8000/health>
 
-```text
-http://localhost:3000
-http://localhost:8000/docs
+The local Compose stack starts PostgreSQL, Chroma and the API; migrations run on
+startup. The agent worker is opt-in through the `agent` profile. Production uses
+the separate queued configuration described in [deployment.md](docs/deployment.md).
+
+### Local versus hosted behavior
+
+The example environment defaults to mock/local behavior and needs no hosted key.
+Local blueprints extract existing text; they are not fresh NVIDIA generation.
+The general runtime dialogue provider is also currently local/mock. NVIDIA is
+implemented in the design-agent provider, not every endpoint with an AI label.
+
+For hosted design work, configure `.env` deliberately using `.env.example`:
+
+- `LLM_PROVIDER=nvidia`, or an explicit `DESIGN_AGENT_PROVIDER=nvidia` override.
+- Planning uses `NVIDIA_PLAN_MODEL` and the key named by `NVIDIA_PLAN_API_KEY_ENV`.
+- Generation/critique/revision use `NVIDIA_ARTIFACT_MODEL` and the key named by
+  `NVIDIA_ARTIFACT_API_KEY_ENV`. Point this selector to `NVIDIA_SUPER_API_KEY` when
+  using a separate artifact key; it may intentionally share the planning key.
+- Decide explicitly whether mock fallback is allowed. Fallback is degraded local
+  output, never successful hosted generation.
+
+Keep keys out of Git. Actual model availability/quality is recorded in MVP.md.
+The configured pair is Nano Omni for planning and Nemotron 3.5 Super for design
+generation/revision/critique. `NVIDIA_GUIDED_JSON_ENABLED=false` sends the schema
+as instructions because the new endpoint failed the full native-guided request;
+local typed validation and evidence/approval gates still apply. One generation
+passed; critique truncated, so hosted reliability remains unaccepted.
+Do not switch models or increase limits implicitly. Hosted source transfer requires explicit
+consent. Unknown provider costs must remain unavailable, not a fabricated zero.
+The [Chunk 1 execution contract](MVP.md#chunk-1-execution-contract--decided-2026-10-18)
+fixes model roles and advisory-review boundaries. Existing bound human finding
+reviews and mandatory system gates remain; configured models and UI copy do not
+establish accepted content or a successful correction.
+
+## Verification — protect the database
+
+**Do not run pytest inside the normal application container.**
+`backend/conftest.py` drops and recreates its target schema. A test-looking database
+name alone is not proof that its contents are disposable.
+
+- CI's [verification workflow](.github/workflows/verify.yml) creates fresh services.
+- For local full-suite work, follow the guarded, fresh-empty-database procedure in
+  [MVP.md, Baseline reproduction](MVP.md#7-current-blockers-and-next-work).
+- Never reuse the application database or a retained QA database for schema resets.
+- `--noconftest` alone does not block database or network access in individual tests.
+
+Frontend checks, from `frontend`:
+
+```powershell
+npm run lint
+npm run build
 ```
 
-## Verification
+With the dashboard running separately:
 
-Run backend tests:
-
-```bash
-docker exec gamemind_backend pytest -q
+```powershell
+npm run test:dashboard-states
 ```
 
-Run frontend checks:
+Dashboard-state tests intercept backend responses and stub hosted fonts. They do
+not establish live authentication, NVIDIA quality or successful approval/export.
+Use an installed browser supported by the runner; see MVP.md for the Edge command.
+Live acceptance is separate and must retain failed attempts and actual output.
 
-```bash
-cd frontend
-npm.cmd run lint
-npm.cmd run build
-```
+## Demo and further documentation
 
-Check backend health:
+- [Dashboard workflow](docs/workflows/dashboard_workspace.md)
+- [CyberRakshak GDD](docs/demo/cyberrakshak_gdd.md) and [walkthrough](docs/demo/cyberrakshak_dashboard_demo.md)
+- [Synthetic Frostpeak sample](docs/demo/sample_gdd_frostpeak.md)
+- [Runtime API contracts](docs/integrations/runtime_api.md)
+- [Production deployment](docs/deployment.md) and [security baseline](SECURITY_BASELINE.md)
 
-```bash
-curl http://localhost:8000/health
-```
-
-Example healthy response (provider fields vary with your local `.env`):
-
-```json
-{
-  "status": "healthy",
-  "database": "healthy",
-  "chromadb": "healthy",
-  "ai_mode": "local_demo",
-  "llm_provider": "mock",
-  "embedding_provider": "local_lexical",
-  "vector_collection": "lore_chunks_local_lexical_v1",
-  "vector_dimension": 384
-}
-```
-
-## Demo Flow
-
-1. Create a workspace, then open **Sources** and click **Load Frostpeak demo**. You can also upload `docs/demo/sample_gdd_frostpeak.md`. For the portfolio walkthrough, use the CyberRakshak GDD and acceptance notes in `docs/demo/`.
-2. Inspect the source review and open **Decisions** to resolve the extracted open questions. For an implementation question, download the technical-brief template, complete it, upload it as a **Technical brief**, and attach it before resolving the decision.
-3. Open **Blueprints**, select the primary GDD, and optionally add supporting sources.
-4. Generate the blueprint, inspect its readiness and section citations, and use **View source** to verify any important claim.
-5. Export a **Project brief** when you want a portable Markdown handoff.
-6. Only when runtime testing is useful, approve and materialize the blueprint, then use the simulator or Unity adapter to test dialogue, quests, and hints.
-
-For the dashboard-first CyberRakshak walkthrough, use [docs/demo/cyberrakshak_dashboard_demo.md](docs/demo/cyberrakshak_dashboard_demo.md). The older local Frostpeak-to-Unity script remains in [docs/demo/demo_runbook.md](docs/demo/demo_runbook.md).
-The matching silent browser walkthrough is [assets/demo/gamemind-cyberrakshak-walkthrough.webm](assets/demo/gamemind-cyberrakshak-walkthrough.webm).
-For release readiness, use [docs/demo/mvp_acceptance_checklist.md](docs/demo/mvp_acceptance_checklist.md).
-For dashboard-only usage, use [docs/workflows/dashboard_workspace.md](docs/workflows/dashboard_workspace.md).
-For runtime integration, use [docs/integrations/runtime_api.md](docs/integrations/runtime_api.md).
-
-## Current MVP Status
-
-Implemented:
-
-- Named project workspaces with scoped data isolation.
-- Source ingestion, source-type classification, duplicate prevention, and immutable source revisions.
-- Local source retrieval with citations and exact source-chunk tracing.
-- GDD reviews, decision tracking, evidence attachment, and source-coverage checks.
-- Multi-source blueprint generation, quality/readiness review, comparison, and Markdown project-brief export.
-- Blueprint approval and optional materialization.
-- NPC, quest, memory, world flag, dialogue, and hint backend flows.
-- Next.js dashboard for the core workflow.
-- Unity C# API client and vertical-slice scene scripts.
-- Alembic migrations and project-scoped database isolation.
-- Durable LangGraph design-agent workflow with PostgreSQL checkpoints, human
-  review interrupts, immutable approval, and evidence-preserving revision.
-- Optional NVIDIA inference with per-node models, bounded retries, timeout,
-  structured-output repair, token/latency traces, and visible mock fallback.
-- A governed Design Agent console with cited artifacts, independent critique,
-  run-level review, trace inspection, immutable exports, and a project-neutral
-  five-metric GDD quality scorecard.
-- Section-aware batched retrieval, shared deterministic GDD extraction,
-  citation grounding, and structured revision safeguards validated against all
-  ten CyberRakshak levels.
-- A bounded concurrency regression harness with isolated API clients, explicit
-  worker deadlines, stage-level latency diagnostics, and configurable
-  PostgreSQL connection-pool limits.
-- Retryable database-overload responses, pool-aware readiness, request
-  correlation logs, a deployment smoke command, and a verified PostgreSQL
-  backup-restore procedure.
-- Durable PostgreSQL-backed design-agent jobs with leased worker execution,
-  stale-job recovery, bounded retries, and non-blocking dashboard polling.
-- Backend test suite, frontend lint, and production build verification gates.
-
-Remaining product work:
-
-- Add a cleaner public demo video/GIF.
-- Record a cleaner public demo video/GIF using the CyberRakshak walkthrough.
-- Add richer blueprint quality checks and comparisons for weak or contradictory GDDs.
-- Package engine-neutral API examples and integration starter kits more clearly.
-- Validate semantic quality against additional real GDDs using the same
-  immutable scorecard contract.
-- Run deployment-level capacity tests after choosing the production host and
-  reverse proxy; the local benchmark covers regressions, not public traffic.
-- Add remaining public-SaaS hardening: object storage, shared rate limits,
-  automated encrypted off-host backups and external incident monitoring.
-
-## Production Notes
-
-Local development runs migrations automatically in the backend container. Production deployments use `docker-compose.production.yml`, which runs `alembic upgrade head` as a one-off migration service before the API starts. See [docs/deployment.md](docs/deployment.md) for environment configuration, deployment, rollback boundaries, and backups.
-
-Authentication is optional in local demo mode and enabled in production through `AUTH_REQUIRED=true`. Production sessions use secure HTTP-only cookies and workspace membership roles. Configure a unique `JWT_SECRET` through deployment secrets before exposing the dashboard.
-
-The main demo path is intentionally local-first and works without paid API
-usage. NVIDIA support is an optional provider behind the same workflow and does
-not change the dashboard contract. Do not put real API keys in Git; use local
-`.env` values or deployment secrets.
-
-The measured Phase 2 provider and restart-safety results are documented in
-[docs/phase2-nvidia-validation.md](docs/phase2-nvidia-validation.md).
+Historical phase reports and QA recordings are evidence, not current release
+sign-off. Do not present a local/mock demo as hosted generation, or backend
+contract tests as Unity execution. The next work item is always in MVP.md.

@@ -11,9 +11,12 @@
   --border: #d1d2ca;
   --border-strong: #191a23;
   --text-secondary: #5c5e65;
-  --text-tertiary: #767871;
+  --text-tertiary: #696c65;
   --text-disabled: #bfc0b9;
-  --accent: #5b8f38;
+  --accent: #48732c;
+  --success-text: #256331;
+  --warning-text: #805000;
+  --danger-text: #a62140;
   --accent-hover: #4c792e;
   --accent-highlight: #a6ef4e;
   --accent-soft: #e2f9c8;
@@ -39,6 +42,9 @@
   --text-tertiary: #8d9188;
   --text-disabled: #5c6058;
   --accent: #b8ed70;
+  --success-text: #b5e18b;
+  --warning-text: #f0be61;
+  --danger-text: #ffb4c3;
   --accent-hover: #c8ff7e;
   --accent-highlight: #c8ff7e;
   --accent-soft: #314522;
@@ -81,6 +87,31 @@ body {
 }
 
 @layer components {
+  .app-dialog {
+    width: calc(100% - 2rem);
+    max-width: 32rem;
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--foreground);
+    overflow-y: auto;
+  }
+
+  .app-dialog::backdrop {
+    background: rgb(0 0 0 / 55%);
+    backdrop-filter: blur(3px);
+  }
+
+  .app-dialog.drawer-dialog {
+    width: min(22rem, 88vw);
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0 auto 0 0;
+  }
+
   .page-shell {
     width: 100%;
     max-width: 78rem;

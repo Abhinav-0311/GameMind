@@ -1,19 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import ModalDialog from "@/components/ModalDialog";
+import FrozenDesignEvidence from "@/components/FrozenDesignEvidence";
+import DesignFindingReviews from "@/components/DesignFindingReviews";
 import {
   api,
-  type DesignAgentCritiqueFinding,
+  ApiRequestError,
+  requestFailureMessage,
+  getActiveProjectId,
+  type DesignFindingReview,
   type DesignAgentEvaluation,
+  type DesignAgentCritiqueFinding,
   type DesignAgentQualityScorecard,
+  type DesignAgentProposalConfirmation,
   type DesignAgentRun,
   type DesignAgentTrace,
+  type DesignAgentTraceItem,
   type DocumentResponse,
 } from "@/lib/api";
 
 const DEFAULT_OBJECTIVE =
   "Create a cited, reviewable game-design blueprint that identifies unsupported decisions before implementation.";
+
+function traceTokenLabel(items: DesignAgentTraceItem[]) {
+  const total = items.reduce((sum, item) => sum + item.input_tokens + item.output_tokens, 0).toLocaleString();
+  if (items.some((item) => item.details.token_usage_scope === "unavailable"
+    || (item.status === "failed" && item.details.token_usage_scope !== "completed_responses_only"))) {
+    return "Token usage unknown";
+  }
+  return `${total} ${items.some((item) => item.details.token_usage_scope === "completed_responses_only") ? "reported tokens (total may be incomplete)" : "tokens"}`;
+}
 
 const sections = [
   { key: "summary", label: "Summary", description: "Premise, player role, and core direction." },
@@ -24,7 +42,7 @@ const sections = [
   { key: "level_design_suggestions", label: "Levels", description: "Spaces, progression, gates, and objectives." },
   { key: "gameplay_systems", label: "Systems", description: "Player loop, mechanics, and constraints." },
   { key: "quest_hooks", label: "Quests", description: "Playable hooks, objectives, and rewards." },
-  { key: "unity_runtime_preview", label: "Runtime", description: "Engine-facing output prepared for export." },
+  { key: "unity_runtime_preview", label: "Runtime", description: "Integration preview, not proof of client-ready bindings." },
 ] as const;
 
 const workflowStages = ["Plan", "Evidence", "Draft", "Critique", "Review", "Final"];
@@ -51,23 +69,26 @@ function formatDuration(milliseconds: number) {
 
 function statusMeta(run: DesignAgentRun) {
   if (run.status === "completed") {
-    return { label: "Approved", detail: "Final artifact locked", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" };
+    return { label: "Approved", detail: "Final artifact locked", tone: "bg-emerald-500/10 text-[var(--success-text)]" };
   }
   if (run.status === "awaiting_review") {
-    return { label: "Review needed", detail: `Version ${run.current_artifact?.version ?? 1} is ready`, tone: "bg-amber-500/12 text-amber-800 dark:text-amber-200" };
+    return { label: "Review needed", detail: `Version ${run.current_artifact?.version ?? 1} is ready`, tone: "bg-amber-500/12 text-[var(--warning-text)]" };
+  }
+  if (run.status === "revision_limit_reached") {
+    return { label: "Revision budget exhausted", detail: "Start a new run; this draft is preserved", tone: "bg-amber-500/12 text-[var(--warning-text)]" };
   }
   if (run.status === "failed") {
-    return { label: "Run failed", detail: "Open the trace for the failure", tone: "bg-rose-500/10 text-rose-700 dark:text-rose-300" };
+    return { label: "Run failed", detail: "See the failed step in the trace", tone: "bg-rose-500/10 text-[var(--danger-text)]" };
   }
   if (run.status === "queued" || run.status === "review_queued") {
-    return { label: "Queued", detail: "A worker will continue this run shortly", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-200" };
+    return { label: "Queued", detail: "A worker will continue this run shortly", tone: "bg-amber-500/10 text-[var(--warning-text)]" };
   }
   return { label: titleCase(run.status), detail: run.current_node ? `Working on ${titleCase(run.current_node)}` : "Workflow in progress", tone: "bg-[var(--accent-soft)] text-[var(--accent)]" };
 }
 
 function activeStageIndex(run: DesignAgentRun) {
   if (run.status === "completed") return 5;
-  if (run.status === "awaiting_review") return 4;
+  if (run.status === "awaiting_review" || run.status === "revision_limit_reached") return 4;
   const nodeStages: Record<string, number> = {
     plan: 0,
     retrieve_evidence: 1,
@@ -113,7 +134,7 @@ function ValueView({ value, depth = 0 }: { value: unknown; depth?: number }) {
       <dl className={depth > 0 ? "space-y-2" : "divide-y divide-[var(--border)]"}>
         {Object.entries(value as Record<string, unknown>).map(([key, entry]) => (
           <div key={key} className={depth > 0 ? "grid gap-1 sm:grid-cols-[8rem_1fr]" : "grid gap-2 py-5 first:pt-0 last:pb-0 sm:grid-cols-[10rem_1fr]"}>
-            <dt className={`text-xs font-semibold ${key === "assumptions" ? "text-amber-800 dark:text-amber-200" : "text-[var(--text-secondary)]"}`}>
+            <dt className={`text-xs font-semibold ${key === "assumptions" ? "text-[var(--warning-text)]" : "text-[var(--text-secondary)]"}`}>
               {key === "assumptions" ? "Review required" : key === "source_chunk_ids" ? "Evidence references" : titleCase(key)}
             </dt>
             <dd className="min-w-0 text-sm leading-6 text-[var(--foreground)]">
@@ -128,29 +149,35 @@ function ValueView({ value, depth = 0 }: { value: unknown; depth?: number }) {
   return <span className="whitespace-pre-wrap break-words">{String(value)}</span>;
 }
 
-function SeverityMark({ severity }: { severity: DesignAgentCritiqueFinding["severity"] }) {
-  const color = severity === "high" ? "bg-rose-500" : severity === "medium" ? "bg-amber-500" : "bg-sky-500";
-  return <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${color}`} aria-label={`${severity} severity`} />;
-}
-
-function PreApprovalScorecard({ scorecard }: { scorecard: DesignAgentQualityScorecard }) {
+function PreApprovalScorecard({ scorecard, current = false, findings = [] }: { scorecard: DesignAgentQualityScorecard; current?: boolean; findings?: DesignAgentCritiqueFinding[] }) {
   return (
     <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Pre-approval quality scorecard">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="page-kicker">System checks</p>
-          <h3 className="mt-2 text-sm font-bold">Pre-approval quality</h3>
+          <p className="page-kicker">{current ? "Current system checks" : "Saved system checks"}</p>
+          <h3 className="mt-2 text-sm font-bold">Pre-approval quality{scorecard.unspecified_sections?.length ? " · assessed scope" : ""}</h3>
         </div>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${scorecard.passed ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-200"}`}>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${scorecard.passed ? "bg-emerald-500/10 text-[var(--success-text)]" : "bg-amber-500/10 text-[var(--warning-text)]"}`}>
           {Math.round(scorecard.overall_score * 100)}%
         </span>
       </div>
+      {current && <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">Recomputed for this draft and frozen evidence. The saved model critique below is unchanged.</p>}
+      {scorecard.unspecified_sections?.includes("npc_memory_design") && <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">NPC memory: Unspecified—not assessed. This is not a complete memory design or proof of source absence.</p>}
+      {findings.length > 0 && <ul aria-label="Current system blockers" className="mt-4 space-y-4 text-sm leading-6 [overflow-wrap:anywhere]">
+        {findings.map((finding, index) => <li key={index}>
+          <p>{finding.issue}</p>
+          <details className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+            <summary className="min-h-11 w-fit cursor-pointer rounded-md py-3 font-medium focus-visible:outline-2 focus-visible:outline-[var(--accent)]">Suggested fix</summary>
+            <p>{finding.recommendation}</p>
+          </details>
+        </li>)}
+      </ul>}
       <div className="mt-4 space-y-3">
         {scorecard.metrics.map((metric) => (
           <div key={metric.key}>
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="font-semibold text-[var(--foreground)]">{metric.label}</span>
-              <span className={metric.passed ? "text-emerald-700 dark:text-emerald-300" : "text-amber-800 dark:text-amber-200"}>{Math.round(metric.value * 100)}%</span>
+              <span className={metric.passed ? "text-[var(--success-text)]" : "text-[var(--warning-text)]"}>{Math.round(metric.value * 100)}%</span>
             </div>
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--border)]"><div className={`h-full rounded-full ${metric.passed ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.round(metric.value * 100)}%` }} /></div>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{metric.detail}</p>
@@ -166,15 +193,37 @@ function PreApprovalScorecard({ scorecard }: { scorecard: DesignAgentQualityScor
   );
 }
 
-function ApprovalGate({ scorecard, needsRevision, reviewable }: { scorecard?: DesignAgentQualityScorecard; needsRevision: boolean; reviewable: boolean }) {
+function ApprovalGate({ scorecard, needsRevision, status, revisionBudgetExhausted, proposalsSelected }: { scorecard?: DesignAgentQualityScorecard; needsRevision: boolean; status: string; revisionBudgetExhausted: boolean; proposalsSelected: boolean }) {
   const blockers = scorecard?.blockers ?? [];
   const blocked = needsRevision || (scorecard ? !scorecard.passed : false);
-  if (!reviewable) {
+  if (status !== "awaiting_review") {
+    const lifecycle = status === "completed"
+      ? { title: "Review complete", body: "The final artifact is locked. Historical quality findings remain visible below." }
+      : status === "failed"
+        ? { title: "Review failed", body: "Inspect the workflow trace for the failure before starting another run. Approval is unavailable." }
+        : status === "revision_limit_reached"
+          ? { title: "Revision budget exhausted", body: "This historical run cannot continue. Its draft and trace are preserved. Start a new run with fresh provider consent." }
+        : status === "queued" || status === "review_queued"
+          ? { title: "Review queued", body: "The worker will continue this run. Approval is unavailable until the review checkpoint is ready." }
+          : status === "approved"
+            ? { title: "Finalizing approved review", body: "Your approval is recorded. The workflow is locking the final artifact." }
+            : status === "revision_requested"
+              ? { title: "Revision in progress", body: "The workflow is revising the draft before a new review checkpoint." }
+              : { title: "Review in progress", body: "GameMind is preparing the draft and independent critique. Approval is unavailable until the review checkpoint is ready." };
     return (
       <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Approval status">
         <p className="page-kicker">Approval status</p>
-        <p className="mt-2 text-sm font-bold text-[var(--foreground)]">Review checkpoint pending</p>
-        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">GameMind is still preparing the draft or its independent critique. Approval is unavailable until the workflow pauses here.</p>
+        <p className="mt-2 text-sm font-bold text-[var(--foreground)]">{lifecycle.title}</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{lifecycle.body}</p>
+      </section>
+    );
+  }
+  if (proposalsSelected) {
+    return (
+      <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Approval status">
+        <p className="page-kicker">Approval status</p>
+        <p className="mt-2 text-sm font-bold">Ready to submit for approval</p>
+        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">Your proposal choices are unsaved. The server will recheck this exact draft before recording approval.</p>
       </section>
     );
   }
@@ -182,7 +231,7 @@ function ApprovalGate({ scorecard, needsRevision, reviewable }: { scorecard?: De
     return (
       <section className="border-b border-emerald-500/25 bg-emerald-500/5 p-5" aria-label="Approval status">
         <p className="page-kicker">Approval status</p>
-        <p className="mt-2 text-sm font-bold text-emerald-800 dark:text-emerald-200">Ready for your judgment</p>
+        <p className="mt-2 text-sm font-bold text-[var(--success-text)]">Ready for your judgment</p>
         <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">System checks are clear. Review the cited draft, then approve only when you agree with it.</p>
       </section>
     );
@@ -193,9 +242,9 @@ function ApprovalGate({ scorecard, needsRevision, reviewable }: { scorecard?: De
       <div className="mt-2 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-[var(--foreground)]">Approval is blocked</h3>
-          <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">Request a revision or resolve the review items before this draft can become runtime intent.</p>
+          <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{revisionBudgetExhausted ? "This draft still needs changes. Start a new run before it can become runtime intent." : "Request a revision or resolve the review items before this draft can become runtime intent."}</p>
         </div>
-        <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200">Review needed</span>
+        <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-[var(--warning-text)]">Review needed</span>
       </div>
       {blockers.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2" aria-label="Approval blockers">
@@ -222,6 +271,10 @@ function LoadingView() {
   );
 }
 
+function proposalKey(proposal: DesignAgentQualityScorecard["unresolved_assumptions"][number]) {
+  return JSON.stringify([proposal.section, proposal.record_id, proposal.assumption]);
+}
+
 export default function DesignAgentPage() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [runs, setRuns] = useState<DesignAgentRun[]>([]);
@@ -230,44 +283,125 @@ export default function DesignAgentPage() {
   const [evaluation, setEvaluation] = useState<DesignAgentEvaluation | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
+  const [freshDialogue, setFreshDialogue] = useState(false);
+  const [deferRuntime, setDeferRuntime] = useState(false);
+  const [allowUnspecifiedMemory, setAllowUnspecifiedMemory] = useState(false);
+  const [dialoguePolicy, setDialoguePolicy] = useState("");
   const [activeSection, setActiveSection] = useState<(typeof sections)[number]["key"]>("summary");
   const [setupOpen, setSetupOpen] = useState(false);
+  const [startConsentOpen, setStartConsentOpen] = useState(false);
+  const [critiqueRetryChoice, setCritiqueRetry] = useState<{ runId: string; artifactId: string; executionId: string } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [revisionSections, setRevisionSections] = useState<(typeof sections)[number]["key"][]>(["summary"]);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [action, setAction] = useState<"start" | "approve" | "reject" | "refresh" | "brief" | "runtime" | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [action, setAction] = useState<"start" | "approve" | "reject" | "refresh" | "brief" | "runtime" | "critique" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [proposalChoices, setProposalChoices] = useState<{ artifactId: string; keys: string[] } | null>(null);
+  const [findingEpoch, setFindingEpoch] = useState(0);
+  const [findingState, setFindingState] = useState<{ context: string; review: DesignFindingReview | null; busy: boolean } | null>(null);
 
   const indexedDocuments = useMemo(() => documents.filter((document) => document.chunks_count > 0), [documents]);
   const activeSectionMeta = sections.find((section) => section.key === activeSection) ?? sections[0];
   const activeSectionData = activeRun?.current_artifact?.content?.[activeSection];
   const critiqueFindings = activeRun?.critique?.content.findings ?? [];
-  const preApprovalScorecard = activeRun?.critique?.content.quality_scorecard;
-  const needsRevision = activeRun?.critique?.content.verdict === "needs_revision";
-  const approvalBlocked = needsRevision || Boolean(preApprovalScorecard && !preApprovalScorecard.passed);
+  const artifactId = activeRun?.current_artifact?.id;
+  const critiqueIsCurrent = Boolean(artifactId && activeRun?.critique?.artifact_id === artifactId);
+  const findingContext = useMemo(() => JSON.stringify([activeRun?.id, artifactId, activeRun?.current_artifact?.content, activeRun?.critique, findingEpoch]),
+    [activeRun?.id, artifactId, activeRun?.current_artifact?.content, activeRun?.critique, findingEpoch]);
+  const onFindingPolicy = useCallback((review: DesignFindingReview | null) => {
+    setFindingState((current) => ({ context: findingContext, review, busy: current?.context === findingContext && current.busy }));
+  }, [findingContext]);
+  const onFindingBusy = useCallback((busy: boolean) => {
+    setFindingState((current) => ({ context: findingContext, review: current?.context === findingContext ? current.review : null, busy }));
+  }, [findingContext]);
+  const findingReview = findingState?.context === findingContext && findingState.review && findingState.review.artifact_id === artifactId
+    && findingState.review.critique_id === activeRun?.critique?.id ? findingState.review : null;
+  const findingBusy = findingState?.context === findingContext && findingState.busy;
+  const systemChecks = activeRun?.status === "awaiting_review" ? findingReview?.system_checks : null;
+  const preApprovalScorecard = systemChecks?.quality_scorecard ?? (critiqueIsCurrent ? activeRun?.critique?.content.quality_scorecard : undefined);
+  const pendingProposals = preApprovalScorecard?.unresolved_assumptions ?? [];
+  const selectedKeys = proposalChoices?.artifactId === artifactId ? proposalChoices?.keys ?? [] : [];
+  const selectedProposals: DesignAgentProposalConfirmation[] = pendingProposals.flatMap((proposal) =>
+    proposal.section && proposal.record_id && selectedKeys.includes(proposalKey(proposal))
+      ? [{ section: proposal.section, record_id: proposal.record_id, assumption: proposal.assumption }] : []);
+  const rawCritiqueBlocked = activeRun?.critique?.content.verdict === "needs_revision"
+    || critiqueFindings.some((finding) => finding.severity === "high")
+    || (activeRun?.provider_name === "nvidia" && (activeRun.critique?.content.verdict !== "ready_for_review"
+      || activeRun.critique?.artifact_id !== artifactId || !preApprovalScorecard));
+  const needsRevision = Boolean(activeRun?.critique && !critiqueIsCurrent)
+    || (activeRun?.status === "awaiting_review" && Boolean(activeRun.critique?.id) && !findingReview)
+    || (activeRun?.provider_name === "nvidia" && (!preApprovalScorecard || activeRun.critique?.artifact_id !== artifactId))
+    || (findingReview ? findingReview.critique_blocked : rawCritiqueBlocked);
+  const confirmationReady = Boolean(preApprovalScorecard && !preApprovalScorecard.passed
+    && preApprovalScorecard.blockers.length === 1 && preApprovalScorecard.blockers[0] === "Integration readiness"
+    && ["grounding", "completeness", "consistency"].every((key) => preApprovalScorecard.metrics.some((metric) => metric.key === key && metric.passed))
+    && preApprovalScorecard.metrics.filter((metric) => metric.key !== "integration_readiness").every((metric) => metric.passed)
+    && !preApprovalScorecard.unsupported_sections?.length && !preApprovalScorecard.incomplete_sections?.length
+    && !preApprovalScorecard.quest_integration_gaps?.length
+    && !preApprovalScorecard.recovered_sections?.length && pendingProposals.length > 0
+    && pendingProposals.length <= 64 && selectedProposals.length === pendingProposals.length && !needsRevision);
+  const approvalBlocked = findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
+    || Boolean(preApprovalScorecard && !preApprovalScorecard.passed && !confirmationReady);
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
+  const revisionBudgetExhausted = Boolean(activeRun && activeRun.revision_count >= activeRun.max_revisions);
   const completed = activeRun?.status === "completed";
   const activeRunId = activeRun?.id;
   const activeRunStatus = activeRun?.status;
+  const latestCritiqueExecution = trace ? [...trace.items].reverse().find((item) => item.node_name === "critique") : undefined;
+  const failedCritique = activeRun?.status === "failed" && activeRun.current_node === "critique"
+    && artifactId && !critiqueIsCurrent && trace?.run_id === activeRun.id
+    && latestCritiqueExecution?.status === "failed" ? latestCritiqueExecution : undefined;
+
+  const critiqueRetry = critiqueRetryChoice && critiqueRetryChoice.runId === activeRunId && critiqueRetryChoice.artifactId === artifactId ? critiqueRetryChoice : null;
+
+  useEffect(() => {
+    if (error && !startConsentOpen && !critiqueRetry) document.getElementById("design-run-error")?.focus();
+  }, [error, startConsentOpen, critiqueRetry]);
+
+  function replaceLocation(documentId: string, runId?: string) {
+    const params = new URLSearchParams();
+    params.set("document", documentId);
+    if (runId) params.set("run", runId);
+    window.history.replaceState(null, "", `/design-agent?${params.toString()}`);
+  }
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([api.getDocuments(), api.getDesignAgentRuns()])
-      .then(([loadedDocuments, loadedRuns]) => {
-        if (!mounted) return;
+    Promise.resolve().then(() => {
+      if (!mounted) return null;
+      setInitialLoading(true);
+      setLoadError(null);
+      return Promise.all([api.getDocuments(), api.getDesignAgentRuns()]);
+    })
+      .then((result) => {
+        if (!mounted || !result) return;
+        const [loadedDocuments, loadedRuns] = result;
         setDocuments(loadedDocuments);
         setRuns(loadedRuns);
-        const firstIndexed = loadedDocuments.find((document) => document.chunks_count > 0);
-        setSelectedDocumentId(firstIndexed?.id ?? "");
-        setActiveRun(loadedRuns[0] ?? null);
-        setSetupOpen(loadedRuns.length === 0);
+        const params = new URLSearchParams(window.location.search);
+        const requestedDocument = loadedDocuments.find(
+          (document) => document.id === params.get("document") && document.chunks_count > 0,
+        );
+        const requestedRun = loadedRuns.find((run) => run.id === params.get("run"));
+        const selectedRun = requestedRun ?? loadedRuns[0] ?? null;
+        const runDocument = loadedDocuments.find(
+          (document) => document.id === selectedRun?.document_ids[0] && document.chunks_count > 0,
+        );
+        setSelectedDocumentId(requestedDocument?.id ?? runDocument?.id ?? loadedDocuments.find((document) => document.chunks_count > 0)?.id ?? "");
+        setActiveRun(selectedRun);
+        setCritiqueRetry(null);
+        setProposalChoices(null);
+        setSetupOpen(!selectedRun);
       })
       .catch((loadError) => {
         if (!mounted) return;
-        setError(loadError instanceof Error ? loadError.message : "Could not load the design-agent workspace.");
+        setLoadError(requestFailureMessage(loadError, "Design-agent workspace"));
       })
       .finally(() => {
         if (mounted) setInitialLoading(false);
@@ -276,7 +410,7 @@ export default function DesignAgentPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [retry]);
 
   useEffect(() => {
     if (!activeRun) return;
@@ -335,12 +469,14 @@ export default function DesignAgentPage() {
   }, [activeRun]);
 
   function replaceRun(updatedRun: DesignAgentRun) {
+    setFindingEpoch((value) => value + 1);
+    setProposalChoices(null);
     setEvaluation(null);
     setRuns((current) => [updatedRun, ...current.filter((run) => run.id !== updatedRun.id)]);
     setActiveRun(updatedRun);
   }
 
-  async function startRun() {
+  function requestStartRun() {
     if (!selectedDocumentId) {
       setError("Choose an indexed source before starting.");
       return;
@@ -349,7 +485,15 @@ export default function DesignAgentPage() {
       setError("Describe the design objective in at least 10 characters.");
       return;
     }
+    if (dialoguePolicy.trim() && dialoguePolicy.trim().length < 10) {
+      setError("Describe the repeat/reset policy in at least 10 characters, or leave it blank.");
+      return;
+    }
+    setError(null);
+    setStartConsentOpen(true);
+  }
 
+  async function startRun() {
     setAction("start");
     setError(null);
     setNotice(null);
@@ -358,13 +502,33 @@ export default function DesignAgentPage() {
         objective: objective.trim(),
         document_ids: [selectedDocumentId],
         max_revisions: 2,
+        hosted_provider_consent: true,
+        fresh_dialogue: freshDialogue,
+        defer_runtime: deferRuntime,
+        allow_unspecified_memory: allowUnspecifiedMemory,
+        dialogue_policy: dialoguePolicy.trim() || null,
       });
       replaceRun(run);
+      replaceLocation(selectedDocumentId, run.id);
       setSetupOpen(false);
+      setStartConsentOpen(false);
       setActiveSection("summary");
       setNotice(run.status === "queued" ? "Run queued. A worker is preparing the draft." : "Draft and independent critique are ready for review.");
     } catch (runError) {
+      setStartConsentOpen(false);
       setError(runError instanceof Error ? runError.message : "Could not start the design-agent run.");
+      if (runError instanceof ApiRequestError && runError.runId) {
+        replaceLocation(selectedDocumentId, runError.runId);
+        try {
+          const run = await api.getDesignAgentRun(runError.runId);
+          replaceRun(run);
+          setTrace(null);
+          setSetupOpen(false);
+          setActiveSection("summary");
+        } catch {
+          setError(`${runError.message} The failed run was saved, but could not be loaded. Reload this page to recover it.`);
+        }
+      }
     } finally {
       setAction(null);
     }
@@ -391,8 +555,21 @@ export default function DesignAgentPage() {
 
   async function submitReview(decision: "approve" | "reject") {
     if (!activeRun) return;
+    if (!artifactId || (decision === "approve" && approvalBlocked)) {
+      setError(decision === "approve" ? "Review the current draft and resolve its blockers before approval."
+        : "Review the current draft before requesting a revision.");
+      return;
+    }
+    if (decision === "reject" && revisionBudgetExhausted) {
+      setError("Revision budget exhausted. Start a new run with fresh provider consent.");
+      return;
+    }
     if (decision === "reject" && !rejectionReason.trim()) {
       setError("Explain what must change before requesting a revision.");
+      return;
+    }
+    if (decision === "reject" && revisionSections.length === 0) {
+      setError("Select at least one section to revise.");
       return;
     }
 
@@ -403,6 +580,9 @@ export default function DesignAgentPage() {
       const run = await api.reviewDesignAgentRun(activeRun.id, {
         decision,
         reason: decision === "reject" ? rejectionReason.trim() : undefined,
+        target_sections: decision === "reject" ? sections.filter((section) => revisionSections.includes(section.key)).map((section) => section.key) : undefined,
+        artifact_id: artifactId,
+        confirmed_proposals: decision === "approve" ? selectedProposals : undefined,
       });
       replaceRun(run);
       setRejectOpen(false);
@@ -417,14 +597,58 @@ export default function DesignAgentPage() {
       const loadedTrace = await api.getDesignAgentTrace(run.id);
       setTrace(loadedTrace);
     } catch (reviewError) {
-      setError(reviewError instanceof Error ? reviewError.message : "Could not submit the review decision.");
+      let message = reviewError instanceof Error ? reviewError.message : "Could not submit the review decision.";
+      if (reviewError instanceof ApiRequestError && reviewError.status === 409) {
+        setProposalChoices(null);
+        setFindingEpoch((value) => value + 1);
+        try {
+          const [run, loadedTrace] = await Promise.all([api.getDesignAgentRun(activeRun.id), api.getDesignAgentTrace(activeRun.id)]);
+          replaceRun(run);
+          setTrace(loadedTrace);
+        } catch {
+          message += " Could not reload the current budget and trace. Refresh before retrying.";
+        }
+      }
+      setError(message);
     } finally {
+      setAction(null);
+    }
+  }
+
+  async function retryCritique() {
+    const selected = critiqueRetry;
+    if (!selected || !activeRun || selected.runId !== activeRun.id || selected.artifactId !== artifactId
+      || selected.executionId !== failedCritique?.id || getActiveProjectId() !== activeRun.game_project_id) {
+      setCritiqueRetry(null); setError("The review context changed. Refresh before retrying."); return;
+    }
+    const projectId = activeRun.game_project_id;
+    setAction("critique"); setError(null); setNotice(null);
+    try {
+      const run = await api.retryDesignAgentCritique(selected.runId, activeRun.game_project_id,
+        { artifact_id: selected.artifactId, failed_execution_id: selected.executionId, hosted_provider_consent: true });
+      if (getActiveProjectId() === projectId) {
+        replaceRun(run);
+        setNotice(run.status === "review_queued" ? "Critique retry queued. The saved draft is unchanged." : "Critique recovered. Review the saved draft before approval.");
+      }
+    } catch (retryError) {
+      if (getActiveProjectId() === projectId) setError(retryError instanceof Error ? retryError.message : "Critique retry failed. The saved draft is unchanged.");
+    } finally {
+      setCritiqueRetry(null);
+      if (getActiveProjectId() === projectId) {
+        try {
+          const [run, loadedTrace] = await Promise.all([api.getDesignAgentRun(selected.runId), api.getDesignAgentTrace(selected.runId)]);
+          if (getActiveProjectId() === projectId) { replaceRun(run); setTrace(loadedTrace); }
+        } catch {
+          if (getActiveProjectId() === projectId) setError((current) => `${current ?? "Review state could not be refreshed."} Refresh before retrying.`);
+        }
+      }
       setAction(null);
     }
   }
 
   async function exportArtifact(kind: "brief" | "runtime") {
     if (!activeRun) return;
+    if (kind === "runtime" && activeRun.defer_runtime) return;
     setAction(kind);
     setError(null);
     try {
@@ -439,7 +663,7 @@ export default function DesignAgentPage() {
           "application/json",
         );
       }
-      setNotice(kind === "brief" ? "Technical brief downloaded." : "Runtime bundle downloaded.");
+      setNotice(kind === "brief" ? "Technical brief downloaded." : "Runtime preview downloaded; this is not a materialized runtime bundle.");
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Could not export this artifact.");
     } finally {
@@ -448,6 +672,16 @@ export default function DesignAgentPage() {
   }
 
   if (initialLoading) return <LoadingView />;
+  if (loadError) return (
+    <div className="page-shell">
+      <p className="page-kicker">Governed workflow</p>
+      <h1 className="display-title mt-4 text-3xl">Design-agent workspace unavailable</h1>
+      <div role="alert" className="mt-6">
+        <p className="text-sm leading-6 text-[var(--text-secondary)]">{loadError}</p>
+        <button className="btn-secondary mt-4" onClick={() => setRetry((value) => value + 1)}>Retry design agent</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="page-shell">
@@ -462,7 +696,8 @@ export default function DesignAgentPage() {
         <button
           type="button"
           className="btn-secondary self-start sm:self-auto"
-          onClick={() => setSetupOpen((open) => !open)}
+          disabled={action !== null}
+          onClick={() => { if (!setupOpen) setAllowUnspecifiedMemory(false); setSetupOpen((open) => !open); }}
           aria-expanded={setupOpen}
         >
           {setupOpen ? "Close setup" : "New run"}
@@ -471,7 +706,7 @@ export default function DesignAgentPage() {
 
       <div className="mt-6 space-y-3" aria-live="polite">
         {error && (
-          <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-[var(--foreground)]">
+          <div id="design-run-error" role="alert" tabIndex={-1} className="flex items-start justify-between gap-4 rounded-lg border border-rose-500/25 bg-rose-500/8 px-4 py-3 text-sm text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
             <span>{error}</span>
             <button type="button" onClick={() => setError(null)} className="font-semibold text-[var(--text-secondary)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
               Dismiss
@@ -500,7 +735,10 @@ export default function DesignAgentPage() {
                 <span className="text-xs font-semibold text-[var(--foreground)]">Source document</span>
                 <select
                   value={selectedDocumentId}
-                  onChange={(event) => setSelectedDocumentId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedDocumentId(event.target.value);
+                    replaceLocation(event.target.value);
+                  }}
                   className="mt-2 min-h-11 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
                 >
                   {indexedDocuments.length === 0 && <option value="">No indexed sources</option>}
@@ -526,13 +764,63 @@ export default function DesignAgentPage() {
                   className="mt-2 w-full resize-y rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
                 />
               </label>
+              <div className="space-y-4 md:col-span-2">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
+                  <input type="checkbox" checked={deferRuntime} onChange={(event) => setDeferRuntime(event.target.checked)}
+                    disabled={action !== null} aria-describedby="defer-runtime-help"
+                    className="h-5 w-5 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]" />
+                  Design only — defer runtime integration
+                </label>
+                <p id="defer-runtime-help" className="text-xs leading-5 text-[var(--text-secondary)]">
+                  Review design without inventing engine bindings. Runtime preview stays empty; runtime export and materialization stay blocked. Fixed for this run.
+                </p>
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
+                  <input type="checkbox" checked={allowUnspecifiedMemory} onChange={(event) => setAllowUnspecifiedMemory(event.target.checked)}
+                    disabled={action !== null} aria-describedby="memory-scope-help"
+                    className="h-5 w-5 shrink-0 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]" />
+                  Allow NPC memory to remain unspecified for this run
+                </label>
+                <p id="memory-scope-help" className="text-xs leading-5 text-[var(--text-secondary)]">
+                  Empty, uncited memory with a warning is not assessed—not certified complete. Source-backed omissions and other design checks still block approval. Fixed for this run.
+                </p>
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
+                  <input
+                    type="checkbox"
+                    checked={freshDialogue}
+                    onChange={(event) => setFreshDialogue(event.target.checked)}
+                    disabled={action !== null}
+                    className="h-5 w-5 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]"
+                    aria-describedby="fresh-dialogue-help"
+                  />
+                  Generate fresh dialogue
+                </label>
+                <p id="fresh-dialogue-help" className="text-xs leading-5 text-[var(--text-secondary)]">
+                  Copied source lines will block approval when this is selected. Voice and usefulness still need review.
+                </p>
+                <label className="block">
+                  <span className="text-xs font-semibold text-[var(--foreground)]">Fixed repeat/reset policy (optional)</span>
+                  <textarea
+                    value={dialoguePolicy}
+                    onChange={(event) => setDialoguePolicy(event.target.value)}
+                    disabled={action !== null}
+                    rows={2}
+                    maxLength={240}
+                    aria-describedby="dialogue-policy-help"
+                    placeholder="Describe when warnings repeat and exactly what resets them."
+                    className="mt-2 w-full resize-y rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-3 text-sm leading-6 text-[var(--foreground)] outline-none transition placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
+                  />
+                </label>
+                <p id="dialogue-policy-help" className="text-xs leading-5 text-[var(--text-secondary)]">
+                  Applied verbatim to every warning mapping through revisions. Leave blank for a reviewable AI proposal; start a new run to change a fixed policy.
+                </p>
+              </div>
               <div className="md:col-span-2 flex flex-col gap-3 border-t border-[var(--border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-5 text-[var(--text-secondary)]">
                   Up to two review revisions. Evidence is reused unless a future workflow explicitly requests more.
                 </p>
                 <button
                   type="button"
-                  onClick={startRun}
+                  onClick={requestStartRun}
                   disabled={action !== null || indexedDocuments.length === 0}
                   className="btn-primary min-w-36 disabled:cursor-not-allowed disabled:opacity-55"
                 >
@@ -544,6 +832,26 @@ export default function DesignAgentPage() {
         </section>
       )}
 
+      {(startConsentOpen || critiqueRetry) && (
+        <ModalDialog labelledBy="start-agent-review-title" dismissible={action !== "start" && action !== "critique"} onClose={() => { setStartConsentOpen(false); setCritiqueRetry(null); }}>
+          <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+            <p className="page-kicker">Governed AI review</p>
+            <h2 id="start-agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{critiqueRetry ? "Retry this draft's critique?" : "Start a cited review?"}</h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              {critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured NVIDIA provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured NVIDIA provider to create a cited draft and independent critique. No provider request is made until you confirm."}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" onClick={() => { setStartConsentOpen(false); setCritiqueRetry(null); }} disabled={action === "start" || action === "critique"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                Cancel
+              </button>
+              <button type="button" onClick={critiqueRetry ? retryCritique : startRun} disabled={action === "start" || action === "critique"} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
+                {critiqueRetry ? action === "critique" ? "Retrying critique" : "Retry saved draft review" : action === "start" ? "Starting review" : "Start governed review"}
+              </button>
+            </div>
+          </section>
+        </ModalDialog>
+      )}
+
       {!activeRun ? (
         <section className="mt-10 flex min-h-72 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--card)] px-6 text-center">
           <p className="page-kicker">No runs yet</p>
@@ -552,7 +860,7 @@ export default function DesignAgentPage() {
             Choose an indexed GDD, set the design objective, and let the workflow pause when a review decision is needed.
           </p>
           {!setupOpen && (
-            <button type="button" className="btn-primary mt-6" onClick={() => setSetupOpen(true)}>
+            <button type="button" className="btn-primary mt-6" onClick={() => { setAllowUnspecifiedMemory(false); setSetupOpen(true); }}>
               Configure first run
             </button>
           )}
@@ -573,20 +881,38 @@ export default function DesignAgentPage() {
                   )}
                   <span className="text-xs text-[var(--text-secondary)]">{currentStatus?.detail}</span>
                 </div>
-                <h2 className="mt-4 text-xl font-bold leading-8">{activeRun.objective}</h2>
+                {activeRun.defer_runtime && (
+                  <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                    Design-only review · Runtime integration deferred. Design approval does not enable runtime export or materialization.
+                  </p>
+                )}
+                {activeRun.allow_unspecified_memory && <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">Memory scope is fixed for this run. Only empty, uncited NPC memory with a warning may remain unspecified; other checks still apply.</p>}
+                <h2 className="mt-4 text-xl font-semibold leading-7">Design review</h2>
+                <p aria-hidden="true" className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+                  {activeRun.objective}
+                </p>
                 <p className="mt-2 text-xs text-[var(--text-secondary)]">
                   Started {formatDate(activeRun.created_at)} · {activeRun.provider_name} · Evidence revision {activeRun.retrieval_revision}
                 </p>
+                <details key={activeRun.id} className="mt-1">
+                  <summary className="min-h-11 w-fit cursor-pointer rounded-md py-2 text-sm font-medium leading-7 text-[var(--text-secondary)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                    Full objective
+                  </summary>
+                  <p className="max-w-prose whitespace-pre-wrap text-sm leading-6 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+                    {activeRun.objective}
+                  </p>
+                </details>
                 {activeRun.degraded && (
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
                     NVIDIA did not complete this run in time, so GameMind preserved the workflow using deterministic local output. Review the result as orchestration proof, not hosted-model quality.
                   </p>
                 )}
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 lg:flex lg:justify-end">
                 <label className="sr-only" htmlFor="run-history">Run history</label>
                 <select
                   id="run-history"
+                  disabled={action !== null}
                   value={activeRun.id}
                   onChange={(event) => {
                     const selected = runs.find((run) => run.id === event.target.value);
@@ -594,11 +920,18 @@ export default function DesignAgentPage() {
                       setTrace(null);
                       setEvaluation(null);
                       setActiveRun(selected);
+                      setCritiqueRetry(null);
+                      setProposalChoices(null);
+                      const documentId = selected.document_ids[0] || selectedDocumentId;
+                      if (documentId) {
+                        setSelectedDocumentId(documentId);
+                        replaceLocation(documentId, selected.id);
+                      }
                       setActiveSection("summary");
                       setRejectOpen(false);
                     }
                   }}
-                  className="min-h-11 max-w-64 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
+                  className="min-h-11 min-w-0 max-w-64 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
                 >
                   {runs.map((run) => (
                     <option key={run.id} value={run.id}>
@@ -643,9 +976,9 @@ export default function DesignAgentPage() {
                   </div>
                   {activeSectionData && (
                     <div className="flex items-center gap-2 pb-1 text-xs text-[var(--text-secondary)]">
-                      <span>{activeSectionData.confidence} confidence</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{activeSectionData.citations.length} citations</span>
+                      {activeSection === "npc_memory_design" && preApprovalScorecard?.unspecified_sections?.includes("npc_memory_design")
+                        ? <span>Unspecified—not assessed</span>
+                        : <><span>{activeSectionData.confidence} confidence</span><span aria-hidden="true">·</span><span>{activeSectionData.citations.length} citations</span></>}
                     </div>
                   )}
                 </div>
@@ -659,7 +992,7 @@ export default function DesignAgentPage() {
                       onClick={() => setActiveSection(section.key)}
                       className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] ${
                         activeSection === section.key
-                          ? "bg-[var(--accent)] text-white"
+                          ? "bg-[var(--accent-highlight)] text-[#191a23]"
                           : "text-[var(--text-secondary)] hover:bg-[var(--card-muted)] hover:text-[var(--foreground)]"
                       }`}
                     >
@@ -668,10 +1001,13 @@ export default function DesignAgentPage() {
                   ))}
                 </div>
               </div>
+              {artifactId && <FrozenDesignEvidence key={`${activeRun.id}:${artifactId}`} runId={activeRun.id} artifactId={artifactId} references={activeSectionData?.citations ?? []} />}
               <div className="p-5 sm:p-7">
                 {!activeSectionData ? (
                   <div className="py-16 text-center text-sm text-[var(--text-secondary)]">
-                    This artifact does not contain the selected section.
+                    {activeRun.status === "failed" && !activeRun.current_artifact
+                      ? "No draft was generated. Inspect the failed step in the workflow trace."
+                      : "This artifact does not contain the selected section."}
                   </div>
                 ) : (
                   <>
@@ -690,43 +1026,76 @@ export default function DesignAgentPage() {
             </section>
 
             <aside className="status-strip overflow-hidden rounded-lg">
-              <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} reviewable={reviewable} />
-              {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} />}
+              <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} status={activeRun.status} revisionBudgetExhausted={revisionBudgetExhausted} proposalsSelected={confirmationReady} />
+              {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} current={Boolean(systemChecks)} findings={systemChecks?.findings} />}
+              {reviewable && pendingProposals.length > 0 && (
+                <fieldset className="border-b border-[var(--border)] p-5" disabled={action !== null} aria-describedby="proposal-choice-help">
+                  <legend className="px-1 text-sm font-semibold">Proposals to review</legend>
+                  <p id="proposal-choice-help" className="text-xs leading-5 text-[var(--text-secondary)]">Selections are unsaved until you submit approval. They do not verify GDD facts or runtime behaviour.</p>
+                  <div className="mt-4 space-y-4">
+                    {pendingProposals.map((proposal) => (
+                      <label key={proposalKey(proposal)} className="flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6">
+                        <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                          aria-label={`Accept proposal for ${proposal.record}: ${proposal.assumption}`}
+                          disabled={!proposal.section || !proposal.record_id || !artifactId}
+                          checked={selectedKeys.includes(proposalKey(proposal))}
+                          onChange={(event) => {
+                            if (!artifactId) return;
+                            const key = proposalKey(proposal);
+                            const keys = event.target.checked ? [...selectedKeys, key] : selectedKeys.filter((item) => item !== key);
+                            setProposalChoices({ artifactId, keys });
+                          }} />
+                        <span className="min-w-0 break-words"><span className="block text-xs font-semibold text-[var(--text-secondary)]">{proposal.record}</span><span className="block">{proposal.assumption}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-xs leading-5 text-[var(--text-secondary)]" aria-live="polite">{selectedProposals.length} of {pendingProposals.length} selected for draft version {activeRun.current_artifact?.version}.</p>
+                  {pendingProposals.some((proposal) => !proposal.section || !proposal.record_id) && (
+                    <p className="mt-2 text-xs leading-5 text-[var(--warning-text)]">This historical scorecard has no proposal IDs. A new review is required before confirmation.</p>
+                  )}
+                </fieldset>
+              )}
               <div className="border-b border-[var(--border)] p-5">
-                <p className="page-kicker">Independent critique</p>
+                <p className="page-kicker">{activeRun.critique && !critiqueIsCurrent ? completed ? "Review history" : "Previous or unlinked critique" : "Independent critique"}</p>
                 <h2 className="mt-2 text-lg font-bold">
-                  {completed
+                  {!activeRun.critique
+                    ? activeRun.status === "failed" ? "Critique unavailable" : "Critique not ready"
+                    : !critiqueIsCurrent
+                    ? completed ? "Previous draft critique" : "Critique not linked to current draft"
+                    : completed
                     ? "Critique reviewed"
                     : activeRun.critique?.content.verdict === "needs_revision"
                       ? "Changes recommended"
                       : "Ready for your judgment"}
                 </h2>
+                {activeRun.critique && !critiqueIsCurrent && <p className="mt-2 text-sm leading-6 text-[var(--warning-text)]">
+                  {completed
+                    ? "The approved snapshot is locked. This critique belongs to an earlier draft; its findings and recorded judgments remain visible for audit. No further approval is required."
+                    : <>Draft version {activeRun.current_artifact?.version ?? "—"} needs its own independent review before approval. The critique below is not linked to this version; its findings are retained for reference only.</>}
+                </p>}
                 <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                   {activeRun.critique?.content.summary || "No critique was recorded for this artifact."}
                 </p>
+                {failedCritique && artifactId && <div className="mt-4">
+                  <p className="text-sm leading-6 text-[var(--text-secondary)]">Your draft is saved. Retry its critique without generating it again. Approval remains blocked.</p>
+                  <button type="button" className="btn-primary mt-3 disabled:cursor-not-allowed disabled:opacity-50" disabled={action !== null}
+                    onClick={() => setCritiqueRetry({ runId: activeRun.id, artifactId, executionId: failedCritique.id })}>Retry critique</button>
+                </div>}
               </div>
 
-              <div className="max-h-[28rem] divide-y divide-[var(--border)] overflow-y-auto">
-                {critiqueFindings.length === 0 ? (
-                  <p className="p-5 text-sm leading-6 text-[var(--text-secondary)]">No critique findings were recorded.</p>
-                ) : (
-                  critiqueFindings.map((finding, index) => (
-                    <div key={`${finding.section}-${index}`} className="p-5">
-                      <div className="flex gap-3">
-                        <SeverityMark severity={finding.severity} />
-                        <div>
-                          <p className="text-xs font-bold text-[var(--foreground)]">{titleCase(finding.section)}</p>
-                          <p className="mt-2 text-sm leading-5 text-[var(--foreground)]">{finding.issue}</p>
-                          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{finding.recommendation}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+              {activeRun.current_artifact && activeRun.critique ? <DesignFindingReviews
+                key={findingContext} runId={activeRun.id} artifact={activeRun.current_artifact} critique={activeRun.critique}
+                reviewable={reviewable} disabled={action !== null} onPolicy={onFindingPolicy} onBusy={onFindingBusy}
+              /> : <p className="p-5 text-sm text-[var(--text-secondary)]">No critique findings were recorded.</p>}
 
               <div className="border-t border-[var(--border)] bg-[var(--card-muted)] p-5">
-                {reviewable && !rejectOpen && (
+                {(reviewable || activeRun.status === "revision_limit_reached") && (
+                  <div className="mb-4 text-xs leading-5 text-[var(--text-secondary)]">
+                    <p>Revisions used: {activeRun.revision_count}/{activeRun.max_revisions}</p>
+                    {revisionBudgetExhausted && <p id="revision-budget-help" className="mt-2">Revision budget exhausted. Start a new run with a clearer objective and fresh provider consent. This draft stays unchanged.</p>}
+                  </div>
+                )}
+                {reviewable && (!rejectOpen || revisionBudgetExhausted) && (
                   <div className="grid gap-2">
                     <button
                       type="button"
@@ -740,15 +1109,45 @@ export default function DesignAgentPage() {
                     <button
                       type="button"
                       className="btn-secondary w-full"
-                      onClick={() => setRejectOpen(true)}
-                      disabled={action !== null}
+                      onClick={() => { setRevisionSections([activeSection]); setRejectOpen(true); }}
+                      disabled={action !== null || findingBusy || revisionBudgetExhausted}
+                      aria-describedby={revisionBudgetExhausted ? "revision-budget-help" : undefined}
+                      title={revisionBudgetExhausted ? "This run has no revisions remaining." : undefined}
                     >
                       Request revision
                     </button>
                   </div>
                 )}
-                {reviewable && rejectOpen && (
+                {reviewable && rejectOpen && !revisionBudgetExhausted && (
                   <div>
+                    <fieldset
+                      disabled={action !== null}
+                      aria-describedby="revision-scope-help"
+                    >
+                      <legend className="text-xs font-bold text-[var(--foreground)]">Sections to revise</legend>
+                      <div className="mt-2 grid grid-cols-2 gap-x-2">
+                        {sections.map((section) => (
+                          <label key={section.key} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--accent)]">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+                              checked={revisionSections.includes(section.key)}
+                              onChange={(event) => {
+                                const checked = event.target.checked;
+                                setRevisionSections((selected) => checked ? [...selected, section.key] : selected.filter((key) => key !== section.key));
+                              }}
+                            />
+                            <span>{section.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <p className="mt-2 text-xs font-semibold text-[var(--foreground)]" aria-live="polite">
+                      {revisionSections.length === 0 ? "Select at least one section." : `${revisionSections.length} ${revisionSections.length === 1 ? "section" : "sections"} selected.`}
+                    </p>
+                    <p id="revision-scope-help" className="mb-4 mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                      Only selected sections may change. Other sections stay unchanged, even if mentioned below.
+                    </p>
                     <label htmlFor="rejection-reason" className="text-xs font-bold text-[var(--foreground)]">
                       What must change?
                     </label>
@@ -758,6 +1157,7 @@ export default function DesignAgentPage() {
                       onChange={(event) => setRejectionReason(event.target.value)}
                       rows={5}
                       maxLength={4000}
+                      disabled={action !== null}
                       autoFocus
                       placeholder="Be specific enough to verify the revision."
                       className="mt-2 w-full resize-y rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-3 text-sm leading-6 text-[var(--foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]"
@@ -767,7 +1167,7 @@ export default function DesignAgentPage() {
                         type="button"
                         className="btn-primary w-full"
                         onClick={() => submitReview("reject")}
-                        disabled={action !== null || !rejectionReason.trim()}
+                        disabled={action !== null || revisionBudgetExhausted || revisionSections.length === 0 || !rejectionReason.trim()}
                       >
                         {action === "reject" ? "Revising and critiquing…" : "Send revision request"}
                       </button>
@@ -780,10 +1180,11 @@ export default function DesignAgentPage() {
                 {completed && (
                   <div className="grid gap-2">
                     <p className="mb-2 text-sm font-semibold text-[var(--foreground)]">Approved artifact</p>
+                    {activeRun.defer_runtime && <p className="text-xs leading-5 text-[var(--text-secondary)]">Runtime deferred. Download the reviewed design brief; client integration remains blocked.</p>}
                     <button type="button" className="btn-primary w-full" onClick={() => exportArtifact("brief")} disabled={action !== null}>
                       {action === "brief" ? "Preparing…" : "Download technical brief"}
                     </button>
-                    <button type="button" className="btn-secondary w-full" onClick={() => exportArtifact("runtime")} disabled={action !== null}>
+                    <button type="button" className="btn-secondary w-full" onClick={() => exportArtifact("runtime")} disabled={action !== null || activeRun.defer_runtime === true}>
                       {action === "runtime" ? "Preparing…" : "Download runtime JSON"}
                     </button>
                   </div>
@@ -810,8 +1211,8 @@ export default function DesignAgentPage() {
                 <div className="flex items-center gap-3">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                     evaluation.passed
-                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                      : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                      ? "bg-emerald-500/10 text-[var(--success-text)]"
+                      : "bg-rose-500/10 text-[var(--danger-text)]"
                   }`}>
                     {evaluation.passed ? "Acceptance passed" : "Needs improvement"}
                   </span>
@@ -835,12 +1236,12 @@ export default function DesignAgentPage() {
             </section>
           )}
 
-          <details className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+          <details key={activeRun.id} open={activeRun.status === "failed"} className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]">
               <span>
                 <span className="text-sm font-bold">Workflow trace</span>
                 <span className="ml-3 text-xs text-[var(--text-secondary)]">
-                  {trace?.items.length ?? 0} events · {trace?.items.reduce((total, item) => total + item.input_tokens + item.output_tokens, 0).toLocaleString() ?? 0} tokens
+                  {trace?.items.length ?? 0} events · {trace ? traceTokenLabel(trace.items) : "Token usage unknown"}
                 </span>
               </span>
               <span className="text-xs font-semibold text-[var(--accent)]">Inspect</span>
@@ -857,11 +1258,11 @@ export default function DesignAgentPage() {
                         <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">
                           Attempt {item.attempt} · {item.provider_name || "system"}{item.model_name ? ` · ${item.model_name}` : ""}
                         </p>
-                        {item.error && <p className="mt-2 text-xs leading-5 text-rose-600 dark:text-rose-300">{item.error}</p>}
+                        {item.error && <p className="mt-2 text-xs leading-5 text-[var(--danger-text)]">{item.error}</p>}
                       </div>
                       <span className="text-xs text-[var(--text-secondary)]">{formatDuration(item.latency_ms)}</span>
-                      <span className="text-xs text-[var(--text-secondary)]">{(item.input_tokens + item.output_tokens).toLocaleString()} tokens</span>
-                      <span className={`text-xs font-semibold ${item.status === "failed" ? "text-rose-600 dark:text-rose-300" : item.status === "waiting" ? "text-amber-700 dark:text-amber-200" : "text-[var(--foreground)]"}`}>
+                      <span className="text-xs text-[var(--text-secondary)]">{traceTokenLabel([item])}</span>
+                      <span className={`text-xs font-semibold ${item.status === "failed" ? "text-[var(--danger-text)]" : item.status === "waiting" ? "text-[var(--warning-text)]" : "text-[var(--foreground)]"}`}>
                         {titleCase(item.status)}
                       </span>
                     </li>

@@ -1,6 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const activeProjectStorageKey = "gamemind-active-project";
 const projectChangeEvent = "gamemind-project-change";
+let activeProjectUserId: string | null = null;
 
 export interface GameProject {
   id: string;
@@ -26,9 +27,13 @@ export interface WorkspaceMember {
   joined_at: string;
 }
 
+function scopedActiveProjectStorageKey() {
+  return activeProjectUserId ? `${activeProjectStorageKey}:${activeProjectUserId}` : activeProjectStorageKey;
+}
+
 function activeProjectId() {
   if (typeof window === "undefined") return "default_project";
-  return window.localStorage.getItem(activeProjectStorageKey) || "default_project";
+  return window.localStorage.getItem(scopedActiveProjectStorageKey()) || (activeProjectUserId ? "" : "default_project");
 }
 
 export function getActiveProjectId() {
@@ -36,8 +41,24 @@ export function getActiveProjectId() {
 }
 
 export function setActiveProjectId(projectId: string) {
-  window.localStorage.setItem(activeProjectStorageKey, projectId);
+  const storageKey = scopedActiveProjectStorageKey();
+  if (projectId) {
+    window.localStorage.setItem(storageKey, projectId);
+  } else {
+    window.localStorage.removeItem(storageKey);
+  }
   window.dispatchEvent(new Event(projectChangeEvent));
+}
+
+/**
+ * Project selection is scoped to the signed-in account. This prevents a
+ * previously selected workspace from being reused when a different account
+ * opens the dashboard in the same browser profile.
+ */
+export function setActiveProjectUser(userId: string | null) {
+  if (activeProjectUserId === userId) return;
+  activeProjectUserId = userId;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(projectChangeEvent));
 }
 
 export function subscribeToProjectChange(callback: () => void) {
@@ -52,8 +73,9 @@ export function subscribeToProjectChange(callback: () => void) {
 
 async function projectFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
-  if (!headers.has("X-Game-Project-ID")) {
-    headers.set("X-Game-Project-ID", activeProjectId());
+  const projectId = activeProjectId();
+  if (!headers.has("X-Game-Project-ID") && projectId) {
+    headers.set("X-Game-Project-ID", projectId);
   }
 
   return globalThis.fetch(input, { ...init, headers, credentials: init.credentials ?? "include" });
@@ -61,6 +83,44 @@ async function projectFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 
 // API calls are project-scoped unless an individual request supplies its own header.
 const fetch = projectFetch;
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly runId?: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function requestFailureMessage(error: unknown, subject: string): string {
+  if (error instanceof ApiRequestError && error.status === 401) return `${subject} unavailable. Sign in again, then retry.`;
+  if (error instanceof ApiRequestError && error.status === 403) return `${subject} unavailable. Your account does not have access to this workspace.`;
+  return `${subject} unavailable. Check the API connection and configured dashboard origin, then retry.`;
+}
+
+async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
+  const payload = await response.json().catch(() => ({}));
+  const detail = payload?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && typeof detail.message === "string") return detail.message;
+  return fallback;
+}
+
+async function runtimeRequest<T>(
+  path: string,
+  projectId: string,
+  fallback: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("X-Game-Project-ID", projectId);
+  const response = await projectFetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  if (!response.ok) throw new ApiRequestError(await responseErrorMessage(response, fallback), response.status);
+  return response.json();
+}
 
 export interface DocumentResponse {
   id: string;
@@ -83,6 +143,99 @@ export interface ChunkResponse {
 
 export interface DocumentDetailResponse extends DocumentResponse {
   chunks: ChunkResponse[];
+}
+
+export interface RuntimeNpc {
+  id: string;
+  slug: string;
+  name: string;
+  title?: string;
+}
+
+export interface RuntimeCitation {
+  document_id: string;
+  chunk_id: string;
+  title: string;
+  similarity: number;
+}
+
+export interface RuntimeDialogueRequest {
+  npc_slug: string;
+  player_message: string;
+  player_id: string;
+  conversation_id?: string;
+  prompt_version: string;
+  source_document_id?: string;
+}
+
+export interface RuntimeDialogueResponse {
+  conversation_id?: string;
+  response_text: string;
+  suggested_animation?: string;
+  npc_emotions?: Record<string, number>;
+  citations?: RuntimeCitation[];
+}
+
+export interface RuntimeQuestObjective {
+  objective_index: number;
+  description: string;
+  target_type: string;
+  target_id: string;
+  quantity_required: number;
+}
+
+export interface RuntimeQuestGenerationRequest {
+  npc_slug: string;
+  player_id: string;
+  player_level: number;
+}
+
+export interface RuntimeGeneratedQuest {
+  npc_slug: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  rewards: {
+    gold: number;
+    xp: number;
+    items: string[];
+  };
+  objectives: RuntimeQuestObjective[];
+}
+
+export interface RuntimeQuestCreateRequest {
+  npc_slug: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  gold_reward: number;
+  xp_reward: number;
+  item_rewards: string[];
+  objectives: RuntimeQuestObjective[];
+}
+
+export interface RuntimeCreatedQuest {
+  id: string;
+}
+
+export interface RuntimeHintRequest {
+  quest_id: string;
+  player_id: string;
+  hint_level: number;
+}
+
+export interface RuntimeHintResponse {
+  hint: string;
+}
+
+export interface RuntimeHintStatusResponse {
+  cooldown_remaining_seconds: number;
+  current_level: number;
+}
+
+export interface RuntimeBundleResponse {
+  blueprint_id: string;
+  npcs: Array<{ slug: string }>;
 }
 
 export interface GddReviewFinding {
@@ -155,6 +308,8 @@ export interface QueryResult {
   chunk_index: number;
   similarity: number;
   confidence: string;
+  source_document_id?: string;
+  revision_number?: number;
 }
 
 export interface QueryResponse {
@@ -196,6 +351,8 @@ export interface DesignAgentCritiqueFinding {
   section: string;
   issue: string;
   recommendation: string;
+  reference?: { artifact_path: string; artifact_value: unknown;
+    evidence_chunk_id: string | null; evidence_quote: string | null; replacement?: unknown } | null;
 }
 
 export interface DesignAgentQualityMetric {
@@ -211,8 +368,19 @@ export interface DesignAgentQualityScorecard {
   overall_score: number;
   passed: boolean;
   blockers: string[];
-  unresolved_assumptions: { record: string; assumption: string }[];
+  unresolved_assumptions: { record: string; assumption: string; section?: DesignAgentProposalConfirmation["section"]; record_id?: string }[];
   unsupported_sections?: string[];
+  incomplete_sections?: string[];
+  unspecified_sections?: string[];
+  assessed_sections?: string[];
+  quest_integration_gaps?: { record_id: string; record: string; objectives: string[] }[];
+  recovered_sections?: string[];
+}
+
+export interface DesignAgentProposalConfirmation {
+  section: "npc_archetypes" | "quest_hooks";
+  record_id: string;
+  assumption: string;
 }
 
 export interface DesignAgentCritique {
@@ -229,6 +397,43 @@ export interface DesignAgentCritique {
   created_at: string;
 }
 
+export interface DesignFindingResolutionCreate {
+  critique_id: string;
+  artifact_sha256: string;
+  critique_sha256: string;
+  evidence_sha256: string;
+  finding_id: string;
+  reason: string;
+  artifact_path: string;
+  evidence_chunk_id: string;
+  evidence_quote: string;
+}
+
+export interface DesignFindingResolution extends DesignFindingResolutionCreate {
+  id: string;
+  artifact_id: string;
+  artifact_version: number;
+  finding_index: number;
+  artifact_value: unknown;
+  reviewer_label: string;
+  created_at: string;
+}
+
+export interface DesignFindingReview {
+  artifact_id: string;
+  critique_id: string;
+    evidence_snapshot_id: string;
+  artifact_sha256: string;
+  critique_sha256: string;
+  evidence_sha256: string;
+  can_record: boolean;
+  critique_blocked: boolean;
+  system_checks?: DesignAgentCritique["content"] | null;
+  findings: { finding_id: string; index: number; finding: DesignAgentCritiqueFinding;
+    origin: "model" | "server" | "unknown"; can_resolve: boolean; resolution_applies: boolean; status_message: string }[];
+  resolutions: DesignFindingResolution[];
+}
+
 export interface DesignAgentRun {
   id: string;
   game_project_id: string;
@@ -238,6 +443,8 @@ export interface DesignAgentRun {
   current_node?: string | null;
   provider_name: string;
   degraded: boolean;
+  defer_runtime?: boolean;
+  allow_unspecified_memory?: boolean;
   retrieval_revision: number;
   revision_count: number;
   max_revisions: number;
@@ -269,6 +476,19 @@ export interface DesignAgentTrace {
   run_id: string;
   status: string;
   items: DesignAgentTraceItem[];
+}
+
+export interface DesignAgentEvidence {
+  artifact_id: string;
+  snapshot_id: string;
+  revision: number;
+  items: {
+    chunk_id: string;
+    document_id: string | null;
+    title: string;
+    content: string;
+    chunk_index: number | null;
+  }[];
 }
 
 export interface DesignAgentRuntimeExport {
@@ -306,7 +526,7 @@ export const api = {
   async getAuthSession(): Promise<AuthSession> {
     const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/session`, { credentials: "include" });
     if (res.status === 401) return { auth_required: true, user: null };
-    if (!res.ok) throw new Error("Could not verify your session.");
+    if (!res.ok) throw new ApiRequestError("Could not verify your session.", res.status);
     return res.json();
   },
 
@@ -357,6 +577,11 @@ export const api = {
     if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.detail || "This verification link is invalid or expired."); }
   },
 
+  async requestEmailVerification(email: string): Promise<void> {
+    const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/auth/email-verification/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+    if (!res.ok) throw new Error("Could not request a verification link.");
+  },
+
   async acceptInvitation(token: string): Promise<GameProject> {
     const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/projects/invitations/accept`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
     if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.detail || "This invitation is invalid or expired."); }
@@ -365,7 +590,7 @@ export const api = {
 
   async getProjects(): Promise<GameProject[]> {
     const res = await fetch(`${API_BASE_URL}/api/v1/projects/`);
-    if (!res.ok) throw new Error("Failed to fetch workspaces");
+    if (!res.ok) throw new ApiRequestError("Failed to fetch workspaces", res.status);
     return res.json();
   },
 
@@ -408,8 +633,96 @@ export const api = {
 
   async getHealth(): Promise<HealthResponse> {
     const res = await fetch(`${API_BASE_URL}/health`);
-    if (!res.ok) throw new Error("Health check failed");
+    if (!res.ok) throw new ApiRequestError("Health check failed", res.status);
     return res.json();
+  },
+
+  async getRuntimeDocuments(projectId: string, signal?: AbortSignal): Promise<DocumentResponse[]> {
+    return runtimeRequest("/api/v1/documents/", projectId, "Documents could not be loaded for this project.", { signal });
+  },
+
+  async getRuntimeNpcs(projectId: string, signal?: AbortSignal): Promise<RuntimeNpc[]> {
+    return runtimeRequest("/api/v1/npcs", projectId, "NPCs could not be loaded for this project.", { signal });
+  },
+
+  async getLatestRuntimeBundle(projectId: string, signal?: AbortSignal): Promise<RuntimeBundleResponse> {
+    return runtimeRequest(
+      "/api/v1/blueprints/runtime/latest-bundle",
+      projectId,
+      "No eligible runtime release is available for this project.",
+      { signal },
+    );
+  },
+
+  async sendRuntimeDialogue(
+    projectId: string,
+    playerId: string,
+    payload: RuntimeDialogueRequest,
+  ): Promise<RuntimeDialogueResponse> {
+    return runtimeRequest("/api/v1/dialogue/chat", projectId, "Dialogue request failed.", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-ID": playerId },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async generateRuntimeQuest(
+    projectId: string,
+    playerId: string,
+    payload: RuntimeQuestGenerationRequest,
+  ): Promise<RuntimeGeneratedQuest> {
+    return runtimeRequest("/api/v1/quests/generate", projectId, "Quest generation failed.", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-ID": playerId },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createRuntimeQuest(
+    projectId: string,
+    playerId: string,
+    payload: RuntimeQuestCreateRequest,
+  ): Promise<RuntimeCreatedQuest> {
+    return runtimeRequest("/api/v1/quests", projectId, "Generated quest could not be registered.", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-ID": playerId },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async startRuntimeQuest(
+    projectId: string,
+    playerId: string,
+    questId: string,
+  ): Promise<unknown> {
+    return runtimeRequest("/api/v1/quests/progress", projectId, "Quest progress could not be started.", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-ID": playerId },
+      body: JSON.stringify({ quest_id: questId, player_id: playerId }),
+    });
+  },
+
+  async generateRuntimeHint(
+    projectId: string,
+    playerId: string,
+    payload: RuntimeHintRequest,
+  ): Promise<RuntimeHintResponse> {
+    return runtimeRequest("/api/v1/hints/generate", projectId, "Hint could not be generated.", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-ID": playerId },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getRuntimeHintStatus(
+    projectId: string,
+    playerId: string,
+    questId: string,
+  ): Promise<RuntimeHintStatusResponse> {
+    const query = new URLSearchParams({ quest_id: questId, player_id: playerId });
+    return runtimeRequest(`/api/v1/hints/status?${query.toString()}`, projectId, "Hint status could not be loaded.", {
+      headers: { "X-Player-ID": playerId },
+    });
   },
 
   async uploadDocument(file: File, sourceKind?: string): Promise<DocumentResponse> {
@@ -468,15 +781,11 @@ export const api = {
   },
 
   async getDocuments(): Promise<DocumentResponse[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/documents`);
-    if (!res.ok) throw new Error("Failed to fetch documents");
-    return res.json();
+    return runtimeRequest("/api/v1/documents/", activeProjectId(), "Failed to fetch documents");
   },
 
   async getDocument(id: string): Promise<DocumentDetailResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/documents/${id}`);
-    if (!res.ok) throw new Error("Failed to fetch document details");
-    return res.json();
+    return runtimeRequest(`/api/v1/documents/${id}`, activeProjectId(), "Failed to fetch document details");
   },
 
   async reviewDocument(id: string): Promise<GddReviewResponse> {
@@ -489,9 +798,7 @@ export const api = {
   },
 
   async getDesignDecisions(documentId: string): Promise<DesignDecision[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/decisions?document_id=${documentId}`);
-    if (!res.ok) throw new Error("Could not load design decisions");
-    return res.json();
+    return runtimeRequest(`/api/v1/decisions/?document_id=${documentId}`, activeProjectId(), "Could not load design decisions");
   },
 
   async syncDesignDecisions(documentId: string): Promise<DesignDecision[]> {
@@ -508,9 +815,7 @@ export const api = {
   },
 
   async getDecisionCoverage(documentId: string): Promise<DecisionCoverageResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/decisions/coverage?document_id=${documentId}`);
-    if (!res.ok) throw new Error("Could not assess decision coverage");
-    return res.json();
+    return runtimeRequest(`/api/v1/decisions/coverage?document_id=${documentId}`, activeProjectId(), "Could not assess decision coverage");
   },
 
   async updateDesignDecision(id: string, payload: { decision?: string; status?: "open" | "resolved" }): Promise<DesignDecision> {
@@ -555,13 +860,13 @@ export const api = {
     if (!res.ok) throw new Error("Failed to delete document");
   },
 
-  async queryLore(query: string, limit: number = 5): Promise<QueryResponse> {
+  async queryLore(query: string, limit: number = 5, includeHistory: boolean = false): Promise<QueryResponse> {
     const res = await fetch(`${API_BASE_URL}/api/v1/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, limit }),
+      body: JSON.stringify({ query, limit, include_history: includeHistory }),
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -671,21 +976,15 @@ export const api = {
   },
 
   async getOverviewMetrics(): Promise<OverviewMetrics> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/analytics/overview`);
-    if (!res.ok) throw new Error("Failed to fetch analytics overview");
-    return res.json();
+    return runtimeRequest("/api/v1/analytics/overview", activeProjectId(), "Failed to fetch analytics overview");
   },
 
   async getNPCCosts(): Promise<NPCCostBreakdown[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/analytics/costs`);
-    if (!res.ok) throw new Error("Failed to fetch NPC cost breakdowns");
-    return res.json();
+    return runtimeRequest("/api/v1/analytics/costs", activeProjectId(), "Failed to fetch NPC cost breakdowns");
   },
 
   async getMemoryMetrics(): Promise<MemoryMetrics> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/analytics/memory`);
-    if (!res.ok) throw new Error("Failed to fetch memory analytics metrics");
-    return res.json();
+    return runtimeRequest("/api/v1/analytics/memory", activeProjectId(), "Failed to fetch memory analytics metrics");
   },
 
   async getTelemetryLogs(params?: { npc_slug?: string; action_type?: string; limit?: number; offset?: number }): Promise<PaginatedLogs> {
@@ -695,9 +994,7 @@ export const api = {
     if (params?.limit) queryParts.push(`limit=${params.limit}`);
     if (params?.offset) queryParts.push(`offset=${params.offset}`);
     const queryStr = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
-    const res = await fetch(`${API_BASE_URL}/api/v1/analytics/logs${queryStr}`);
-    if (!res.ok) throw new Error("Failed to fetch telemetry logs");
-    return res.json();
+    return runtimeRequest(`/api/v1/analytics/logs${queryStr}`, activeProjectId(), "Failed to fetch telemetry logs");
   },
 
   async getQuests(): Promise<QuestResponse[]> {
@@ -731,15 +1028,18 @@ export const api = {
   },
 
   async getDesignAgentRuns(): Promise<DesignAgentRun[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs`);
-    if (!res.ok) throw new Error("Could not load design-agent runs");
-    return res.json();
+    return runtimeRequest("/api/v1/design-agent/runs", activeProjectId(), "Could not load design-agent runs");
   },
 
   async createDesignAgentRun(payload: {
     objective: string;
     document_ids: string[];
     max_revisions?: number;
+    hosted_provider_consent?: boolean;
+    fresh_dialogue?: boolean;
+    defer_runtime?: boolean;
+    allow_unspecified_memory?: boolean;
+    dialogue_policy?: string | null;
   }): Promise<DesignAgentRun> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs`, {
       method: "POST",
@@ -748,7 +1048,12 @@ export const api = {
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.detail || "Could not start the design-agent run");
+      const detail = errData.detail;
+      throw new ApiRequestError(
+        typeof detail === "string" ? detail : typeof detail?.message === "string" ? detail.message : "Could not start the design-agent run",
+        res.status,
+        res.status === 503 && typeof detail?.run_id === "string" ? detail.run_id : undefined,
+      );
     }
     return res.json();
   },
@@ -761,7 +1066,8 @@ export const api = {
 
   async reviewDesignAgentRun(
     runId: string,
-    payload: { decision: "approve" | "reject"; reason?: string },
+    payload: { decision: "approve" | "reject"; reason?: string; target_sections?: string[];
+      artifact_id?: string; confirmed_proposals?: DesignAgentProposalConfirmation[] },
   ): Promise<DesignAgentRun> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/review`, {
       method: "POST",
@@ -769,10 +1075,32 @@ export const api = {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.detail || "Could not submit the review decision");
+      throw new ApiRequestError(await responseErrorMessage(res, "Could not submit the review decision"), res.status);
     }
     return res.json();
+  },
+
+  async retryDesignAgentCritique(runId: string, projectId: string,
+    payload: { artifact_id: string; failed_execution_id: string; hosted_provider_consent: boolean }): Promise<DesignAgentRun> {
+    return runtimeRequest(`/api/v1/design-agent/runs/${encodeURIComponent(runId)}/retry-critique`, projectId,
+      "Could not retry the saved draft review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  },
+
+  async getDesignAgentEvidence(runId: string, artifactId: string): Promise<DesignAgentEvidence> {
+    return runtimeRequest(
+      `/api/v1/design-agent/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/evidence`,
+      activeProjectId(), "Could not load this draft's frozen evidence",
+    );
+  },
+
+  async getDesignFindingReviews(runId: string, artifactId: string, projectId: string): Promise<DesignFindingReview> {
+    return runtimeRequest(`/api/v1/design-agent/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/finding-resolutions`,
+      projectId, "Could not load finding reviews");
+  },
+
+  async recordDesignFindingReview(runId: string, artifactId: string, projectId: string, payload: DesignFindingResolutionCreate): Promise<DesignFindingResolution> {
+    return runtimeRequest(`/api/v1/design-agent/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactId)}/finding-resolutions`,
+      projectId, "Could not record the finding review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   },
 
   async getDesignAgentTrace(runId: string): Promise<DesignAgentTrace> {
@@ -824,9 +1152,7 @@ export const api = {
   },
 
   async getBlueprints(): Promise<BlueprintResponse[]> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/blueprints`);
-    if (!res.ok) throw new Error("Failed to fetch blueprints");
-    return res.json();
+    return runtimeRequest("/api/v1/blueprints/", activeProjectId(), "Failed to fetch blueprints");
   },
 
   async approveBlueprint(blueprintId: string): Promise<BlueprintResponse> {
@@ -1128,9 +1454,12 @@ export interface BlueprintResponse {
 }
 
 export interface BlueprintReadinessResponse {
-  status: "planning_only" | "runtime_blocked" | "runtime_review" | "runtime_ready";
+  status: "planning_only" | "runtime_blocked" | "runtime_review" | "runtime_ready" | "runtime_deferred";
   can_approve: boolean;
   can_materialize: boolean;
+  can_serve_runtime: boolean;
+  runtime_release_reason: "ready" | "unapproved" | "unmaterialized" | "empty_materialization" | "content_blocked" | "runtime_deferred";
+  runtime_release_blockers: string[];
   missing_required: string[];
   blockers: string[];
   advisories: string[];

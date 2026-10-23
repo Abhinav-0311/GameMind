@@ -50,7 +50,7 @@ class CyberRakshakEvaluationProvider(MockDesignAgentProvider):
             provider_name=result.provider_name,
         )
 
-    def critique(self, artifact, evidence):
+    def critique(self, artifact, evidence, *, review_request=None):
         levels = artifact["level_design_suggestions"]["content"].get("levels", [])
         complete = len(levels) == 10 and levels[-1]["title"] == "Hunt Jay"
         critique = CritiqueOutput(
@@ -84,8 +84,9 @@ class CyberRakshakEvaluationProvider(MockDesignAgentProvider):
             provider_name=self.name,
         )
 
-    def revise(self, artifact, evidence, rejection_reason):
-        result = super().revise(artifact, evidence, rejection_reason)
+    def revise(self, artifact, evidence, rejection_reason, target_sections=None, *, review_request=None):
+        result = super().revise(artifact, evidence, rejection_reason, target_sections=target_sections,
+                                review_request=review_request)
         content = copy.deepcopy(result.content)
         content["level_design_suggestions"]["content"]["levels"] = [
             {"number": index, "title": title}
@@ -189,6 +190,23 @@ def test_scorecard_thresholds_fail_honestly():
     assert metrics[1]["value"] == 1
 
 
+def test_evaluation_response_preserves_nested_metrics_and_decimal_score():
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from app.design_agent.evaluation import DesignAgentEvaluationService
+
+    values = dict(id=uuid.uuid4(), run_id=uuid.uuid4(), game_project_id="workspace-a",
+                  rubric_version="gdd-v1", evaluator_label="QA reviewer", passed=False,
+                  overall_score=Decimal("0.8123"), created_at=datetime(2026, 10, 13, tzinfo=timezone.utc),
+                  metrics=[dict(key="citation_relevance", label="Citation relevance", value=0.8,
+                                numerator=4, denominator=5, target=">= 0.80", passed=True,
+                                source="human_review")])
+    evaluation = DesignAgentEvaluation(**values, annotations={"private": "do not expose"})
+    result = DesignAgentEvaluationService._response(evaluation)
+    assert result.model_dump() == {**values, "overall_score": 0.8123}
+    assert result.model_dump(mode="json")["created_at"] == "2026-10-13T00:00:00Z"
+
+
 def test_generic_gdd_rubric_is_the_default_for_new_evaluations():
     payload = DesignAgentEvaluationCreate(
         citation_judgments=[
@@ -237,6 +255,7 @@ def test_cyberrakshak_end_to_end_scorecard_persists_after_restart(db_session):
                     "The level section must explicitly preserve all ten levels, "
                     "including Level 9 The Reveal and Level 10 Hunt Jay."
                 ),
+                "target_sections": ["level_design_suggestions"],
             },
         )
         assert rejected.status_code == 200, rejected.text

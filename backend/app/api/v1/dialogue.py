@@ -50,7 +50,20 @@ def _should_auto_retrieve_lore(message: str) -> bool:
     return bool(tokens.intersection(_LORE_TRIGGER_TERMS) or "?" in normalized)
 
 
-def _with_auto_retrieved_chunks(request: DialogueChatRequest, game_project_id: str) -> DialogueChatRequest:
+def _with_auto_retrieved_chunks(
+    request: DialogueChatRequest,
+    game_project_id: str,
+    db: Session,
+) -> DialogueChatRequest:
+    if request.source_document_id:
+        from app.models.document import Document
+
+        source_document = db.query(Document.id).filter(
+            Document.id == request.source_document_id,
+            Document.game_project_id == game_project_id,
+        ).first()
+        if source_document is None:
+            raise ValueError("Selected lore source was not found in the active workspace.")
     if request.selected_chunk_ids:
         return request
     if not _should_auto_retrieve_lore(request.player_message):
@@ -64,6 +77,7 @@ def _with_auto_retrieved_chunks(request: DialogueChatRequest, game_project_id: s
             query_text=request.player_message,
             limit=5,
             game_project_id=game_project_id,
+            document_ids=[str(request.source_document_id)] if request.source_document_id else None,
         )
         chunk_ids = []
         for result in results:
@@ -120,7 +134,7 @@ async def chat_dialogue(
     try:
         conv = None
         history = None
-        request = _with_auto_retrieved_chunks(request, game_project_id)
+        request = _with_auto_retrieved_chunks(request, game_project_id, db)
         active_player_id = request.player_id or player_id
         if request.conversation_id:
             from app.models.session import Conversation, Message

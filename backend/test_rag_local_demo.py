@@ -2,10 +2,32 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from app.models.document import Document
+from app.api.v1.query import _latest_document_ids
+from app.design_agent.contracts import SECTION_RETRIEVAL_FOCUS
 from app.services.rag_service import DuplicateDocumentError, RAGService
 import uuid
 
 client = TestClient(app)
+
+
+def test_latest_document_ids_excludes_superseded_revisions(db_session):
+    project_id = f"latest_revision_{uuid.uuid4().hex[:8]}"
+    original = Document(title="GDD v1", content_type="text/plain", game_project_id=project_id)
+    db_session.add(original)
+    db_session.flush()
+    original.source_document_id = original.id
+    revised = Document(
+        title="GDD v2",
+        content_type="text/plain",
+        game_project_id=project_id,
+        source_document_id=original.id,
+        revision_number=2,
+    )
+    db_session.add(revised)
+    db_session.commit()
+
+    documents = db_session.query(Document).filter(Document.game_project_id == project_id).all()
+    assert _latest_document_ids(documents) == {str(revised.id)}
 
 def test_query_endpoint_local_demo():
     """Verify that querying works in local demo mode."""
@@ -77,9 +99,11 @@ def test_section_retrieval_falls_back_to_individual_queries_after_batch_hnsw_fai
         document_ids=["doc-a"],
     )
 
-    assert len(results) == 2
+    assert len(results) == 4
     assert results[0]["matched_sections"]
-    assert calls[-2:] == [["overview"], ["quests"]]
+    assert calls[-4:] == [["overview"], ["quests"],
+                          [SECTION_RETRIEVAL_FOCUS["summary"]],
+                          [SECTION_RETRIEVAL_FOCUS["quest_hooks"]]]
 
 
 def test_section_retrieval_uses_scoped_lexical_fallback_when_hnsw_has_no_match(monkeypatch):

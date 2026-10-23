@@ -92,6 +92,7 @@ def setup_data(db_session):
         "deleted_npc_slug": deleted_npc_slug,
         "chunk1_id": str(chunk1.id),
         "chunk2_id": str(chunk2.id),
+        "document_id": str(doc.id),
         "chunk1_content": chunk1.content,
         "chunk2_content": chunk2.content
     }
@@ -142,6 +143,32 @@ def test_retrieved_lore_context_assembly(setup_data):
     assert len(data["retrieved_chunks"]) == 2
     assert data["retrieved_chunks"][0]["chunk_index"] == 0
     assert data["retrieved_chunks"][1]["chunk_index"] == 1
+
+
+def test_selected_source_excludes_chunks_from_other_documents(setup_data, db_session):
+    other_document = Document(title="Unrelated Tome", content_type="text/plain")
+    db_session.add(other_document)
+    db_session.flush()
+    other_chunk = DocumentChunk(
+        id=uuid.uuid4(),
+        document_id=other_document.id,
+        chunk_index=0,
+        content="This must not appear when Wind Tome is selected.",
+    )
+    db_session.add(other_chunk)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/dialogue/assemble",
+        json={
+            "npc_slug": setup_data["npc_slug"],
+            "player_message": "Tell me about the siege.",
+            "source_document_id": setup_data["document_id"],
+            "selected_chunk_ids": [str(other_chunk.id)],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["retrieved_chunk_count"] == 0
 
 def test_empty_retrieved_lore_context(setup_data):
     """Verify dialog behaves cleanly when no lore chunks are requested."""

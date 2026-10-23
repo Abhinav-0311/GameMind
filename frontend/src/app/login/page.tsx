@@ -1,15 +1,26 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { safeReturnPath } from "@/lib/safe-return";
 
 type Mode = "sign-in" | "create-account";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const continuePath = safeReturnPath(searchParams.get("continue"));
   const [mode, setMode] = useState<Mode>("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,9 +29,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     api.getAuthSession().then((session) => {
-      if (session.user) router.replace("/");
+      if (session.user) router.replace(continuePath);
     }).catch(() => undefined);
-  }, [router]);
+  }, [continuePath, router]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -32,7 +43,7 @@ export default function LoginPage() {
       } else {
         await api.login(email, password);
       }
-      router.replace("/");
+      router.replace(continuePath);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Something went wrong. Please try again.");
     } finally {

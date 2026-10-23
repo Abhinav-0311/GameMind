@@ -438,6 +438,52 @@ def test_runtime_bundle_returns_manifest_only(db_session, make_blueprint):
     assert approved_quest["dependencies"] == ["Training route complete."]
 
 
+def test_runtime_bundle_blocks_a_materialized_blueprint_that_fails_current_readiness(db_session, make_blueprint):
+    """Legacy materialization must not bypass the current runtime release gate."""
+    project_id = f"project_{uuid.uuid4().hex[:6]}"
+    blueprint = make_blueprint(project_id, "approved")
+
+    materialized = client.post(
+        f"/api/v1/blueprints/{blueprint.id}/materialize",
+        headers={"X-Game-Project-ID": project_id},
+    )
+    assert materialized.status_code == 200
+
+    # Simulate a legacy bundle whose reviewed content was later found to be truncated.
+    blueprint.npc_archetypes = {
+        "content": {
+            "npcs": [
+                {
+                    "name": "Eldrin",
+                    "archetype": "Mentoring wizard",
+                    "dialogue_style": "Eldrin explains the next step. His",
+                }
+            ]
+        },
+        "citations": [],
+        "confidence": "High",
+        "warnings": [],
+    }
+    db_session.commit()
+
+    readiness = client.get(
+        f"/api/v1/blueprints/{blueprint.id}/readiness",
+        headers={"X-Game-Project-ID": project_id},
+    )
+    assert readiness.status_code == 200
+    assert readiness.json()["can_serve_runtime"] is False
+
+    response = client.get(
+        f"/api/v1/blueprints/{blueprint.id}/runtime-bundle",
+        headers={"X-Game-Project-ID": project_id},
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["readiness"]["can_serve_runtime"] is False
+    assert any("mid-sentence" in item for item in detail["readiness"]["runtime_release_blockers"])
+
+
 def test_materializer_never_guesses_missing_quest_runtime_semantics(db_session, make_blueprint):
     project_id = f"project_{uuid.uuid4().hex[:6]}"
     blueprint = make_blueprint(project_id, "approved")
