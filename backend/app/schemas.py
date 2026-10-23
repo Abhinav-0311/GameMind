@@ -392,7 +392,7 @@ class DialogueCitation(BaseModel):
     document_id: UUID
     chunk_id: UUID
     title: str
-    similarity: float
+    similarity: Optional[float]
 
     model_config = ConfigDict(
         from_attributes=True

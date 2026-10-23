@@ -156,7 +156,7 @@ export interface RuntimeCitation {
   document_id: string;
   chunk_id: string;
   title: string;
-  similarity: number;
+  similarity: number | null;
 }
 
 export interface RuntimeDialogueRequest {

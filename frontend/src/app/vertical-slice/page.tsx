@@ -21,7 +21,7 @@ interface Citation {
   document_id: string;
   chunk_id: string;
   title: string;
-  similarity: number;
+  similarity: number | null;
 }
 
 type Emotions = Record<string, number>;
@@ -673,7 +673,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                     <div key={citation.chunk_id} className="panel-muted rounded-xl p-3">
                       <div className="flex justify-between gap-3 text-xs">
                         <span className="font-semibold text-[var(--foreground)]">{citation.title}</span>
-                        <span className="text-[var(--accent)]">{Math.round(citation.similarity * 100)}%</span>
+                        <span className="text-[var(--accent)]">{citation.similarity === null ? "Unknown" : `${Math.round(citation.similarity * 100)}%`}</span>
                       </div>
                       <p className="mt-2 break-all text-[10px] leading-4 text-[var(--text-secondary)]">Chunk: {citation.chunk_id}</p>
                     </div>

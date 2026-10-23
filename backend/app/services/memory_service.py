@@ -525,24 +525,8 @@ class MemoryService:
             summary_text = data.get("summary", "")
             extracted_mems = data.get("extracted_memories", [])
         except Exception as e:
-            if provider.__class__.__name__ == "MockLLMProvider":
-                logger.info("Parsing failed on MockLLMProvider response. Using default mock summary fallback.")
-                summary_text = f"Mock summary including {len(unsummarized)} messages."
-                extracted_mems = [
-                    {
-                        "text": "Robin stole a gold coin from the sheriff.",
-                        "type": "episodic",
-                        "importance_score": 7.5
-                    },
-                    {
-                        "text": "Omitted memory due to low score.",
-                        "type": "episodic",
-                        "importance_score": 3.0
-                    }
-                ]
-            else:
-                logger.error(f"Failed to parse JSON response from LLM: {e}")
-                raise e
+            logger.warning("Failed to parse conversation summary for %s; no memories promoted: %s", conversation_id, e)
+            return
             
         # Update conversation metadata
         conv.conversation_summary = summary_text

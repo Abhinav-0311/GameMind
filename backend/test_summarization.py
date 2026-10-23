@@ -10,6 +10,9 @@ from unittest.mock import patch, MagicMock
 import uuid
 import datetime
 import json
+import asyncio
+from types import SimpleNamespace
+from app.services.llm.mock import MockLLMProvider
 
 client = TestClient(app)
 
@@ -213,6 +216,31 @@ def test_summarization_failure_resiliency(db):
             assert conv.conversation_summary is None
             assert conv.summary_version == 0
             assert conv.last_summarized_message_id is None
+
+def test_summary_parse_failure_does_not_invent_memory(db, caplog):
+    npc = NPCProfile(slug=f"parse_failure_{uuid.uuid4().hex[:6]}", name="Scholar", personality_summary="A scholar.")
+    db.add(npc)
+    db.flush()
+    conv = Conversation(npc_id=npc.id, npc_slug=npc.slug, conversation_summary="Existing summary.")
+    db.add(conv)
+    db.flush()
+    db.add(Message(conversation_id=conv.id, sender="player", content="Hello, scholar."))
+    db.commit()
+    service = MemoryService(SimpleNamespace(chroma_client=None))
+
+    with patch("app.services.llm.factory.get_llm_provider", return_value=MockLLMProvider()), \
+         patch("app.services.memory_service.logger.disabled", False):
+        with caplog.at_level("WARNING", logger="app.services.memory_service"):
+            assert asyncio.run(service.run_summarization_and_promotion(db, conv.id)) is None
+
+    db.refresh(conv)
+    assert db.query(NPCMemory).filter(NPCMemory.conversation_id == conv.id).count() == 0
+    assert conv.conversation_summary == "Existing summary."
+    assert conv.summary_version == 0
+    assert conv.summary_updated_at is None
+    assert conv.last_summarized_message_id is None
+    assert any("parse" in record.message.lower() for record in caplog.records)
+
 
 def test_archive_only_consolidation(db):
     # Setup test NPC

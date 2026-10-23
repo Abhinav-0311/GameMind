@@ -105,13 +105,3 @@ def clean_job_queue(db_session):
     yield
     db_session.query(DesignAgentJob).delete()
     db_session.commit()
-
-
-@pytest.fixture(autouse=True)
-def clean_job_queue(db_session):
-    """Workers must not claim a job left by another test."""
-    db_session.query(DesignAgentJob).delete()
-    db_session.commit()
-    yield
-    db_session.query(DesignAgentJob).delete()
-    db_session.commit()
