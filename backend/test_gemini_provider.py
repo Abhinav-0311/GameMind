@@ -13,6 +13,17 @@ from app.design_agent.llm_provider import CompletionRequest, NvidiaProviderError
 from app.design_agent.provider_factory import build_design_agent_provider
 
 
+@pytest.fixture(autouse=True)
+def isolate_provider_quota(db_session, monkeypatch):
+    from app.design_agent import gemini_budget
+    from app.design_agent.gemini_provider import GeminiProvider
+    from app.models.gemini_usage import GeminiDailyUsage
+    db_session.query(GeminiDailyUsage).delete()
+    db_session.commit()
+    monkeypatch.setattr(gemini_budget, "process_window", gemini_budget.SlidingWindow())
+    monkeypatch.setattr(GeminiProvider, "_verified_models", set())
+
+
 def config(profile="dev", **overrides):
     return Settings(_env_file=None, **{
         "LLM_PROFILE": profile, "LLM_PROVIDER": "mock", "DESIGN_AGENT_PROVIDER": None,
@@ -57,8 +68,8 @@ def test_profile_routes_each_node_without_changing_the_legacy_nvidia_path(profil
     assert models["plan"]["model"] == "dev-env-model"
     assert all(models[node]["model"] == artifact_model for node in ("generate_blueprint", "critique", "revise"))
     assert build_design_agent_provider(config("test", GEMINI_API_KEY=None)).name == "mock"
-    assert build_design_agent_provider(Settings(_env_file=None, LLM_PROVIDER="mock", DESIGN_AGENT_PROVIDER=None)).name == "mock"
-    assert build_design_agent_provider(Settings(_env_file=None, LLM_PROVIDER="nvidia", DESIGN_AGENT_PROVIDER=None)).name == "nvidia"
+    assert build_design_agent_provider(Settings(_env_file=None, LLM_PROFILE=None, LLM_PROVIDER="mock", DESIGN_AGENT_PROVIDER=None)).name == "mock"
+    assert build_design_agent_provider(Settings(_env_file=None, LLM_PROFILE=None, LLM_PROVIDER="nvidia", DESIGN_AGENT_PROVIDER=None)).name == "nvidia"
 
 
 def test_sdk_interaction_is_stateless_schema_constrained_and_reasoning_is_not_retained():
@@ -119,7 +130,7 @@ def test_existing_prompt_builder_moves_policy_but_not_source_or_source_bound_sch
     transport.close()
 
 
-@pytest.mark.parametrize("failure, attempts, code", [(400, 1, "request_rejected"), (429, 1, "provider_rate_limited"),
+@pytest.mark.parametrize("failure, attempts, code", [(400, 1, "request_rejected"), (429, 2, "provider_rate_limited"),
     (503, 3, "provider_unavailable"), ("transport", 3, "provider_timeout")])
 def test_sdk_retries_are_bounded_and_provider_errors_are_sanitized(failure, attempts, code):
     from app.design_agent.gemini_provider import GeminiProvider
@@ -236,7 +247,7 @@ def test_gemini_consent_trace_and_degraded_fallback_use_the_existing_workflow(db
         if degrade:
             return httpx.Response(429, json={"error": {"code": 429, "message": "private quota detail"}})
         return interaction(json.dumps(replies[len(calls) - 1]))
-    transport = GeminiProvider(config(), client=sdk(respond))
+    transport = GeminiProvider(config(), client=sdk(respond), sleep=lambda _: None)
     provider = ResilientDesignAgentProvider(primary=GeminiDesignAgentProvider(llm_provider=transport), fallback=MockDesignAgentProvider())
     service = make_service(db_session, CountingRAG(chunks), provider)
     monkeypatch.setattr(settings, "DESIGN_AGENT_EXECUTION_MODE", "inline")
@@ -247,16 +258,18 @@ def test_gemini_consent_trace_and_degraded_fallback_use_the_existing_workflow(db
         assert client.post("/api/v1/design-agent/runs", headers=headers, json=payload).status_code == 409
         assert calls == []
         response = client.post("/api/v1/design-agent/runs", headers=headers, json={**payload, "hosted_provider_consent": True})
-        assert response.status_code == 201, response.text
-        run = response.json()
+        assert response.status_code == (503 if degrade else 201), response.text
+        run = (client.get(f"/api/v1/design-agent/runs/{response.json()['detail']['run_id']}", headers=headers).json()
+               if degrade else response.json())
         assert run["provider_name"] == "gemini" and run["degraded"] is degrade
         trace = client.get(f"/api/v1/design-agent/runs/{run['id']}/trace", headers=headers).json()["items"]
         degraded = [item for item in trace if item["status"] == "degraded"]
-        assert len(calls) == 3
-        assert len(degraded) == (3 if degrade else 0)
-        assert all(item["details"]["failure_code"] == "provider_rate_limited" for item in degraded)
-        assert all(item["details"]["primary_diagnostics"]["model_name"] == "dev-env-model" for item in degraded)
-        assert all(item["provider_name"] == "mock" and item["model_name"] for item in degraded)
+        assert len(calls) == (2 if degrade else 3)
+        assert degraded == []
+        if degrade:
+            assert run["status"] == "failed" and len(trace) == 1
+            assert trace[0]["details"]["failure_code"] == "provider_rate_limited"
+            assert trace[0]["model_name"] == "dev-env-model"
         if not degrade:
             nodes = [item for item in trace if item["node_name"] in {"plan", "generate_blueprint", "critique"}]
             assert len(nodes) == 3

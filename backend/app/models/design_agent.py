@@ -92,6 +92,7 @@ class DesignAgentRun(Base, ProjectScopedMixin):
     model_config = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     retrieval_revision = Column(Integer, nullable=False, default=0, server_default="0")
     revision_count = Column(Integer, nullable=False, default=0, server_default="0")
+    gemini_request_count = Column(Integer, nullable=False, default=0, server_default="0")
     max_revisions = Column(Integer, nullable=False, default=2, server_default="2")
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

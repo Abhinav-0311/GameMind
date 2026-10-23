@@ -1,6 +1,6 @@
 import time
 import copy
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Iterator
@@ -254,6 +254,8 @@ class DesignAgentWorkflow:
         execution.details = {**(execution.details or {}), "cost_status": "unavailable",
                              "token_usage_scope": "unavailable"}
         if isinstance(error, NvidiaProviderError):
+            if error.diagnostics.get("degraded"):
+                run.model_config = {**(run.model_config or {}), "degraded": True}
             execution.details = {
                 **(execution.details or {}),
                 "failure_code": error.code,
@@ -308,7 +310,11 @@ class DesignAgentWorkflow:
             started = time.perf_counter()
             result = None
             try:
-                result = call()
+                primary = getattr(self.provider, "primary", self.provider)
+                transport = getattr(primary, "llm_provider", None)
+                request_context = getattr(transport, "run_context", None)
+                with request_context(run.id) if request_context else nullcontext():
+                    result = call()
                 update = persist(db, run, result)
                 degraded = bool(result.metadata.get("degraded"))
                 if degraded:

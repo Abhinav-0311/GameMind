@@ -1,7 +1,12 @@
 """Stateless Google SDK transport; the existing completion/agent layers own validation and prompts."""
 import random
 import time
+import hashlib
+import math
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import replace
+from threading import Lock
 
 import httpx
 
@@ -11,13 +16,16 @@ from app.design_agent.llm_provider import (
     NvidiaConfigurationError, _RawCompletion,
 )
 from app.design_agent.nvidia_provider import NvidiaDesignAgentProvider
+from app.design_agent.gemini_budget import GeminiBudget, limit_error
 
 
 class GeminiProvider(NvidiaProvider):
     name = "gemini"
+    _verified_models = set()
+    _verification_lock = Lock()
 
     def __init__(self, app_settings: Settings, *, client=None, sleep=time.sleep,
-                 jitter=random.uniform, request_limit=None):
+                 jitter=random.uniform, request_limit=None, budget=None):
         self.profile = app_settings.LLM_PROFILE
         if self.profile not in {"dev", "showcase"}:
             raise NvidiaConfigurationError("Gemini requires LLM_PROFILE=dev or showcase.", code="profile_invalid")
@@ -37,6 +45,36 @@ class GeminiProvider(NvidiaProvider):
         self._client = client
         self._sleep, self._jitter = sleep, jitter
         self.request_limit, self._requests = request_limit, 0
+        self.budget = budget if budget is not None else GeminiBudget(app_settings)
+        self.max_run_requests = app_settings.GEMINI_MAX_REQUESTS_PER_RUN
+        self.dev_model = app_settings.GEMINI_DEV_MODEL.strip()
+        self._run_id = ContextVar("gemini_run_id", default=None)
+        self._active_model = ContextVar("gemini_active_model", default=None)
+        self._fallback = ContextVar("gemini_model_fallback", default=None)
+        self._hook_client = None
+
+    @contextmanager
+    def run_context(self, run_id):
+        token = self._run_id.set(run_id)
+        try:
+            yield
+        finally:
+            self._run_id.reset(token)
+
+    def preflight(self):
+        self.budget.preflight({config.model for config in self.node_model_config.values()})
+
+    def _before_http(self, request):
+        # HTTPX request hooks run for each actual attempt, including SDK retries and GETs.
+        if self.request_limit is not None and self._requests >= self.request_limit:
+            raise limit_error("Gemini request budget exhausted; no additional request was sent.", "request_budget_exhausted")
+        if self._run_id.get() is None and self._requests >= self.max_run_requests:
+            raise limit_error("Gemini per-run request limit reached; run stopped degraded.", "run_request_limit")
+        model = self._active_model.get()
+        if model is None:
+            raise limit_error("Gemini HTTP request has no model budget context; no request sent.", "budget_unavailable")
+        self.budget.reserve(model, self._run_id.get())
+        self._requests += 1
 
     def _sdk(self):
         if self._client is None:
@@ -50,20 +88,41 @@ class GeminiProvider(NvidiaProvider):
             ))
         # SDK 2.33 translates attempts inconsistently; disable Interactions retries explicitly.
         self._client.interactions.sdk_configuration.retry_config = None
+        client = self._client.interactions.sdk_configuration.client
+        if self._hook_client is None:
+            client.event_hooks["request"].append(self._before_http)
+            self._hook_client = client
         return self._client
 
     def close(self):
+        if self._hook_client is not None:
+            self._hook_client.event_hooks["request"].remove(self._before_http)
+            self._hook_client = None
         if self._client is not None:
             self._client.close()
             self._client = None
 
-    def _execute(self, call, *, inference=False):
-        for attempt in range(1, 4):
-            if inference:
-                if self.request_limit is not None and self._requests >= self.request_limit:
-                    raise NvidiaProviderError("Gemini request budget exhausted; no additional request was sent.",
-                                              code="request_budget_exhausted", attempts=0)
-                self._requests += 1
+    @staticmethod
+    def _error_details(error):
+        # Interactions compat_errors.body is a dict OR a list, not genai.APIError.details.
+        body = getattr(error, "body", None) or getattr(error, "details", None)
+        details = []
+        for item in body if isinstance(body, list) else [body]:
+            if isinstance(item, dict) and isinstance(item.get("error"), dict):
+                details.extend(item["error"].get("details", []))
+        return [item for item in details if isinstance(item, dict)]
+
+    def _execute(self, call, *, model):
+        token = self._active_model.set(model)
+        try:
+            return self._execute_attempts(call, model)
+        finally:
+            self._active_model.reset(token)
+
+    def _execute_attempts(self, call, model):
+        retries, rate_retried, attempt = 0, False, 0
+        while True:
+            attempt += 1
             try:
                 return call(), attempt
             except NvidiaProviderError:
@@ -72,11 +131,40 @@ class GeminiProvider(NvidiaProvider):
                 status = getattr(error, "status_code", None) or getattr(error, "code", None)
                 transport = any(isinstance(item, (httpx.TransportError, TimeoutError, ConnectionError))
                                 for item in (error, error.__cause__))
-                retryable = transport or isinstance(status, int) and 500 <= status <= 599
-                if retryable and attempt < 3:
-                    self._sleep(0.5 * 2 ** (attempt - 1) + self._jitter(0, 0.5))
+                details = self._error_details(error)
+                if status in {401, 403} or status == 400 and any(item.get("reason") == "API_KEY_INVALID" for item in details):
+                    raise NvidiaProviderError("Gemini authentication failed: check GEMINI_API_KEY and its API permissions; no retry.",
+                        code="authentication_error", attempts=attempt,
+                        diagnostics={"http_status": status, "degraded": True, "stop_run": True}) from None
+                if status == 429:
+                    if rate_retried:
+                        self.budget.exhaust(model)
+                        raise NvidiaProviderError(f"Gemini model '{model}' exhausted for the Pacific day after two 429 responses; run degraded.",
+                            code="provider_rate_limited", attempts=attempt,
+                            diagnostics={"http_status": 429, "degraded": True, "stop_run": True}) from None
+                    if self.request_limit is not None and self._requests >= self.request_limit:
+                        raise limit_error("Gemini request budget exhausted; no additional request was sent.", "request_budget_exhausted") from None
+                    delay = 60.0
+                    for item in details:
+                        if item.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                            raw = item.get("retryDelay")
+                            try:
+                                hint = float(raw[:-1]) if isinstance(raw, str) and raw.endswith("s") else math.nan
+                                if math.isfinite(hint) and 0 <= hint <= 60:
+                                    delay = hint
+                            except ValueError:
+                                pass
+                    rate_retried = True
+                    self._sleep(delay)
                     continue
-                code = ("provider_rate_limited" if status == 429 else "provider_timeout" if transport else
+                retryable = transport or isinstance(status, int) and 500 <= status <= 599
+                if retryable and retries < 2:
+                    if self.request_limit is not None and self._requests >= self.request_limit:
+                        raise limit_error("Gemini request budget exhausted; no additional request was sent.", "request_budget_exhausted") from None
+                    self._sleep(0.5 * 2 ** retries + self._jitter(0, 0.5))
+                    retries += 1
+                    continue
+                code = ("provider_timeout" if transport else
                         "provider_unavailable" if retryable else "model_not_found" if status == 404 else "request_rejected")
                 raise NvidiaProviderError(
                     f"Gemini request failed ({code}); check provider availability and configuration.",
@@ -87,7 +175,12 @@ class GeminiProvider(NvidiaProvider):
     def validate_models(self):
         for model in dict.fromkeys(config.model for config in self.node_model_config.values()):
             try:
-                self._execute(lambda: self._sdk().models.get(model=model))
+                key_hash = hashlib.sha256((self._key_reader("GEMINI_API_KEY") or "").encode()).digest()
+                with self._verification_lock:
+                    if (key_hash, model) in self._verified_models:
+                        continue
+                    self._execute(lambda: self._sdk().models.get(model=model), model=model)
+                    self._verified_models.add((key_hash, model))
             except NvidiaProviderError as error:
                 raise NvidiaConfigurationError(
                     f"Configured Gemini model '{model}' could not be verified ({error.code}). "
@@ -118,11 +211,21 @@ class GeminiProvider(NvidiaProvider):
 
     def _send(self, *, config, api_key, messages, max_tokens, guided_json_schema):
         policy, data = self._roles(messages)
-        response, attempts = self._execute(lambda: self._sdk().interactions.create(
-            model=config.model, system_instruction=policy, input=data, store=False,
-            response_format=[{"type": "text", "mime_type": "application/json", "schema": guided_json_schema}],
-            generation_config={"max_output_tokens": max_tokens, "temperature": config.temperature},
-        ), inference=True)
+        def send(model):
+            return self._execute(lambda: self._sdk().interactions.create(
+                model=model, system_instruction=policy, input=data, store=False,
+                response_format=[{"type": "text", "mime_type": "application/json", "schema": guided_json_schema}],
+                generation_config={"max_output_tokens": max_tokens, "temperature": config.temperature},
+            ), model=model)
+        try:
+            response, attempts = send(config.model)
+        except NvidiaProviderError as error:
+            if (self.profile != "showcase" or config.model == self.dev_model
+                    or error.code not in {"provider_rate_limited", "daily_budget_exhausted"}):
+                raise
+            self._fallback.set({"degraded": True, "fallback_from_model": config.model,
+                "fallback_to_model": self.dev_model, "failure_code": error.code})
+            response, attempts = send(self.dev_model)
         text = response.output_text
         if response.status not in {"completed", "incomplete"} or not isinstance(text, str):
             raise NvidiaProviderError("Gemini returned no completed text response.",
@@ -139,12 +242,22 @@ class GeminiProvider(NvidiaProvider):
 
     def complete(self, request: CompletionRequest):
         owns_client = self._client is None
+        fallback_token = self._fallback.set(None)
+        started_requests = self._requests
         try:
-            return super().complete(replace(request, guided_json=True))
+            result = super().complete(replace(request, guided_json=True))
+            fallback = self._fallback.get()
+            metadata = {**result.metadata, "request_attempts": self._requests - started_requests}
+            return replace(result, model_name=self.dev_model if fallback else result.model_name,
+                metadata={**metadata, **(fallback or {})})
         except NvidiaProviderError as error:
             error.args = (str(error).replace("NVIDIA", "Gemini"),)
+            error.attempts = self._requests - started_requests
+            if self._fallback.get():
+                error.diagnostics = {**error.diagnostics, **self._fallback.get(), "model_name": self.dev_model}
             raise error from None
         finally:
+            self._fallback.reset(fallback_token)
             if owns_client:
                 self.close()
 

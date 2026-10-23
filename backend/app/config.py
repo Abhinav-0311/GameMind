@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Literal
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Locate the project root (.env directory) relative to this file
@@ -45,6 +46,13 @@ class Settings(BaseSettings):
     GEMINI_DEV_MODEL: str = ""
     GEMINI_SHOWCASE_MODEL: str = ""
     GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_DEV_RPM: int = Field(5, gt=0)
+    GEMINI_DEV_RPD: int = Field(500, gt=0)
+    GEMINI_SHOWCASE_RPM: int = Field(3, gt=0)
+    GEMINI_SHOWCASE_RPD: int = Field(20, gt=0)
+    GEMINI_MAX_REQUESTS_PER_RUN: int = Field(12, gt=0)
+    GEMINI_RUN_BUDGET_ESTIMATE: int = Field(8, gt=0)
+    GEMINI_RPM_MAX_WAIT_SECONDS: float = Field(60, ge=0)
     DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
     DESIGN_AGENT_EXECUTION_MODE: str = "inline"
     DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0

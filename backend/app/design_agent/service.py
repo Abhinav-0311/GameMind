@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.design_agent.contracts import ResumeDecision
 from app.design_agent.jobs import DesignAgentJobService
 from app.design_agent.provider_factory import build_design_agent_provider
+from app.design_agent.llm_provider import NvidiaProviderError
 from app.design_agent.schemas import (
     DesignAgentArtifactResponse,
     DesignAgentCritiqueResponse,
@@ -153,6 +154,13 @@ class DesignAgentService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Explicit consent is required before selected evidence is sent to the configured hosted provider.",
             )
+        if provider.name == "gemini":
+            primary = getattr(provider, "primary", provider)
+            try:
+                primary.llm_provider.preflight()
+            except NvidiaProviderError as error:
+                raise HTTPException(status_code=503 if error.code == "budget_unavailable" else 429,
+                    detail={"code": error.code, "message": str(error)}) from None
         run = DesignAgentRun(
             game_project_id=game_project_id,
             created_by_user_id=current_user.id if current_user else None,

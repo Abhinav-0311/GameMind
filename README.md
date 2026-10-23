@@ -115,8 +115,48 @@ API and worker startup check every distinct configured model with Google's model
 API and fail clearly if unavailable. No model ID is silently substituted. Requests
 use the Google GenAI SDK Interactions API with `store=false`, no server-side
 conversation chaining, and the existing local validation/repair and degraded
-fallback. Hosted source transfer still requires explicit consent. A 429 is never
-retried; fallback, if enabled, records `provider_rate_limited` in the degraded trace.
+fallback. Hosted source transfer still requires explicit consent. Authentication
+failures (`400 API_KEY_INVALID`, 401/403) stop without retry. For a 429, one retry
+honors a `google.rpc.RetryInfo` delay of at most 60 seconds, otherwise waits 60
+seconds. A second 429 marks that model exhausted until the next Pacific day.
+Showcase can then use the configured dev model, with a degraded trace recording
+the actual model; dev exhaustion stops the run rather than continuing in mock mode.
+
+Gemini quotas are local safety budgets, **not claims about Google's current quota**:
+
+| Environment variable | Default |
+| --- | --- |
+| `GEMINI_DEV_RPM` / `GEMINI_DEV_RPD` | 5 / 500 |
+| `GEMINI_SHOWCASE_RPM` / `GEMINI_SHOWCASE_RPD` | 3 / 20 |
+| `GEMINI_MAX_REQUESTS_PER_RUN` | 12 |
+| `GEMINI_RUN_BUDGET_ESTIMATE` | 8 |
+| `GEMINI_RPM_MAX_WAIT_SECONDS` | 60 |
+
+Apply Alembic migrations before enabling Gemini. Every real HTTP attempt reserves
+a PostgreSQL count **before** sending: failures, retries, repairs, truncation
+re-sends and startup model GETs all count. Calendar days use
+`zoneinfo.ZoneInfo("America/Los_Angeles")`, including DST. Run counts survive
+worker restarts and revisions; daily exhaustion is shared across processes.
+RPM is a bounded in-process sliding window shared by providers, **not a distributed
+RPM limiter**: divide limits among worker processes if running several.
+New runs are refused before saving if either selected profile model has fewer
+daily requests remaining than the estimate. The estimate does not reserve a whole
+run; every send still checks the atomic daily/run limits.
+
+Startup verifies each distinct selected model with a separate network GET, then
+caches successful verification in that process, keyed by credential/model.
+`smoke_gemini.py` skips these GETs and retains its stricter one-request cap.
+Its earlier 14-second inference timing did not include startup model verification.
+
+Run `python gemini_usage.py` from `backend/` in the configured backend environment
+(or `docker compose exec -T backend python gemini_usage.py`) to print today's
+per-model reserved counts, limits, remaining requests and exhaustion flags. This
+command reads PostgreSQL only; it never contacts Google. Counts start when this
+migration/feature is deployed, not retroactively. AI Studio can differ because of
+other applications/keys, metadata GET reservations, and crashes after a reservation
+but before transmission. The ledger is shared per model within this database;
+keys/projects using a different database are not covered. Existing `.env` values
+are never automatically rewritten.
 
 Free-tier Gemini input/output may be used by Google to improve its products;
 use demo or non-confidential GDDs. See [Google's unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).

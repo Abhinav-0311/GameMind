@@ -1334,6 +1334,8 @@ class ResilientDesignAgentProvider:
         try:
             return getattr(self.primary, method_name)(*args, **kwargs)
         except NvidiaProviderError as error:
+            if error.diagnostics.get("stop_run"):
+                raise
             fallback_result = getattr(self.fallback, method_name)(*args, **kwargs)
             total_latency_ms = max(
                 fallback_result.usage.latency_ms,
