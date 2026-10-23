@@ -668,6 +668,86 @@ def test_resolved_selected_decisions_are_passed_to_generation_and_traced(db_sess
         app.dependency_overrides.pop(get_design_agent_service, None)
 
 
+@pytest.mark.parametrize("contract_version", [1, 2])
+def test_frozen_resolved_decision_survives_critique_and_rejection(db_session, contract_version):
+    import copy
+    from app.design_agent.provider import ProviderResult
+    from app.design_agent.review_policy import saved_review_request
+    from test_design_contract_v2 import governed_artifact
+    from test_nvidia_design_agent_provider import BlueprintCapturingProvider
+
+    project_id = f"decision_review_{uuid.uuid4().hex[:8]}"
+    document, chunks = create_source(db_session, project_id)
+    rule = "Save only at checkpoints."
+    assert all(rule not in chunk.content for chunk in chunks)
+    decision = DesignDecision(game_project_id=project_id, document_id=document.id,
+        category="save_policy", title="Save policy", status="resolved", decision=rule)
+    db_session.add(decision)
+    db_session.commit()
+    frozen = [{"decision_id": str(decision.id), "document_id": str(document.id),
+               "title": "Save policy", "guidance": None, "decision": rule}]
+    content = governed_artifact()
+    for section in content.values():
+        section["citations"] = [str(chunks[0].id)]
+        for key in ("npcs", "quests"):
+            for record in section["content"].get(key, []):
+                record["source_chunk_ids"] = [str(chunks[0].id)]
+    content["gameplay_systems"]["content"]["systems"].append({"name": "Saving", "description": rule})
+    revised = copy.deepcopy(content)
+    revised["gameplay_systems"]["content"]["systems"][0]["description"] = "Clear the guards, then raise the flag."
+    wire = {"verdict": "ready_for_review", "summary": "Controlled offline critique.", "findings": [],
+            "review_mode": "defect_detection", "source_coverage": {key: "covered" for key in content}}
+
+    class ReviewCompletions(BlueprintCapturingProvider):
+        def complete(self, request):
+            self.content = revised if request.node_name == "revise" else wire
+            return super().complete(request)
+
+    class ReviewProvider(NvidiaDesignAgentProvider):
+        def configuration(self):
+            return {**super().configuration(), "design_contract_version": contract_version}
+
+        def plan(self, *args):
+            return MockDesignAgentProvider().plan(*args)
+
+        def generate(self, plan, evidence):
+            assert plan["resolved_decisions"] == frozen
+            return ProviderResult(content=copy.deepcopy(content), model_name="offline-fixture", provider_name=self.name)
+
+    completions = ReviewCompletions(wire)
+    rag = CountingRAG(chunks)
+    service = make_service(db_session, rag, ReviewProvider(llm_provider=completions))
+    try:
+        run = start_run(service, document.id, project_id)
+        # Editing the live decision must not replace the run's frozen direction.
+        decision.decision = "Allow saving anywhere."
+        db_session.commit()
+        response = client.post(f"/api/v1/design-agent/runs/{run['id']}/review",
+            headers={"X-Game-Project-ID": project_id}, json={"decision": "reject",
+                "reason": "Clarify the training gameplay sequence.", "target_sections": ["gameplay_systems"]})
+        assert response.status_code == 200, response.text
+        after = response.json()
+        assert after["status"] == "awaiting_review" and after["revision_count"] == 1
+        assert after["current_artifact"]["content"]["gameplay_systems"]["content"]["systems"][1] == {
+            "name": "Saving", "description": rule}
+        assert [request.node_name for request in completions.requests] == ["critique", "revise", "critique"]
+        for request in completions.requests:
+            prompt = request.messages[1]["content"]
+            human = json.loads(prompt.split("Human request (requirements, not source facts): ", 1)[1].split("\n", 1)[0])
+            assert human.get("resolved_decisions") == frozen, request.node_name
+            if request.node_name == "critique":
+                assert "absence from the GDD alone is not an unsupported-rule defect" in prompt
+        for review in (run["critique"], after["critique"]):
+            assert not any(item["section"] == "gameplay_systems" and "unsupported" in item["issue"].lower()
+                           for item in review["content"]["findings"])
+        db_session.expire_all()
+        saved = db_session.get(DesignAgentRun, uuid.UUID(run["id"]))
+        assert saved_review_request(saved)["resolved_decisions"] == frozen
+        assert rag.calls == 1
+    finally:
+        app.dependency_overrides.pop(get_design_agent_service, None)
+
+
 def test_incomplete_nvidia_draft_reaches_review_but_cannot_be_approved(db_session):
     from app.design_agent.provider import ProviderResult
 

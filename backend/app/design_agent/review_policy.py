@@ -21,6 +21,7 @@ def canonical_review_request(request):
     return {"objective": request.get("objective", ""),
             "fresh_dialogue": bool(request.get("fresh_dialogue")),
             "dialogue_policy": request.get("dialogue_policy"),
+            **({"resolved_decisions": copy.deepcopy(request["resolved_decisions"])} if request.get("resolved_decisions") else {}),
             **({"defer_runtime": True} if request.get("defer_runtime") is True else {}),
             **({"allow_unspecified_memory": True} if request.get("allow_unspecified_memory") is True else {}),
             **({"design_contract_version": 2} if type(request.get("design_contract_version")) is int

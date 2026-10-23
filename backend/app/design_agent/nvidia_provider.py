@@ -650,6 +650,13 @@ class NvidiaDesignAgentProvider:
                 "This option is not proof of source absence and cannot dismiss source-backed omissions, "
                 "contradictions, independent findings or requirements in other sections."
             )
+        if node_name in {"critique", "revise"} and human_request.get("resolved_decisions"):
+            instruction += (
+                " Frozen resolved_decisions are binding human design direction, not GDD facts: "
+                "absence from the GDD alone is not an unsupported-rule defect. Preserve these rules "
+                "during revision; still surface genuine conflicts with source evidence or other human "
+                "requirements. They do not establish runtime approval or execution."
+            )
         request_instruction = (
             f"Human request (requirements, not source facts): {json.dumps(human_request)}\n"
             if human_request else ""
@@ -902,7 +909,7 @@ class NvidiaDesignAgentProvider:
         # requirements. Enforce this boundary even for callers outside the workflow.
         review_request = {
             key: copy.deepcopy(review_request[key])
-            for key in ("objective", "fresh_dialogue", "dialogue_policy", "defer_runtime", "allow_unspecified_memory", "design_contract_version")
+            for key in ("objective", "fresh_dialogue", "dialogue_policy", "defer_runtime", "allow_unspecified_memory", "design_contract_version", "resolved_decisions")
             if review_request is not None and key in review_request
         }
         compacted_evidence = self._compact_evidence(evidence)
