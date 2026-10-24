@@ -859,6 +859,7 @@ class NvidiaProvider:
         reasoning_discarded = completion.reasoning_discarded
         repair_attempts = 0
         independent_review_retries = 0
+        source_omission_reask = False
         validation_diagnostics: list[dict[str, Any]] = []
 
         try:
@@ -878,9 +879,16 @@ class NvidiaProvider:
             repair_skipped = ("schema_after_syntax_recovery" if schema_after_recovery else
                               "governed_schema_failure" if governed_schema_failure else None)
             independent_review = issubclass(request.response_model, (GovernedCritiqueOutput, SectionCritiqueOutput))
-            fresh_review = independent_review and isinstance(initial_error, json.JSONDecodeError)
-            # A malformed review may be regenerated once from unchanged inputs, never repaired from its findings.
-            if not self.repair_enabled or (independent_review and not fresh_review) or repair_skipped:
+            omission_error = "Missing source-backed content requires source-anchored findings."
+            errors = initial_error.errors(include_input=False) if isinstance(initial_error, ValidationError) else []
+            source_omission_reask = (
+                request.node_name == "critique" and issubclass(request.response_model, SectionCritiqueOutput)
+                and not schema_after_recovery and len(errors) == 1 and errors[0]["type"] == "value_error"
+                and errors[0]["loc"] == () and str(errors[0].get("ctx", {}).get("error")) == omission_error
+            )
+            fresh_review = independent_review and (isinstance(initial_error, json.JSONDecodeError) or source_omission_reask)
+            # Re-ask from original inputs, never mechanically repair a critic's findings.
+            if (not self.repair_enabled and not source_omission_reask) or (independent_review and not fresh_review) or repair_skipped:
                 raise NvidiaStructuredOutputError(
                     "NVIDIA output has schema errors after syntax-only recovery; regeneration is required."
                     if schema_after_recovery else
@@ -898,11 +906,19 @@ class NvidiaProvider:
                 request.response_model.model_json_schema(),
                 separators=(",", ":"),
             )
+            review_messages = request.messages
+            if source_omission_reask:
+                review_messages = [*request.messages, {"role": "system", "content": (
+                    f"Validation error: {omission_error}\n"
+                    "Re-review the original draft and evidence. Either supply a real evidence_index for a specific "
+                    "source-stated requirement or reclassify the coverage as not_specified when the source is silent. "
+                    "Never invent evidence or drop a genuine defect to pass validation. Return the complete critique "
+                    "under the same schema and scope, including any intentional runtime deferral."
+                )}]
+            retry_stage = "source_omission_reask" if source_omission_reask else "independent_review_retry" if fresh_review else "repair"
             try:
-                repair, repair_truncation_retries = self._send_with_truncation_guard(
-                    config=config,
-                    api_key=api_key,
-                    messages=request.messages if fresh_review else [
+                send_args = dict(config=config, api_key=api_key,
+                    messages=review_messages if fresh_review else [
                         {"role": "system", "content": "detailed thinking off"},
                         {
                             "role": "user",
@@ -921,15 +937,28 @@ class NvidiaProvider:
                         request.response_model.model_json_schema() if request.guided_json else None
                     ),
                 )
+                if source_omission_reask:
+                    # One corrective completion only; no truncation re-send or further schema repair.
+                    repair, repair_truncation_retries = self._send(max_tokens=config.max_tokens, **send_args), 0
+                    if repair.finish_reason == "length":
+                        raise NvidiaTruncatedOutputError(
+                            "NVIDIA corrective critique was truncated; no further request was sent.",
+                            code="output_truncated", attempts=repair.request_attempts,
+                            diagnostics={"completions": [self._completion_diagnostic(repair, retry_stage)]},
+                        )
+                else:
+                    repair, repair_truncation_retries = self._send_with_truncation_guard(**send_args)
             except NvidiaProviderError as error:
                 error.attempts += request_attempts
                 error.diagnostics = {
+                    **error.diagnostics,
                     "model_name": config.model,
                     "completions": [
                         *validation_diagnostics,
                         *(error.diagnostics.get("completions") or []),
                     ],
                     "independent_review_retry_failure_code" if fresh_review else "repair_failure_code": error.code,
+                    **({"source_omission_reask": "failed"} if source_omission_reask else {}),
                 }
                 raise
             truncation_retries += repair_truncation_retries
@@ -942,7 +971,7 @@ class NvidiaProvider:
             )
             try:
                 validated, diagnostic = self._validate_completion(
-                    repair, request.response_model, "independent_review_retry" if fresh_review else "repair",
+                    repair, request.response_model, retry_stage,
                     allow_closer_recovery=truncation_retries == 0,
                 )
                 if issubclass(request.response_model, BlueprintContent) and not any(
@@ -960,14 +989,16 @@ class NvidiaProvider:
                 validation_diagnostics.append(diagnostic)
             except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as repair_error:
                 validation_diagnostics.append(self._completion_diagnostic(
-                    repair, "independent_review_retry" if fresh_review else "repair", request.response_model, repair_error,
+                    repair, retry_stage, request.response_model, repair_error,
                 ))
                 raise NvidiaStructuredOutputError(
+                    "NVIDIA returned structured output that failed validation." if source_omission_reask else
                     "NVIDIA independent review remained malformed after one fresh retry." if fresh_review else
                     "NVIDIA structured-output repair failed its validation budget.",
                     code="structured_output_invalid",
                     attempts=request_attempts,
-                    diagnostics={"model_name": config.model, "completions": validation_diagnostics},
+                    diagnostics={"model_name": config.model, "completions": validation_diagnostics,
+                        **({"source_omission_reask": "failed"} if source_omission_reask else {})},
                 ) from None
 
         return CompletionResult(
@@ -989,6 +1020,7 @@ class NvidiaProvider:
                 "retry_count": retry_count,
                 "repair_attempts": repair_attempts,
                 "independent_review_retries": independent_review_retries,
+                **({"source_omission_reask": "accepted"} if source_omission_reask else {}),
                 "repaired": bool(repair_attempts) or any("local_recovery" in record for record in validation_diagnostics),
                 "local_recovery": any("local_recovery" in record for record in validation_diagnostics),
                 "recovery_requires_review": any("local_recovery" in record for record in validation_diagnostics),

@@ -124,9 +124,10 @@ def test_governed_critic_distinguishes_source_presence_from_preserved_draft_cont
     with pytest.raises(ValidationError):
         NvidiaDesignAgentProvider(llm_provider=capture).critique(content, [], review_request={**REQUEST, "allow_unspecified_memory": True})
     prompt = capture.requests[0].messages[1]["content"]
-    assert "Coverage measures source facts preserved in the current draft, not source presence" in prompt
-    assert "source-backed premise with an empty draft description is missing, not covered" in prompt
-    assert "not_specified only when evidence lacks the relevant facts" in prompt
+    assert "Coverage: preserved source facts, not source presence" in prompt
+    assert "missing requires a specific evidence item that states the requirement" in prompt
+    assert "If the source is silent, use not_specified" in prompt
+    assert "Empty/absent application output alone is not missing" in prompt
     assert "Verify the proposed correction is not already present" in prompt
     assert "Do not emit conditional no-op recommendations" in prompt
     assert "Read the referenced line together with its eligibility and linked quest" in prompt

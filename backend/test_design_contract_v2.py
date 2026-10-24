@@ -776,7 +776,7 @@ def test_section_critic_references_paths_without_echoing_or_trusting_copied_valu
 
 
 @pytest.mark.parametrize("fault", ["missing_findings", "empty_covered"])
-def test_section_critic_does_not_repair_missing_findings(fault):
+def test_section_critic_never_fabricates_missing_findings_after_bounded_reask(fault):
     import json
     import httpx
     from app.design_agent.contracts import section_critique_response_model
@@ -797,9 +797,12 @@ def test_section_critic_does_not_repair_missing_findings(fault):
     provider = NvidiaProvider(base_url="https://example.test/v1", timeout_seconds=1, repair_enabled=True,
         key_reader=lambda _: "fake-test-key", sleep=lambda _: None,
         client=httpx.Client(transport=httpx.MockTransport(respond)))
-    with pytest.raises(NvidiaStructuredOutputError):
+    with pytest.raises(NvidiaStructuredOutputError) as caught:
         provider.complete(CompletionRequest(node_name="critique", messages=[], response_model=section_critique_response_model(content, [])))
-    assert len(calls) == 1
+    assert len(calls) == (2 if fault == "missing_findings" else 1)
+    assert caught.value.code == "structured_output_invalid"
+    if fault == "missing_findings":
+        assert caught.value.diagnostics["source_omission_reask"] == "failed"
 
 
 @pytest.mark.parametrize("cause,blocked", [

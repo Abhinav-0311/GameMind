@@ -180,6 +180,166 @@ def test_scriptable_mock_returns_sequential_responses_for_same_node():
     assert second.metadata["script_index"] == 1
 
 
+@pytest.mark.parametrize("transport_name", ["nvidia", "gemini"])
+@pytest.mark.parametrize("case, expected_calls", [
+    ("reclassify", 2), ("anchor", 2), ("still_invalid", 2), ("valid", 1),
+    ("other_schema_error", 1), ("deferred", 1), ("invalid_deferral", 1), ("corrected_truncated", 2),
+])
+def test_critic_source_omission_correction_is_one_shot_and_strict(db_session, transport_name, case, expected_calls):
+    import copy
+    import uuid
+    from app.design_agent.contracts import section_critique_response_model
+    from app.design_agent.llm_provider import NvidiaStructuredOutputError
+    from app.design_agent.nvidia_provider import NvidiaDesignAgentProvider
+
+    artifact = {section: {"content": {"description": "Draft content"}, "citations": [], "warnings": []}
+                for section in BLUEPRINT_SECTION_KEYS}
+    artifact["unity_runtime_preview"]["content"] = {}
+    evidence = [{"chunk_id": "source", "content": "The game is a tactical RPG." + (
+        " The runtime preview must include quest integration." if case == "anchor" else "")}]
+    deferred = case in {"deferred", "invalid_deferral"}
+    model = section_critique_response_model(artifact, evidence, defer_runtime=deferred)
+    review = {"review_mode": "defect_detection", "summary": "Review of the current draft.",
+              "source_coverage": {section: "covered" for section in BLUEPRINT_SECTION_KEYS}, "findings": []}
+    review["source_coverage"]["unity_runtime_preview"] = "deferred" if deferred else "not_specified"
+    if case not in {"valid", "deferred"}:
+        review["source_coverage"]["unity_runtime_preview"] = "missing"
+        review["findings"] = [{"severity": "low", "issue": "Runtime preview is empty.",
+            "recommendation": "Review its scope.", "reference": {
+                "artifact_path": "/unity_runtime_preview/content", "evidence_index": None}}]
+    if case == "other_schema_error":
+        review["findings"][0]["severity"] = "invalid"
+    corrected = copy.deepcopy(review)
+    if case in {"reclassify", "corrected_truncated"}:
+        corrected["source_coverage"]["unity_runtime_preview"] = "not_specified"
+    elif case == "anchor":
+        corrected["findings"][0]["reference"]["evidence_index"] = 0
+
+    calls = []
+    def respond(request):
+        calls.append(json.loads(request.content))
+        body = json.dumps(review if len(calls) == 1 else corrected)
+        if transport_name == "gemini":
+            from test_gemini_provider import interaction
+            return interaction(body, status="incomplete" if case == "corrected_truncated" and len(calls) == 2 else "completed")
+        return _completion(body, finish_reason="length" if case == "corrected_truncated" and len(calls) == 2 else "stop")
+
+    run = None
+    if transport_name == "gemini":
+        from app.models.design_agent import DesignAgentRun
+        from app.models.gemini_usage import GeminiDailyUsage
+        from app.models.project import GameProject
+        from test_gemini_budget import transport as gemini_transport
+        db_session.query(GeminiDailyUsage).delete()
+        project = "critic_correction_" + uuid.uuid4().hex[:12]
+        db_session.add(GameProject(id=project, name="Offline critique test"))
+        run = DesignAgentRun(game_project_id=project, objective="Review draft", document_ids=[], provider_name="gemini")
+        db_session.add(run)
+        db_session.commit()
+        transport, _, _ = gemini_transport(respond)
+    else:
+        transport = NvidiaProvider(base_url="https://example.test/v1", timeout_seconds=1, repair_enabled=True,
+            key_reader=lambda _: "offline-only", client=httpx.Client(transport=httpx.MockTransport(respond)))
+    adapter = NvidiaDesignAgentProvider(llm_provider=transport)
+
+    def invoke():
+        return adapter._invoke(node_name="critique", expected_model=model, instruction="Review independently.",
+            payload={"artifact": artifact, "evidence": evidence,
+                     "review_context": {"request": {"design_contract_version": 2, "defer_runtime": deferred}}})
+
+    def check():
+        if case == "corrected_truncated":
+            with pytest.raises(NvidiaTruncatedOutputError) as caught:
+                invoke()
+            assert caught.value.attempts == 2
+            assert caught.value.diagnostics["source_omission_reask"] == "failed"
+        elif case in {"still_invalid", "other_schema_error", "invalid_deferral"}:
+            with pytest.raises(NvidiaStructuredOutputError) as caught:
+                invoke()
+            assert caught.value.code == "structured_output_invalid"
+            assert caught.value.attempts == expected_calls
+            if case == "still_invalid":
+                assert str(caught.value) == f"{transport_name.upper() if transport_name == 'nvidia' else 'Gemini'} returned structured output that failed validation."
+                assert caught.value.diagnostics["source_omission_reask"] == "failed"
+        else:
+            result = invoke()
+            assert result.content == corrected
+            assert result.metadata["request_attempts"] == expected_calls
+            if expected_calls == 2:
+                assert result.metadata["source_omission_reask"] == "accepted"
+                assert result.metadata["repair_attempts"] == 0  # No mechanical repair of findings.
+        assert len(calls) == expected_calls
+
+    try:
+        if run is None:
+            check()
+        else:
+            with transport.run_context(run.id):
+                check()
+            db_session.refresh(run)
+            assert run.gemini_request_count == expected_calls
+            assert transport.budget.usage()[0]["requests"] == expected_calls
+        original_policy = calls[0]["system_instruction"] if transport_name == "gemini" else calls[0]["messages"][1]["content"]
+        assert "specific evidence item that states the requirement" in original_policy
+        assert "finding must carry that evidence_index" in original_policy
+        assert 'source is silent, use not_specified' in original_policy
+        assert "empty-draft structure observations may have null evidence_index" in original_policy
+        assert 'Empty/absent application output alone is not missing' in original_policy
+        assert "deferred is requested Unity deferral only" in original_policy
+        if deferred:
+            assert "This is not a missing-content defect" in original_policy
+        if expected_calls == 2:
+            error_text = "Missing source-backed content requires source-anchored findings."
+            if transport_name == "nvidia":
+                assert calls[1]["messages"][:-1] == calls[0]["messages"]
+                correction = calls[1]["messages"][-1]["content"]
+            else:
+                assert calls[0]["system_instruction"] in calls[1]["system_instruction"]
+                assert calls[0]["input"] in calls[1]["input"]
+                correction = calls[1]["system_instruction"]
+            assert error_text in correction
+            assert "real evidence_index" in correction and "reclassify" in correction
+            assert calls[1].get("response_format") == calls[0].get("response_format")
+    finally:
+        if transport_name == "gemini":
+            transport.close()
+
+
+def test_critic_correction_cannot_exceed_the_gemini_run_cap(db_session):
+    import uuid
+    from app.design_agent.contracts import section_critique_response_model
+    from app.models.design_agent import DesignAgentRun
+    from app.models.project import GameProject
+    from test_gemini_budget import transport
+    from test_gemini_provider import config, interaction
+
+    project = "critic_cap_" + uuid.uuid4().hex[:12]
+    db_session.add(GameProject(id=project, name="Offline cap test"))
+    run = DesignAgentRun(game_project_id=project, objective="Review draft", document_ids=[], provider_name="gemini")
+    db_session.add(run)
+    db_session.commit()
+    artifact = {section: {"content": {"description": "Draft content"}} for section in BLUEPRINT_SECTION_KEYS}
+    model = section_critique_response_model(artifact, [{"chunk_id": "source", "content": "Source requirement."}])
+    review = {"review_mode": "defect_detection", "summary": "Missing requirement.", "findings": [],
+              "source_coverage": {section: "covered" for section in BLUEPRINT_SECTION_KEYS}}
+    review["source_coverage"]["summary"] = "missing"
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return interaction(json.dumps(review))
+    provider, _, _ = transport(respond, config(GEMINI_MAX_REQUESTS_PER_RUN=1))
+    try:
+        with provider.run_context(run.id), pytest.raises(NvidiaProviderError) as caught:
+            provider.complete(CompletionRequest("critique", [{"role": "user", "content": "Review source and draft."}], model))
+        assert caught.value.code == "run_request_limit" and caught.value.attempts == 1
+        assert caught.value.diagnostics["degraded"] and caught.value.diagnostics["stop_run"]
+        assert caught.value.diagnostics["source_omission_reask"] == "failed"
+        db_session.refresh(run)
+        assert len(calls) == run.gemini_request_count == 1
+    finally:
+        provider.close()
+
+
 @pytest.mark.parametrize("valid_retry", [True, False])
 def test_malformed_independent_review_gets_one_fresh_review_not_a_repair(valid_retry):
     from app.design_agent.contracts import GovernedCritiqueOutput
