@@ -3,6 +3,7 @@ import random
 import time
 import hashlib
 import math
+import copy
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
@@ -17,6 +18,37 @@ from app.design_agent.llm_provider import (
 )
 from app.design_agent.nvidia_provider import NvidiaDesignAgentProvider
 from app.design_agent.gemini_budget import GeminiBudget, limit_error
+
+
+def _gemini_response_schema(schema):
+    """Limit decoder constraints only; the original response model validates locally."""
+    if not isinstance(schema, dict):
+        return copy.deepcopy(schema)
+    constraints = {
+        "enum", "const", "pattern", "format", "minLength", "maxLength", "minItems", "maxItems",
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+        "minProperties", "maxProperties", "uniqueItems", "minContains", "maxContains", "not", "propertyNames",
+    }
+    reduced = {}
+    for key, value in schema.items():
+        if key in constraints:
+            continue
+        if key in {"properties", "$defs", "definitions", "patternProperties", "dependentSchemas"}:
+            reduced[key] = {name: _gemini_response_schema(child) for name, child in value.items()}
+        elif key in {"items", "additionalProperties", "contains", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems"}:
+            reduced[key] = _gemini_response_schema(value)
+        elif key in {"allOf", "anyOf", "oneOf", "prefixItems"}:
+            reduced[key] = [_gemini_response_schema(child) for child in value]
+        else:
+            reduced[key] = copy.deepcopy(value)
+    if "type" not in reduced and ("enum" in schema or "const" in schema):
+        # Some source schemas express the primitive type only through literals.
+        literals = schema["enum"] if "enum" in schema else [schema["const"]]
+        names = {str: "string", int: "integer", float: "number", bool: "boolean", type(None): "null", list: "array", dict: "object"}
+        types = list(dict.fromkeys(names[type(value)] for value in literals))
+        if types:
+            reduced["type"] = types[0] if len(types) == 1 else types
+    return reduced
 
 
 class GeminiProvider(NvidiaProvider):
@@ -211,10 +243,11 @@ class GeminiProvider(NvidiaProvider):
 
     def _send(self, *, config, api_key, messages, max_tokens, guided_json_schema):
         policy, data = self._roles(messages)
+        schema = _gemini_response_schema(guided_json_schema)
         def send(model):
             return self._execute(lambda: self._sdk().interactions.create(
                 model=model, system_instruction=policy, input=data, store=False,
-                response_format=[{"type": "text", "mime_type": "application/json", "schema": guided_json_schema}],
+                response_format=[{"type": "text", "mime_type": "application/json", "schema": schema}],
                 generation_config={"max_output_tokens": max_tokens, "temperature": config.temperature},
             ), model=model)
         try:

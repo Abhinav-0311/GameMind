@@ -1,12 +1,14 @@
 """Gemini contract checks using the real SDK over an in-memory HTTP transport."""
 import json
+import copy
+from pathlib import Path
 from typing import Literal
 
 import httpx
 import pytest
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import Settings
 from app.design_agent.llm_provider import CompletionRequest, NvidiaProviderError
@@ -126,7 +128,8 @@ def test_existing_prompt_builder_moves_policy_but_not_source_or_source_bound_sch
     body = calls[0]
     assert "Independently assess" in body["system_instruction"]
     assert "PRIVATE_SOURCE_GDD" not in body["system_instruction"] and "PRIVATE_SCHEMA_GDD" not in body["system_instruction"]
-    assert "PRIVATE_SOURCE_GDD" in body["input"] and "PRIVATE_SCHEMA_GDD" in json.dumps(body["response_format"])
+    assert "PRIVATE_SOURCE_GDD" in body["input"]
+    assert body['response_format'][0]['schema']['properties']['answer'] == {'title': 'Answer', 'type': 'string'}
     transport.close()
 
 
@@ -281,3 +284,168 @@ def test_gemini_consent_trace_and_degraded_fallback_use_the_existing_workflow(db
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)
         transport.close()
+
+
+@pytest.fixture
+def design_schemas():
+    """Capture the real node builders before inference, using existing frozen controls."""
+    from app.design_agent.nvidia_provider import NvidiaDesignAgentProvider
+    from app.design_agent.contracts import NPCDialogueRevisionOutput
+    baseline = json.loads((Path(__file__).parent / 'tests/fixtures/critic_review_controls.json').read_text())['baselines']['frostpeak']
+    class Captured(BaseException):
+        pass
+    class Capture:
+        def complete(self, request):
+            self.request = request
+            raise Captured()
+    capture = Capture()
+    provider = NvidiaDesignAgentProvider(llm_provider=capture)
+    artifact, evidence = baseline['artifact'], baseline['evidence']
+    review = {'objective': 'Review the frozen game design', 'design_contract_version': 2}
+    calls = {
+        'plan': lambda: provider.plan(review['objective'], ['frozen-document']),
+        'generate_blueprint': lambda: provider.generate(review, evidence),
+        'critique': lambda: provider.critique(artifact, evidence, review_request=review),
+        'revise': lambda: provider.revise(artifact, evidence, 'Replace quest objective prose with spoken dialogue.',
+                                         target_sections=['quest_hooks'], review_request=review),
+    }
+    models = {}
+    for node, call in calls.items():
+        with pytest.raises(Captured):
+            call()
+        models[node] = capture.request.response_model
+    models['speech_patch'] = NPCDialogueRevisionOutput
+    return models
+
+
+def schema_nodes(schema):
+    """Visit schema objects, not user property names or annotation values."""
+    yield schema
+    for key in ('properties', '$defs', 'definitions', 'patternProperties', 'dependentSchemas'):
+        for child in schema.get(key, {}).values():
+            yield from schema_nodes(child)
+    for key in ('items', 'additionalProperties', 'contains', 'if', 'then', 'else',
+                'unevaluatedProperties', 'unevaluatedItems'):
+        child = schema.get(key)
+        if isinstance(child, dict):
+            yield from schema_nodes(child)
+    for key in ('allOf', 'anyOf', 'oneOf', 'prefixItems'):
+        for child in schema.get(key, []):
+            yield from schema_nodes(child)
+
+
+@pytest.mark.parametrize('node', ['plan', 'generate_blueprint', 'critique', 'revise', 'speech_patch'])
+def test_gemini_wire_schema_is_reduced_for_every_node_without_mutating_full_contract(design_schemas, node):
+    from app.design_agent.gemini_provider import GeminiProvider
+    full = design_schemas[node].model_json_schema()
+    before = copy.deepcopy(full)
+    calls = []
+    def respond(r):
+        calls.append(json.loads(r.content))
+        return interaction('{"answer":"unused"}')
+    provider = GeminiProvider(config(), client=sdk(respond))
+    try:
+        provider._send(config=provider.node_model_config['revise' if node == 'speech_patch' else node],
+                       api_key='offline-key', messages=request().messages, max_tokens=100, guided_json_schema=full)
+        reduced = calls[0]['response_format'][0]['schema']
+        types.JSONSchema.model_validate(reduced)
+        assert json.loads(json.dumps(reduced)) == reduced
+        forbidden = {'enum', 'const', 'pattern', 'minLength', 'maxLength', 'minItems', 'maxItems',
+                     'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                     'minProperties', 'maxProperties', 'uniqueItems', 'minContains', 'maxContains', 'format', 'not', 'propertyNames'}
+        assert all(not forbidden.intersection(item) for item in schema_nodes(reduced))
+        for original, wire in zip(schema_nodes(full), schema_nodes(reduced), strict=True):
+            for key in ('type', 'required', '$ref', 'additionalProperties'):
+                if key in original and not (key == 'additionalProperties' and isinstance(original[key], dict)):
+                    assert wire[key] == original[key]
+            assert wire.get('properties', {}).keys() == original.get('properties', {}).keys()
+            if '$ref' in wire:
+                target = reduced
+                for part in wire['$ref'].removeprefix('#/').split('/'):
+                    target = target[part.replace('~1', '/').replace('~0', '~')]
+                assert isinstance(target, dict)
+        assert full == before == design_schemas[node].model_json_schema()
+        if node == 'revise':
+            # A fixed two-quest fixture bounds decoder growth, not just removal of keyword names.
+            assert len(json.dumps(reduced, separators=(',', ':')).encode()) <= 10000
+            assert max(len(item.get('anyOf', [])) for item in schema_nodes(reduced)) <= 20
+    finally:
+        provider.close()
+
+
+def test_gemini_reduction_preserves_keyword_named_properties_and_enum_only_types():
+    from app.design_agent.gemini_provider import GeminiProvider
+    full = {'type': 'object', 'properties': {
+        'pattern': {'enum': ['red', 'blue'], 'not': {'enum': ['null']}},
+        'minItems': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
+    }, 'required': ['pattern', 'minItems'], 'additionalProperties': False}
+    calls = []
+    provider = GeminiProvider(config(), client=sdk(lambda r: calls.append(json.loads(r.content)) or interaction('{}')))
+    try:
+        provider._send(config=provider.node_model_config['plan'], api_key='offline-key', messages=request().messages,
+                       max_tokens=100, guided_json_schema=full)
+        assert calls[0]['response_format'][0]['schema'] == {
+            'type': 'object', 'properties': {'pattern': {'type': 'string'},
+                'minItems': {'type': 'array', 'items': {'type': 'string'}}},
+            'required': ['pattern', 'minItems'], 'additionalProperties': False}
+    finally:
+        provider.close()
+
+
+@pytest.mark.parametrize('repair', [False, True])
+def test_gemini_relaxed_wire_constraints_still_use_full_local_validation_and_repair(repair):
+    from app.design_agent.gemini_provider import GeminiProvider
+    from app.design_agent.llm_provider import NvidiaStructuredOutputError
+    class FullContract(BaseModel):
+        code: str = Field(min_length=2, max_length=4, pattern='^[A-Z]+$')
+        count: int = Field(ge=1, le=3)
+        tags: list[str] = Field(min_length=1, max_length=2)
+        state: Literal['ready', 'blocked']
+    invalid = {'code': 'x', 'count': 99, 'tags': [], 'state': 'invented'}
+    valid = {'code': 'OK', 'count': 2, 'tags': ['source'], 'state': 'ready'}
+    original = copy.deepcopy(FullContract.model_json_schema())
+    calls = []
+    def respond(r):
+        calls.append(json.loads(r.content))
+        return interaction(json.dumps(valid if repair and len(calls) == 2 else invalid))
+    provider = GeminiProvider(config(), client=sdk(respond))
+    req = CompletionRequest('plan', request().messages, FullContract)
+    try:
+        if repair:
+            result = provider.complete(req)
+            assert result.content == valid and result.metadata['repair_attempts'] == 1
+        else:
+            with pytest.raises(NvidiaStructuredOutputError):
+                provider.complete(req)
+        assert len(calls) == 2
+        for call in calls:
+            reduced = call['response_format'][0]['schema']
+            types.JSONSchema.model_validate(reduced)
+            assert reduced['properties'] == {
+                'code': {'title': 'Code', 'type': 'string'},
+                'count': {'title': 'Count', 'type': 'integer'},
+                'tags': {'items': {'type': 'string'}, 'title': 'Tags', 'type': 'array'},
+                'state': {'title': 'State', 'type': 'string'},
+            }
+            assert 'minLength' not in reduced['properties']['code']
+            assert 'enum' not in reduced['properties']['state']
+        assert req.response_model is FullContract and FullContract.model_json_schema() == original
+    finally:
+        provider.close()
+
+
+def test_nvidia_guided_output_still_sends_the_full_unreduced_schema():
+    from app.design_agent.llm_provider import NvidiaProvider
+    class FullContract(BaseModel):
+        code: str = Field(min_length=2, max_length=4, pattern='^[A-Z]+$')
+        state: Literal['ready', 'blocked']
+    calls = []
+    def respond(r):
+        calls.append(json.loads(r.content))
+        return httpx.Response(200, json={'choices': [{'message': {'content': '{"code":"OK","state":"ready"}'}, 'finish_reason': 'stop'}]})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        provider = NvidiaProvider(base_url='https://offline.invalid', timeout_seconds=1, repair_enabled=False,
+                                  client=client, key_reader=lambda _: 'offline-key')
+        result = provider.complete(CompletionRequest('plan', request().messages, FullContract, guided_json=True))
+        assert result.content == {'code': 'OK', 'state': 'ready'}
+        assert calls[0]['response_format']['json_schema']['schema'] == FullContract.model_json_schema()
