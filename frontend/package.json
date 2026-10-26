@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:dashboard-states": "node tests/dashboard-states.mjs",
+    "test:design-agent-api": "node --test tests/design-agent-api.test.mjs",
     "screenshot": "playwright screenshot"
   },
   "dependencies": {

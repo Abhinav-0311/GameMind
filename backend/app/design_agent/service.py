@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -23,7 +23,7 @@ from app.design_agent.schemas import (
     DesignAgentTraceResponse,
 )
 from app.design_agent.workflow import DesignAgentWorkflow
-from app.design_agent.review_policy import requires_design_quality_review, validate_persisted_design_approval
+from app.design_agent.review_policy import requires_design_quality_review, validate_persisted_design_approval, degraded_review_required, require_degraded_acknowledgement
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
     DesignAgentArtifact,
@@ -96,12 +96,15 @@ class DesignAgentService:
             status=run.status,
             current_node=run.current_node,
             provider_name=run.provider_name,
-            degraded=bool((run.model_config or {}).get("degraded")),
+            degraded=degraded_review_required(db, run),
             defer_runtime=(run.model_config or {}).get("defer_runtime") is True,
             allow_unspecified_memory=(run.model_config or {}).get("allow_unspecified_memory") is True,
             retrieval_revision=run.retrieval_revision,
             revision_count=run.revision_count,
             max_revisions=run.max_revisions,
+            consecutive_revision_failures=(run.model_config or {}).get("consecutive_revision_failures", 0),
+            max_consecutive_revision_failures=settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES,
+            last_error=run.last_error,
             created_at=run.created_at,
             updated_at=run.updated_at,
             completed_at=run.completed_at,
@@ -138,7 +141,9 @@ class DesignAgentService:
             DesignAgentRun.status.in_(self._ACTIVE_RUN_STATUSES),
             or_(
                 DesignAgentRun.status != "awaiting_review",
-                DesignAgentRun.revision_count < DesignAgentRun.max_revisions,
+                and_(DesignAgentRun.revision_count < DesignAgentRun.max_revisions,
+                     func.coalesce(DesignAgentRun.model_config["consecutive_revision_failures"].as_integer(), 0)
+                     < settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES),
             ),
             DesignAgentRun.document_ids.contains(document_id_values),
         ).first()
@@ -200,7 +205,7 @@ class DesignAgentService:
                 failed_run.last_error = str(error)
                 db.commit()
             raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                status_code=self._failure_status(db, failed_run, 503),
                 detail={
                     "message": "The design-agent workflow could not start. Inspect the saved run trace for details.",
                     "run_id": str(failed_run.id),
@@ -289,7 +294,7 @@ class DesignAgentService:
         db.expire_all()
         run = self._get_run(db, run_id, game_project_id)
         if run.status == "failed":
-            raise HTTPException(status_code=503, detail={"message": "Critique retry failed; the saved draft and evidence are unchanged. Inspect the trace.", "run_id": str(run.id)})
+            raise HTTPException(status_code=self._failure_status(db, run, 503), detail={"message": "Critique retry failed; the saved draft and evidence are unchanged. Inspect the trace.", "run_id": str(run.id)})
         return self._response(db, run)
 
     def review(
@@ -303,6 +308,7 @@ class DesignAgentService:
         target_sections: list[str] | None = None,
         artifact_id: UUID | None = None,
         confirmed_proposals: list[dict] | None = None,
+        acknowledge_degraded: bool = False,
     ) -> DesignAgentRunResponse:
         run = self._get_run(db, run_id, game_project_id)
         if run.status != "awaiting_review":
@@ -318,6 +324,14 @@ class DesignAgentService:
                     "a clearer objective and fresh provider consent. The current draft is unchanged."
                 ),
             )
+        if (decision == "reject" and (run.model_config or {}).get("consecutive_revision_failures", 0)
+                >= settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES):
+            raise HTTPException(status_code=409, detail="Consecutive failed revision limit reached. No further revision request was sent; start a new run with fresh consent. The draft is unchanged.")
+        if decision == "approve":
+            try:
+                require_degraded_acknowledgement(db, run, acknowledge_degraded)
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
         artifact = None
         requires_quality_review = requires_design_quality_review(run, confirmed_proposals)
         if artifact_id is not None or (decision == "approve" and requires_quality_review):
@@ -328,12 +342,12 @@ class DesignAgentService:
             if artifact is None or (artifact_id is not None and artifact.id != artifact_id):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                                     detail="Review the current draft; the selected artifact is unavailable or stale.")
-        if confirmed_proposals and artifact_id is None:
+        if (confirmed_proposals or acknowledge_degraded) and artifact_id is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                                detail="Proposal confirmation requires the exact artifact_id.")
+                                detail="Proposal confirmation or degraded acknowledgement requires the exact artifact_id.")
         if decision == "approve" and requires_quality_review:
             try:
-                validate_persisted_design_approval(db, run, artifact, confirmed_proposals)
+                validate_persisted_design_approval(db, run, artifact, confirmed_proposals, acknowledge_degraded=acknowledge_degraded)
             except ValueError as error:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -349,6 +363,7 @@ class DesignAgentService:
             target_sections=target_sections,
             artifact_id=artifact.id if artifact else None,
             confirmed_proposals=confirmed_proposals or [],
+            acknowledge_degraded=acknowledge_degraded,
         )
         if settings.DESIGN_AGENT_EXECUTION_MODE == "queued":
             artifact = db.query(DesignAgentArtifact).filter(
@@ -371,7 +386,7 @@ class DesignAgentService:
             )
         except Exception as error:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=self._failure_status(db, self._get_run(db, run_id, game_project_id), 500),
                 detail="The design-agent workflow could not resume. Inspect the run trace for details.",
             ) from error
         db.expire_all()
@@ -381,11 +396,22 @@ class DesignAgentService:
         if isinstance(resumed, dict) and resumed.get("revision_failed"):
             run = self._get_run(db, run_id, game_project_id)
             remaining = max(0, run.max_revisions - run.revision_count)
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                detail="The revision failed; the previous draft and critique are unchanged. Inspect the failed revision in the trace. "
-                + (f"{remaining} revision attempt(s) remain." if remaining else
-                   "Revision budget exhausted. Start a new run with fresh provider consent."))
+            failures = (run.model_config or {}).get("consecutive_revision_failures", 0)
+            limit = settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES
+            raise HTTPException(status_code=self._failure_status(db, run, 409, node_name="revise"),
+                detail="The revision failed; the previous draft and critique are unchanged. "
+                f"No revision was consumed; {remaining} successful revision slot(s) remain. "
+                f"Consecutive failed revisions: {failures}/{limit}. "
+                + ("Failed revision limit reached; start a new run with fresh consent." if failures >= limit
+                   else "Inspect the failed revision in the trace before trying again."))
         return self._response(db, self._get_run(db, run_id, game_project_id))
+
+    @staticmethod
+    def _failure_status(db, run, default, *, node_name=None):
+        execution = db.query(DesignAgentNodeExecution).filter_by(
+            run_id=run.id, node_name=node_name or run.current_node, status="failed").order_by(
+            DesignAgentNodeExecution.started_at.desc(), DesignAgentNodeExecution.attempt.desc()).first()
+        return (execution.details or {}).get("http_status", default) if execution else default
 
     def trace(self, db: Session, run_id: UUID, game_project_id: str) -> DesignAgentTraceResponse:
         run = self._get_run(db, run_id, game_project_id)

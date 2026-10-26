@@ -282,6 +282,7 @@ class DesignAgentReviewEvent(Base, ProjectScopedMixin):
     reviewer_label = Column(String(160), nullable=False, default="local_developer", server_default="local_developer")
     decision = Column(String(16), nullable=False)
     reason = Column(Text, nullable=True)
+    details = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

@@ -38,6 +38,7 @@ class DesignAgentReviewRequest(BaseModel):
     target_sections: list[BlueprintSectionKey] | None = Field(default=None, min_length=1, max_length=9)
     artifact_id: UUID | None = None
     confirmed_proposals: list[ProposalConfirmation] = Field(default_factory=list, max_length=64)
+    acknowledge_degraded: StrictBool = False
 
     @model_validator(mode="after")
     def require_rejection_reason(self):
@@ -169,6 +170,9 @@ class DesignAgentRunResponse(BaseModel):
     retrieval_revision: int
     revision_count: int
     max_revisions: int
+    consecutive_revision_failures: int = 0
+    max_consecutive_revision_failures: int = 3
+    last_error: str | None = None
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None

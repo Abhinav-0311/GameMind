@@ -105,7 +105,7 @@ def test_normal_workflow_rejects_destructive_repair_without_persisting_a_draft(d
             "objective": "Generate a cited, reviewable design.",
             "document_ids": [str(document.id)], "hosted_provider_consent": True,
         })
-        assert response.status_code == 503, response.text
+        assert response.status_code == 502, response.text
         run = db_session.query(DesignAgentRun).filter_by(game_project_id=project_id).one()
         assert run.status == "failed" and run.current_node == "generate_blueprint"
         assert len(calls) == 2 and provider.critique_calls == 0

@@ -109,6 +109,7 @@ def review_run(
         target_sections=payload.target_sections,
         artifact_id=payload.artifact_id,
         confirmed_proposals=[item.model_dump() for item in payload.confirmed_proposals],
+        acknowledge_degraded=payload.acknowledge_degraded,
     )
 
 

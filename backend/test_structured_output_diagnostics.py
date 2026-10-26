@@ -101,7 +101,7 @@ def test_failed_repair_retains_both_error_kinds_without_response_text():
         invoke(['{"text":', '{"text":null}'], repair=True)
     assert [item["failure_kind"] for item in caught.value.diagnostics["completions"]] == ["json_syntax", "schema"]
     assert caught.value.attempts == 2
-    execution = SimpleNamespace(details={}, model_name=None)
+    execution = SimpleNamespace(node_name="generate_blueprint", details={}, model_name=None)
     DesignAgentWorkflow._fail_execution(SimpleNamespace(commit=lambda: None), SimpleNamespace(), execution, 0, caught.value)
     # Equal token counts are two responses, not duplicate telemetry.
     assert (execution.input_tokens, execution.output_tokens) == (20, 10)
@@ -110,7 +110,7 @@ def test_failed_repair_retains_both_error_kinds_without_response_text():
 def test_workflow_failure_trace_retains_safe_provider_diagnostics():
     with pytest.raises(NvidiaStructuredOutputError) as caught:
         invoke(['{"text":'])
-    execution = SimpleNamespace(details={}, model_name=None)
+    execution = SimpleNamespace(node_name="generate_blueprint", details={}, model_name=None)
     run = SimpleNamespace()
     db = SimpleNamespace(commit=lambda: None)
     DesignAgentWorkflow._fail_execution(db, run, execution, 0, caught.value)
@@ -262,7 +262,7 @@ def test_failed_trace_counts_reported_completions_once_including_partial_transpo
                                   key_reader=lambda _: "credential-never-log", sleep=lambda _: None)
         with pytest.raises(NvidiaProviderError) as caught:
             provider.complete(CompletionRequest(node_name="revise", messages=[], response_model=TinyResponse))
-    execution = SimpleNamespace(details={}, model_name=None)
+    execution = SimpleNamespace(node_name="revise", details={}, model_name=None)
     DesignAgentWorkflow._fail_execution(SimpleNamespace(commit=lambda: None), SimpleNamespace(), execution, 0, caught.value)
     assert (execution.input_tokens, execution.output_tokens) == expected
     assert execution.details["request_attempts"] == len(calls)
@@ -277,7 +277,7 @@ def test_post_generation_validation_failure_retains_successful_provider_usage():
     from app.design_agent.provider import ProviderResult, ProviderUsage
     from app.models.design_agent import DesignAgentRun
     run = SimpleNamespace(id=uuid4())
-    execution = SimpleNamespace(id=uuid4(), details={}, model_name=None)
+    execution = SimpleNamespace(id=uuid4(), node_name="generate_blueprint", details={}, model_name=None)
     db = SimpleNamespace(commit=lambda: None, rollback=lambda: None,
                          get=lambda model, identity: run if model is DesignAgentRun else execution)
     workflow = object.__new__(DesignAgentWorkflow)

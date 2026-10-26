@@ -30,7 +30,11 @@ def isolated_quota(db_session, monkeypatch):
     from app.models.gemini_usage import GeminiDailyUsage
     db_session.query(GeminiDailyUsage).delete()
     db_session.commit()
-    monkeypatch.setattr(gemini_budget, 'process_window', gemini_budget.SlidingWindow())
+    monotonic = [0.0]
+    def advance(seconds):
+        monotonic[0] += seconds
+    monkeypatch.setattr(gemini_budget, 'process_window', gemini_budget.SlidingWindow(
+        monotonic=lambda: monotonic[0], sleep=advance))
     monkeypatch.setattr(logging.getLogger('app.design_agent.gemini_provider'), 'disabled', False)
 
 
@@ -262,12 +266,13 @@ def test_failed_gemini_revision_preserves_draft_and_critique_without_mock(b3_rev
         rejected = client.post(url + '/review', headers=headers, json={'decision': 'reject',
             'artifact_id': started['current_artifact']['id'], 'target_sections': ['npc_memory_design'],
             'reason': 'Qualify the NPC memory rule as an unspecified design proposal; preserve the source context.'})
-        assert rejected.status_code == 409, rejected.text
+        expected_status = 503 if failure == 'provider' else 409 if failure.startswith('unexpected') else 502
+        assert rejected.status_code == expected_status, rejected.text
         current = client.get(url, headers=headers).json()
         assert current['status'] == 'awaiting_review' and current['current_node'] == 'human_review'
         assert current['current_artifact'] == started['current_artifact']
         assert current['critique'] == started['critique']
-        assert current['revision_count'] == 1 and not current['degraded']
+        assert current['revision_count'] == 0 and current['consecutive_revision_failures'] == 1 and not current['degraded']
         trace = client.get(url + '/trace', headers=headers).json()['items']
         failed = next(item for item in reversed(trace) if item['node_name'] == 'revise')
         assert failed['status'] == 'failed' and failed['provider_name'] == 'gemini'
@@ -285,13 +290,18 @@ def test_failed_gemini_revision_preserves_draft_and_critique_without_mock(b3_rev
         with service.workflow._checkpointer() as saver:
             state = service.workflow._compile(saver).get_state(service.workflow._thread_config(started['id']))
         assert state.values['revision_failed'] is True
-        assert ('budget exhausted' in rejected.json()['detail'].lower()) is (max_revisions == 1)
+        assert 'No revision was consumed' in rejected.json()['detail']
         if max_revisions == 1:
+            for _ in range(2):
+                again = client.post(url + '/review', headers=headers, json={'decision': 'reject',
+                    'artifact_id': started['current_artifact']['id'], 'target_sections': ['npc_memory_design'],
+                    'reason': 'Try the focused memory correction again, preserving every unrelated section.'})
+                assert again.status_code == expected_status
             again = client.post(url + '/review', headers=headers, json={'decision': 'reject',
                 'artifact_id': started['current_artifact']['id'], 'target_sections': ['npc_memory_design'],
                 'reason': 'Try the focused memory correction again, preserving every unrelated section.'})
             assert again.status_code == 409
-            assert len(calls) == expected_calls
+            assert len(calls) == expected_calls * 3
     finally:
         app.dependency_overrides.pop(get_design_agent_service, None)
         transport.close()

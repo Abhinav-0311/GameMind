@@ -2,11 +2,30 @@
 import copy
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 
 from app.design_agent.contracts import CritiqueOutput
 from app.design_agent.finding_reviews import DesignFindingReviewService, _finding_artifact_value, content_digest
 from app.design_agent.grounding import complete_design_critique, critic_reference_errors, validate_design_approval
-from app.models.design_agent import DesignAgentCritique, DesignAgentEvidenceSnapshot, DesignAgentFindingResolution
+from app.models.design_agent import DesignAgentCritique, DesignAgentEvidenceSnapshot, DesignAgentFindingResolution, DesignAgentNodeExecution
+
+
+def degraded_review_required(db, run):
+    if (run.model_config or {}).get("degraded"):
+        return True
+    conditions = [DesignAgentNodeExecution.status == "degraded",
+                  DesignAgentNodeExecution.details["degraded"].as_boolean().is_(True)]
+    if run.provider_name in {"gemini", "nvidia"}:
+        conditions.append(DesignAgentNodeExecution.provider_name == "mock")
+    return db.query(DesignAgentNodeExecution.id).filter(
+        DesignAgentNodeExecution.run_id == run.id,
+        DesignAgentNodeExecution.game_project_id == run.game_project_id,
+        or_(*conditions)).first() is not None
+
+
+def require_degraded_acknowledgement(db, run, acknowledge_degraded=False):
+    if not acknowledge_degraded and degraded_review_required(db, run):
+        raise ValueError("Explicitly acknowledge degraded/mock fallback output before approval; ordinary proposal confirmations are not sufficient.")
 
 
 def requires_design_quality_review(run, confirmed_proposals=None):
@@ -149,10 +168,11 @@ def finding_review_policy(db, run, artifact, snapshot, critique, records):
     return findings, blocked, server
 
 
-def validate_persisted_design_approval(db, run, artifact, confirmed_proposals=None, *, expected=None):
+def validate_persisted_design_approval(db, run, artifact, confirmed_proposals=None, *, expected=None, acknowledge_degraded=False):
     """Shared API/worker/finalize gate; reload current persisted review and evidence."""
     if artifact is None or artifact.immutable or artifact.artifact_type == "final":
         raise ValueError("Review the current draft; the approval is stale.")
+    require_degraded_acknowledgement(db, run, acknowledge_degraded)
     if artifact.run_id != run.id or artifact.game_project_id != run.game_project_id:
         raise ValueError("Review the current workspace draft; the approval is stale.")
     snapshot = db.query(DesignAgentEvidenceSnapshot).filter(

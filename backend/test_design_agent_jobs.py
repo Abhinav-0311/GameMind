@@ -289,7 +289,8 @@ def test_real_graph_rejection_cycle_runs_through_queue_and_reuses_evidence(db_se
     db_session.expire_all()
     run = db_session.get(DesignAgentRun, run.id)
     assert run.status == "awaiting_review"
-    assert run.revision_count == 2
+    assert run.revision_count == 1
+    assert run.model_config['consecutive_revision_failures'] == 0
     assert rag.calls == 1
 
     artifact = db_session.query(DesignAgentArtifact).filter_by(run_id=run.id).order_by(

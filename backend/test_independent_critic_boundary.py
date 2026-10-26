@@ -167,7 +167,7 @@ def test_revalidating_derived_notes_ignores_declared_ids_but_not_unsupported_qua
 def test_normal_governed_api_flow_requires_consent_confirmation_and_explicit_design_approval(audit_client, monkeypatch, allow_memory):
     client, app, db, _, tables, *_ = audit_client
     metadata = next(iter(tables.values())).metadata
-    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint, DesignAgentNodeExecution, DesignAgentReviewEvent):
+    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint, DesignAgentReviewEvent):
         Table(model.__tablename__, metadata, *[
             Column(c.name, JSON() if isinstance(c.type, JSONB) else c.type, primary_key=c.primary_key,
                    server_default=None if isinstance(c.type, JSONB) else c.server_default)
@@ -253,14 +253,15 @@ def test_normal_governed_api_flow_requires_consent_confirmation_and_explicit_des
     assert client.get(base + "/exports/technical-brief", headers=headers).status_code == 409
     assert client.post(base + "/review", headers=headers, json={"decision": "approve", "artifact_id": artifact["id"]}).status_code == 409
     original_artifact = copy.deepcopy(artifact)
-    # A rejected no-op must preserve reviewable work and consume one bounded attempt.
+    # A rejected no-op consumes one failed attempt, not a saved revision slot.
     replies.append({"changes": [{"artifact_path": "/npc_archetypes/content/npcs/0/dialogue_triggers/0/text",
                                  "replacement": artifact["content"]["npc_archetypes"]["content"]["npcs"][0]["dialogue_triggers"][0]["text"]}]})
     rejected = client.post(base + "/review", headers=headers, json={"decision": "reject", "artifact_id": artifact["id"],
         "reason": "Improve only the NPC speech.", "target_sections": ["npc_archetypes"]})
-    assert rejected.status_code == 409, rejected.text
+    assert rejected.status_code == 502, rejected.text
     saved = client.get(base, headers=headers).json()
-    assert saved["status"] == "awaiting_review" and saved["revision_count"] == 1
+    assert saved["status"] == "awaiting_review" and saved["revision_count"] == 0
+    assert saved["consecutive_revision_failures"] == 1
     assert saved["current_artifact"] == original_artifact and saved["critique"] == run["critique"]
     trace = client.get(base + "/trace", headers=headers).json()
     assert any(item["node_name"] == "revise" and item["status"] == "failed" for item in trace["items"])
@@ -283,7 +284,8 @@ def test_normal_governed_api_flow_requires_consent_confirmation_and_explicit_des
     assert revision.status_code == 200, revision.text
     run = revision.json()
     artifact = run["current_artifact"]
-    assert run["status"] == "awaiting_review" and run["revision_count"] == 2
+    assert run["status"] == "awaiting_review" and run["revision_count"] == 1
+    assert run['consecutive_revision_failures'] == 0
     assert len(calls) == 6 and len(retrievals) == 1
     assert all(artifact["content"][key] == original_artifact["content"][key] for key in before_approval if key not in targets)
     revised_lines = artifact["content"]["npc_archetypes"]["content"]["npcs"][0]["dialogue_triggers"]

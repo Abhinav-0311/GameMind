@@ -448,6 +448,9 @@ export interface DesignAgentRun {
   retrieval_revision: number;
   revision_count: number;
   max_revisions: number;
+  consecutive_revision_failures: number;
+  max_consecutive_revision_failures: number;
+  last_error?: string | null;
   created_at: string;
   updated_at: string;
   completed_at?: string | null;
@@ -1052,7 +1055,7 @@ export const api = {
       throw new ApiRequestError(
         typeof detail === "string" ? detail : typeof detail?.message === "string" ? detail.message : "Could not start the design-agent run",
         res.status,
-        res.status === 503 && typeof detail?.run_id === "string" ? detail.run_id : undefined,
+        [502, 503].includes(res.status) && typeof detail?.run_id === "string" ? detail.run_id : undefined,
       );
     }
     return res.json();
@@ -1067,7 +1070,7 @@ export const api = {
   async reviewDesignAgentRun(
     runId: string,
     payload: { decision: "approve" | "reject"; reason?: string; target_sections?: string[];
-      artifact_id?: string; confirmed_proposals?: DesignAgentProposalConfirmation[] },
+      artifact_id?: string; confirmed_proposals?: DesignAgentProposalConfirmation[]; acknowledge_degraded?: boolean },
   ): Promise<DesignAgentRun> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/review`, {
       method: "POST",

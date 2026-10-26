@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0
     DESIGN_AGENT_JOB_LEASE_SECONDS: int = 300
     DESIGN_AGENT_JOB_MAX_ATTEMPTS: int = 3
+    DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES: int = Field(3, gt=0)
     NVIDIA_NANO_API_KEY: str | None = None
     NVIDIA_SUPER_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"

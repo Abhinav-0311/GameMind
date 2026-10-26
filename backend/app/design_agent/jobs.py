@@ -54,7 +54,7 @@ class DesignAgentJobService:
             game_project_id=run.game_project_id,
             operation="resume",
             payload=decision.model_dump(mode="json"),
-            idempotency_key=f"resume:{run.id}:{artifact_id}:{run.revision_count}",
+            idempotency_key=f"resume:{run.id}:{artifact_id}:{run.revision_count}:{(run.model_config or {}).get('consecutive_revision_failures', 0)}",
             max_attempts=settings.DESIGN_AGENT_JOB_MAX_ATTEMPTS,
         )
         run.status = "review_queued"
@@ -169,7 +169,7 @@ class DesignAgentJobService:
             rejected_finalization = isinstance(resumed, dict) and resumed.get("finalization_failed")
             job.status = "failed" if rejected_revision or rejected_finalization else "succeeded"
             if rejected_revision:
-                job.last_error = "Revision rejected; previous draft retained for human review. No automatic retry."
+                job.last_error = "Revision failed; no new draft or revision slot consumed. Previous draft retained for human review. No automatic retry."
             if rejected_finalization:
                 job.last_error = db.get(DesignAgentRun, run_id).last_error
             job.locked_at = None

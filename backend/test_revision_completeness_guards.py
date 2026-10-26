@@ -629,11 +629,12 @@ def test_partial_revision_does_not_persist_an_artifact_or_recritique(db_session)
                                headers={"X-Game-Project-ID": project},
                                json={"decision": "reject", "reason": "Correct dialogue and quests.",
                                      "target_sections": ["npc_archetypes", "quest_hooks"]})
-        assert response.status_code == 409, response.text
+        assert response.status_code == 502, response.text
         run_id = uuid.UUID(run["id"])
         db_session.expire_all()
         stored_run = db_session.get(DesignAgentRun, run_id)
-        assert stored_run.status == "awaiting_review" and stored_run.revision_count == 1
+        assert stored_run.status == "awaiting_review" and stored_run.revision_count == 0
+        assert stored_run.model_config['consecutive_revision_failures'] == 1
         assert "quest_hooks" in stored_run.last_error
         assert db_session.query(DesignAgentArtifact).filter_by(run_id=run_id).count() == 1
         assert db_session.query(DesignAgentCritique).filter_by(run_id=run_id).count() == 1

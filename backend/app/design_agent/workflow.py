@@ -30,9 +30,10 @@ from app.design_agent.provider import (
     MockDesignAgentProvider,
     ProviderResult,
 )
-from app.design_agent.llm_provider import NvidiaProviderError
+from app.design_agent.llm_provider import NvidiaProviderError, NvidiaStructuredOutputError, NvidiaTruncatedOutputError
+from app.config import settings
 from app.design_agent.finding_reviews import content_digest
-from app.design_agent.review_policy import canonical_review_request, requires_design_quality_review, saved_review_request, validate_persisted_design_approval
+from app.design_agent.review_policy import canonical_review_request, requires_design_quality_review, saved_review_request, validate_persisted_design_approval, require_degraded_acknowledgement
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
     DesignAgentArtifact,
@@ -291,6 +292,15 @@ class DesignAgentWorkflow:
             execution.cost_usd = Decimal(str(result.usage.cost_usd))
             execution.details.update(cost_status=result.metadata.get("cost_status", "unavailable"),
                                      token_usage_scope="completed_responses_only")
+            if result.metadata.get("degraded"):
+                run.model_config = {**(run.model_config or {}), "degraded": True}
+                execution.details.update(degraded=True, fallback_to=result.metadata.get("fallback_to"))
+        if (execution.node_name in {"plan", "generate_blueprint", "critique", "revise"}
+                and (isinstance(error, (ValueError, NvidiaStructuredOutputError, NvidiaTruncatedOutputError))
+                     or isinstance(error, NvidiaProviderError) and error.code == "invalid_response_envelope")):
+            execution.details["http_status"] = 502
+        elif isinstance(error, NvidiaProviderError) and error.code in {"provider_unavailable", "provider_timeout"}:
+            execution.details["http_status"] = 503
         execution.latency_ms = max(0, round((time.perf_counter() - started) * 1000))
         execution.completed_at = datetime.now(timezone.utc)
         run.status = "failed"
@@ -306,6 +316,11 @@ class DesignAgentWorkflow:
     ) -> dict[str, Any]:
         with self._session() as db:
             run = self._load_run(db, state)
+            if (node_name == "revise" and (run.model_config or {}).get("consecutive_revision_failures", 0)
+                    >= settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES):
+                run.last_error = "Consecutive failed revision limit reached. No further revision request was sent; start a new run with fresh consent."
+                db.commit()
+                return {"revision_failed": True, "revision_count": run.revision_count}
             execution = self._begin_execution(
                 db,
                 run,
@@ -336,6 +351,7 @@ class DesignAgentWorkflow:
                     status="degraded" if degraded else "completed",
                     details={
                         "output_keys": sorted(update.keys()),
+                        **({"artifact_id": update["current_artifact_id"]} if update.get("current_artifact_id") else {}),
                         **result.metadata,
                     },
                 )
@@ -345,11 +361,13 @@ class DesignAgentWorkflow:
                 execution = db.get(DesignAgentNodeExecution, execution.id)
                 run = db.get(DesignAgentRun, run.id)
                 self._fail_execution(db, run, execution, started, error, result=result)
-                if (node_name == "revise" and state.get("critique_id") and (
-                        isinstance(error, (ValueError, NvidiaProviderError))
-                        or self.provider.name == "gemini")):
+                saved_revision = db.query(DesignAgentArtifact.id).filter(
+                    DesignAgentArtifact.run_id == run.id,
+                    DesignAgentArtifact.version > state.get("current_artifact_version", 0)).first() if node_name == "revise" else None
+                if node_name == "revise" and state.get("critique_id") and saved_revision is None:
                     # A rejected candidate is not a new draft; retain reviewable work without retrying automatically.
-                    run.revision_count += 1
+                    failures = (run.model_config or {}).get("consecutive_revision_failures", 0) + 1
+                    run.model_config = {**(run.model_config or {}), "consecutive_revision_failures": failures}
                     db.commit()
                     return {"revision_failed": True, "revision_count": run.revision_count}
                 raise
@@ -629,6 +647,8 @@ class DesignAgentWorkflow:
         with self._session() as db:
             run = self._load_run(db, state)
             decision.require_current_artifact(state["current_artifact_id"])
+            if decision.decision == "approve":
+                require_degraded_acknowledgement(db, run, decision.acknowledge_degraded)
             if decision.decision == "approve" and requires_design_quality_review(run, decision.confirmed_proposals):
                 latest = db.query(DesignAgentArtifact).filter(
                     DesignAgentArtifact.run_id == run.id,
@@ -643,12 +663,15 @@ class DesignAgentWorkflow:
                     [item.model_dump() for item in decision.confirmed_proposals],
                     expected={"content": state["current_artifact"], "evidence": state["evidence_items"],
                               "critique": state["critique"]},
+                    acknowledge_degraded=decision.acknowledge_degraded,
                 )
             existing = db.query(DesignAgentReviewEvent).filter(
                 DesignAgentReviewEvent.artifact_id == UUID(state["current_artifact_id"])
             ).first()
             if existing and existing.decision != decision.decision:
                 raise RuntimeError("This artifact already has a different review decision.")
+            if existing and decision.acknowledge_degraded:
+                existing.details = {**(existing.details or {}), "acknowledge_degraded": True}
             if existing is None:
                 db.add(
                     DesignAgentReviewEvent(
@@ -658,6 +681,7 @@ class DesignAgentWorkflow:
                         reviewer_label=decision.reviewer_label,
                         decision=decision.decision,
                         reason=decision.reason,
+                        details={"acknowledge_degraded": decision.acknowledge_degraded},
                         game_project_id=run.game_project_id,
                     )
             )
@@ -674,6 +698,7 @@ class DesignAgentWorkflow:
                     "artifact_version": state["current_artifact_version"],
                     "target_sections": decision.target_sections,
                     "confirmed_proposals": [item.model_dump() for item in decision.confirmed_proposals],
+                    "acknowledge_degraded": decision.acknowledge_degraded,
                     "reviewer_label": decision.reviewer_label,
                     "reviewer_user_id": decision.reviewer_user_id,
                 },
@@ -684,6 +709,7 @@ class DesignAgentWorkflow:
             "rejection_reason": decision.reason or "",
             "revision_targets": review_targets(decision.reason or "", decision.target_sections) if decision.decision == "reject" else [],
             "confirmed_proposals": [item.model_dump() for item in decision.confirmed_proposals],
+            "acknowledge_degraded": decision.acknowledge_degraded,
         }
 
     @staticmethod
@@ -703,6 +729,7 @@ class DesignAgentWorkflow:
             ).first()
             if existing:
                 run.revision_count = max(run.revision_count, next_version - 1)
+                run.model_config = {**(run.model_config or {}), "consecutive_revision_failures": 0}
                 db.commit()
                 return {
                     "current_artifact_id": str(existing.id),
@@ -741,6 +768,7 @@ class DesignAgentWorkflow:
                 content=content,
             )
             run.revision_count += 1
+            run.model_config = {**(run.model_config or {}), "consecutive_revision_failures": 0}
             db.add(artifact)
             db.commit()
             db.refresh(artifact)
@@ -811,7 +839,8 @@ class DesignAgentWorkflow:
                     validate_persisted_design_approval(
                         db, run, latest, state.get("confirmed_proposals"),
                         expected={"content": state["current_artifact"], "evidence": state["evidence_items"],
-                                  "critique": state["critique"]})
+                                  "critique": state["critique"]}, acknowledge_degraded=state.get("acknowledge_degraded", False))
+                require_degraded_acknowledgement(db, run, state.get("acknowledge_degraded", False))
                 content = validate_generated_blueprint(
                     state["current_artifact"],
                     state["evidence_items"],

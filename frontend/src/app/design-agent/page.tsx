@@ -301,6 +301,7 @@ export default function DesignAgentPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalChoices, setProposalChoices] = useState<{ artifactId: string; keys: string[] } | null>(null);
+  const [degradedAcknowledgement, setDegradedAcknowledgement] = useState<string | null>(null);
   const [findingEpoch, setFindingEpoch] = useState(0);
   const [findingState, setFindingState] = useState<{ context: string; review: DesignFindingReview | null; busy: boolean } | null>(null);
 
@@ -309,6 +310,7 @@ export default function DesignAgentPage() {
   const activeSectionData = activeRun?.current_artifact?.content?.[activeSection];
   const critiqueFindings = activeRun?.critique?.content.findings ?? [];
   const artifactId = activeRun?.current_artifact?.id;
+  const degradedAcknowledged = Boolean(artifactId && degradedAcknowledgement === `${activeRun?.id}:${artifactId}`);
   const critiqueIsCurrent = Boolean(artifactId && activeRun?.critique?.artifact_id === artifactId);
   const findingContext = useMemo(() => JSON.stringify([activeRun?.id, artifactId, activeRun?.current_artifact?.content, activeRun?.critique, findingEpoch]),
     [activeRun?.id, artifactId, activeRun?.current_artifact?.content, activeRun?.critique, findingEpoch]);
@@ -345,11 +347,16 @@ export default function DesignAgentPage() {
     && !preApprovalScorecard.recovered_sections?.length && pendingProposals.length > 0
     && pendingProposals.length <= 64 && selectedProposals.length === pendingProposals.length && !needsRevision);
   const approvalBlocked = findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
+    || (activeRun?.degraded === true && !degradedAcknowledged)
     || Boolean(preApprovalScorecard && !preApprovalScorecard.passed && !confirmationReady);
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
   const revisionBudgetExhausted = Boolean(activeRun && activeRun.revision_count >= activeRun.max_revisions);
+  const failedRevisions = activeRun?.consecutive_revision_failures ?? 0;
+  const failedRevisionLimit = activeRun?.max_consecutive_revision_failures ?? 3;
+  const failedRevisionLimitReached = failedRevisions >= failedRevisionLimit;
+  const revisionBlocked = revisionBudgetExhausted || failedRevisionLimitReached;
   const completed = activeRun?.status === "completed";
   const activeRunId = activeRun?.id;
   const activeRunStatus = activeRun?.status;
@@ -560,8 +567,9 @@ export default function DesignAgentPage() {
         : "Review the current draft before requesting a revision.");
       return;
     }
-    if (decision === "reject" && revisionBudgetExhausted) {
-      setError("Revision budget exhausted. Start a new run with fresh provider consent.");
+    if (decision === "reject" && revisionBlocked) {
+      setError(failedRevisionLimitReached ? "Consecutive failed revision limit reached. Start a new run with fresh provider consent."
+        : "Revision budget exhausted. Start a new run with fresh provider consent.");
       return;
     }
     if (decision === "reject" && !rejectionReason.trim()) {
@@ -583,6 +591,7 @@ export default function DesignAgentPage() {
         target_sections: decision === "reject" ? sections.filter((section) => revisionSections.includes(section.key)).map((section) => section.key) : undefined,
         artifact_id: artifactId,
         confirmed_proposals: decision === "approve" ? selectedProposals : undefined,
+        acknowledge_degraded: decision === "approve" ? degradedAcknowledged : undefined,
       });
       replaceRun(run);
       setRejectOpen(false);
@@ -598,7 +607,8 @@ export default function DesignAgentPage() {
       setTrace(loadedTrace);
     } catch (reviewError) {
       let message = reviewError instanceof Error ? reviewError.message : "Could not submit the review decision.";
-      if (reviewError instanceof ApiRequestError && reviewError.status === 409) {
+      if (reviewError instanceof ApiRequestError && [409, 502, 503].includes(reviewError.status)) {
+        setDegradedAcknowledgement(null);
         setProposalChoices(null);
         setFindingEpoch((value) => value + 1);
         try {
@@ -904,7 +914,7 @@ export default function DesignAgentPage() {
                 </details>
                 {activeRun.degraded && (
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                    The hosted provider did not complete this run, so GameMind preserved the workflow using deterministic local output. Review the result as orchestration proof, not hosted-model quality.
+                    This run contains degraded or mock-fallback output. It is not proof of hosted-model quality. Explicitly acknowledge this before approval; all design checks still apply.
                   </p>
                 )}
               </div>
@@ -1091,12 +1101,28 @@ export default function DesignAgentPage() {
               <div className="border-t border-[var(--border)] bg-[var(--card-muted)] p-5">
                 {(reviewable || activeRun.status === "revision_limit_reached") && (
                   <div className="mb-4 text-xs leading-5 text-[var(--text-secondary)]">
-                    <p>Revisions used: {activeRun.revision_count}/{activeRun.max_revisions}</p>
+                    <p>Saved revisions: {activeRun.revision_count}/{activeRun.max_revisions}</p>
+                    <p>Consecutive failed corrections: {failedRevisions}/{failedRevisionLimit}. A failed correction does not consume a saved revision slot.</p>
+                    {failedRevisionLimitReached && <p id="failed-revision-help" className="mt-2">Failed revision limit reached. No more corrections will be sent. Start a new run with fresh provider consent; this draft stays unchanged.</p>}
+                    {activeRun.last_error && failedRevisions > 0 && <p className="mt-2">Last correction error: {activeRun.last_error}</p>}
                     {revisionBudgetExhausted && <p id="revision-budget-help" className="mt-2">Revision budget exhausted. Start a new run with a clearer objective and fresh provider consent. This draft stays unchanged.</p>}
                   </div>
                 )}
-                {reviewable && (!rejectOpen || revisionBudgetExhausted) && (
+                {reviewable && (!rejectOpen || revisionBlocked) && (
                   <div className="grid gap-2">
+                    {activeRun.degraded && (
+                      <div className="mb-2 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-4">
+                        <p id="degraded-review-warning" className="text-sm font-semibold">Degraded output requires your acknowledgement</p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">One or more stages used fallback or degraded output. Approving does not certify hosted generation quality.</p>
+                        <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-6">
+                          <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2"
+                            checked={degradedAcknowledged} disabled={action !== null}
+                            aria-describedby="degraded-review-warning"
+                            onChange={(event) => setDegradedAcknowledgement(event.target.checked ? `${activeRun.id}:${artifactId}` : null)} />
+                          <span>I understand this draft contains degraded/mock-fallback output and explicitly accept that risk for design approval.</span>
+                        </label>
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="btn-primary w-full"
@@ -1110,15 +1136,15 @@ export default function DesignAgentPage() {
                       type="button"
                       className="btn-secondary w-full"
                       onClick={() => { setRevisionSections([activeSection]); setRejectOpen(true); }}
-                      disabled={action !== null || findingBusy || revisionBudgetExhausted}
-                      aria-describedby={revisionBudgetExhausted ? "revision-budget-help" : undefined}
-                      title={revisionBudgetExhausted ? "This run has no revisions remaining." : undefined}
+                      disabled={action !== null || findingBusy || revisionBlocked}
+                      aria-describedby={failedRevisionLimitReached ? "failed-revision-help" : revisionBudgetExhausted ? "revision-budget-help" : undefined}
+                      title={failedRevisionLimitReached ? "Consecutive failed correction limit reached." : revisionBudgetExhausted ? "This run has no revisions remaining." : undefined}
                     >
                       Request revision
                     </button>
                   </div>
                 )}
-                {reviewable && rejectOpen && !revisionBudgetExhausted && (
+                {reviewable && rejectOpen && !revisionBlocked && (
                   <div>
                     <fieldset
                       disabled={action !== null}
@@ -1167,7 +1193,7 @@ export default function DesignAgentPage() {
                         type="button"
                         className="btn-primary w-full"
                         onClick={() => submitReview("reject")}
-                        disabled={action !== null || revisionBudgetExhausted || revisionSections.length === 0 || !rejectionReason.trim()}
+                        disabled={action !== null || revisionBlocked || revisionSections.length === 0 || !rejectionReason.trim()}
                       >
                         {action === "reject" ? "Revising and critiquing…" : "Send revision request"}
                       </button>

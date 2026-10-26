@@ -2,7 +2,7 @@ from copy import deepcopy
 from typing import Annotated, Any, Literal, TypedDict, Union, get_args, get_origin
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, create_model, field_validator, model_serializer, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 
@@ -923,9 +923,12 @@ class ResumeDecision(BaseModel):
     target_sections: list[BlueprintSectionKey] | None = Field(default=None, min_length=1, max_length=9)
     artifact_id: UUID | None = None
     confirmed_proposals: list[ProposalConfirmation] = Field(default_factory=list, max_length=64)
+    acknowledge_degraded: StrictBool = False
 
     @model_validator(mode="after")
     def require_confirmation_scope(self):
+        if self.acknowledge_degraded and (self.decision != "approve" or self.artifact_id is None):
+            raise ValueError("Degraded acknowledgement requires approval and the exact artifact_id.")
         if self.confirmed_proposals and (self.decision != "approve" or self.artifact_id is None):
             raise ValueError("Proposal confirmation requires approval and the exact artifact_id.")
         return self
@@ -961,6 +964,7 @@ class DesignAgentState(TypedDict, total=False):
     revision_targets: list[str]
     revision_failed: bool
     finalization_failed: bool
+    acknowledge_degraded: bool
     confirmed_proposals: list[dict[str, Any]]
     final_artifact_id: str
     blueprint_id: str
