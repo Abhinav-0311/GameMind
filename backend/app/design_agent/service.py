@@ -376,8 +376,12 @@ class DesignAgentService:
             ) from error
         db.expire_all()
         if isinstance(resumed, dict) and resumed.get("revision_failed"):
+            run = self._get_run(db, run_id, game_project_id)
+            remaining = max(0, run.max_revisions - run.revision_count)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                detail="The revision was rejected; the previous draft and critique are unchanged. Inspect the failed revision in the trace, then request a focused correction within the remaining revision budget.")
+                detail="The revision failed; the previous draft and critique are unchanged. Inspect the failed revision in the trace. "
+                + (f"{remaining} revision attempt(s) remain." if remaining else
+                   "Revision budget exhausted. Start a new run with fresh provider consent."))
         return self._response(db, self._get_run(db, run_id, game_project_id))
 
     def trace(self, db: Session, run_id: UUID, game_project_id: str) -> DesignAgentTraceResponse:

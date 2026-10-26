@@ -340,7 +340,9 @@ class DesignAgentWorkflow:
                 execution = db.get(DesignAgentNodeExecution, execution.id)
                 run = db.get(DesignAgentRun, run.id)
                 self._fail_execution(db, run, execution, started, error, result=result)
-                if node_name == "revise" and isinstance(error, (ValueError, NvidiaProviderError)) and state.get("critique_id"):
+                if (node_name == "revise" and state.get("critique_id") and (
+                        isinstance(error, (ValueError, NvidiaProviderError))
+                        or self.provider.name == "gemini")):
                     # A rejected candidate is not a new draft; retain reviewable work without retrying automatically.
                     run.revision_count += 1
                     db.commit()

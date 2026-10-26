@@ -1319,15 +1319,19 @@ class ResilientDesignAgentProvider:
         *,
         primary: DesignAgentProvider,
         fallback: DesignAgentProvider,
+        disabled_nodes: frozenset[str] = frozenset(),
     ):
         self.primary = primary
         self.fallback = fallback
         self.name = primary.name
+        self.disabled_nodes = disabled_nodes
 
     def configuration(self) -> dict[str, Any]:
         config = dict(self.primary.configuration())
         config["fallback_enabled"] = True
         config["fallback_provider"] = self.fallback.name
+        if self.disabled_nodes:
+            config["fallback_disabled_nodes"] = sorted(self.disabled_nodes)
         return config
 
     def _call(self, method_name: str, *args: Any, **kwargs: Any) -> ProviderResult:
@@ -1335,7 +1339,8 @@ class ResilientDesignAgentProvider:
         try:
             return getattr(self.primary, method_name)(*args, **kwargs)
         except NvidiaProviderError as error:
-            if error.diagnostics.get("stop_run"):
+            node = "generate_blueprint" if method_name == "generate" else method_name
+            if error.diagnostics.get("stop_run") or node in self.disabled_nodes:
                 raise
             fallback_result = getattr(self.fallback, method_name)(*args, **kwargs)
             total_latency_ms = max(

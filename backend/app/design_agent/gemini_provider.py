@@ -4,6 +4,8 @@ import time
 import hashlib
 import math
 import copy
+import json
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
@@ -19,8 +21,10 @@ from app.design_agent.llm_provider import (
 from app.design_agent.nvidia_provider import NvidiaDesignAgentProvider
 from app.design_agent.gemini_budget import GeminiBudget, limit_error
 
+logger = logging.getLogger(__name__)
 
-def _gemini_response_schema(schema):
+
+def _gemini_response_schema(schema, *, keep_literals=False):
     """Limit decoder constraints only; the original response model validates locally."""
     if not isinstance(schema, dict):
         return copy.deepcopy(schema)
@@ -29,16 +33,18 @@ def _gemini_response_schema(schema):
         "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
         "minProperties", "maxProperties", "uniqueItems", "minContains", "maxContains", "not", "propertyNames",
     }
+    if keep_literals:
+        constraints -= {"enum", "const"}
     reduced = {}
     for key, value in schema.items():
         if key in constraints:
             continue
         if key in {"properties", "$defs", "definitions", "patternProperties", "dependentSchemas"}:
-            reduced[key] = {name: _gemini_response_schema(child) for name, child in value.items()}
+            reduced[key] = {name: _gemini_response_schema(child, keep_literals=keep_literals) for name, child in value.items()}
         elif key in {"items", "additionalProperties", "contains", "if", "then", "else", "unevaluatedProperties", "unevaluatedItems"}:
-            reduced[key] = _gemini_response_schema(value)
+            reduced[key] = _gemini_response_schema(value, keep_literals=keep_literals)
         elif key in {"allOf", "anyOf", "oneOf", "prefixItems"}:
-            reduced[key] = [_gemini_response_schema(child) for child in value]
+            reduced[key] = [_gemini_response_schema(child, keep_literals=keep_literals) for child in value]
         else:
             reduced[key] = copy.deepcopy(value)
     if "type" not in reduced and ("enum" in schema or "const" in schema):
@@ -74,6 +80,7 @@ class GeminiProvider(NvidiaProvider):
         self._key_reader = lambda _: app_settings.GEMINI_API_KEY
         self.timeout_seconds = app_settings.GEMINI_TIMEOUT_SECONDS
         self.schema_reduction_nodes = app_settings.GEMINI_SCHEMA_REDUCTION_NODES
+        self.revise_keep_literals_max_bytes = app_settings.GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES
         self.repair_enabled = True
         self._client = client
         self._sleep, self._jitter = sleep, jitter
@@ -245,14 +252,22 @@ class GeminiProvider(NvidiaProvider):
 
     def _send(self, *, config, api_key, messages, max_tokens, guided_json_schema):
         policy, data = self._roles(messages)
-        schema = (_gemini_response_schema(guided_json_schema)
-                  if self._schema_node.get() in self.schema_reduction_nodes else guided_json_schema)
+        node, mode, schema = self._schema_node.get(), "full", guided_json_schema
+        if node in self.schema_reduction_nodes:
+            schema = _gemini_response_schema(guided_json_schema, keep_literals=node == "revise")
+            mode = "keep_literals" if node == "revise" else "reduced"
+            if node == "revise" and len(json.dumps(schema, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > self.revise_keep_literals_max_bytes:
+                schema, mode = _gemini_response_schema(guided_json_schema), "reduced"
+        schema_bytes = len(json.dumps(schema, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
         def send(model):
-            return self._execute(lambda: self._sdk().interactions.create(
-                model=model, system_instruction=policy, input=data, store=False,
-                response_format=[{"type": "text", "mime_type": "application/json", "schema": schema}],
-                generation_config={"max_output_tokens": max_tokens, "temperature": config.temperature},
-            ), model=model)
+            def create():
+                logger.info("Gemini schema node=%s mode=%s bytes=%d", node, mode, schema_bytes)
+                return self._sdk().interactions.create(
+                    model=model, system_instruction=policy, input=data, store=False,
+                    response_format=[{"type": "text", "mime_type": "application/json", "schema": schema}],
+                    generation_config={"max_output_tokens": max_tokens, "temperature": config.temperature},
+                )
+            return self._execute(create, model=model)
         try:
             response, attempts = send(config.model)
         except NvidiaProviderError as error:

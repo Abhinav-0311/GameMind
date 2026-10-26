@@ -343,7 +343,7 @@ def test_gemini_schema_reduction_defaults_to_revision_only_without_mutating_full
     def respond(r):
         calls.append(json.loads(r.content))
         return interaction('{}')
-    provider = GeminiProvider(config(), client=sdk(respond))
+    provider = GeminiProvider(config(GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES=0), client=sdk(respond))
     try:
         with pytest.raises(NvidiaStructuredOutputError):
             provider.complete(CompletionRequest('revise' if node == 'speech_patch' else node,
@@ -410,7 +410,7 @@ def test_gemini_relaxed_wire_constraints_still_use_full_local_validation_and_rep
     def respond(r):
         calls.append(json.loads(r.content))
         return interaction(json.dumps(valid if repair and len(calls) == 2 else invalid))
-    provider = GeminiProvider(config(), client=sdk(respond))
+    provider = GeminiProvider(config(GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES=0), client=sdk(respond))
     req = CompletionRequest('revise', request().messages, FullContract)
     try:
         if repair:
@@ -462,7 +462,7 @@ def test_gemini_node_reduction_setting_is_honored_without_leaking_between_comple
     class EnumAnswer(BaseModel):
         answer: Literal['ok', 'blocked']
     calls = []
-    provider = GeminiProvider(config(), client=sdk(lambda r: calls.append(json.loads(r.content)) or interaction('{"answer":"ok"}')))
+    provider = GeminiProvider(config(GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES=0), client=sdk(lambda r: calls.append(json.loads(r.content)) or interaction('{"answer":"ok"}')))
     try:
         for node in ('revise', 'plan', 'generate_blueprint', 'critique'):
             result = provider.complete(CompletionRequest(node, request().messages, EnumAnswer))

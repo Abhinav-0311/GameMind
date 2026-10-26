@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     GEMINI_SHOWCASE_MODEL: str = ""
     GEMINI_TIMEOUT_SECONDS: float = 30.0
     GEMINI_SCHEMA_REDUCTION_NODES: frozenset[Literal["plan", "generate_blueprint", "critique", "revise"]] = frozenset({"revise"})
+    GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES: int = Field(6000, ge=0)
     GEMINI_DEV_RPM: int = Field(5, gt=0)
     GEMINI_DEV_RPD: int = Field(500, gt=0)
     GEMINI_SHOWCASE_RPM: int = Field(3, gt=0)
@@ -55,6 +56,7 @@ class Settings(BaseSettings):
     GEMINI_RUN_BUDGET_ESTIMATE: int = Field(8, gt=0)
     GEMINI_RPM_MAX_WAIT_SECONDS: float = Field(60, ge=0)
     DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
+    DESIGN_AGENT_FALLBACK_DISABLED_NODES: frozenset[Literal["plan", "generate_blueprint", "critique", "revise"]] = frozenset({"revise"})
     DESIGN_AGENT_EXECUTION_MODE: str = "inline"
     DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0
     DESIGN_AGENT_JOB_LEASE_SECONDS: int = 300

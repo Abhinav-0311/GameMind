@@ -17,7 +17,8 @@ def build_design_agent_provider(
     if app_settings.LLM_PROFILE in {"dev", "showcase"}:
         from app.design_agent.gemini_provider import GeminiProvider, GeminiDesignAgentProvider
         primary = GeminiDesignAgentProvider(llm_provider=GeminiProvider(app_settings))
-        return (ResilientDesignAgentProvider(primary=primary, fallback=MockDesignAgentProvider())
+        return (ResilientDesignAgentProvider(primary=primary, fallback=MockDesignAgentProvider(),
+                    disabled_nodes=app_settings.DESIGN_AGENT_FALLBACK_DISABLED_NODES)
                 if app_settings.DESIGN_AGENT_FALLBACK_TO_MOCK else primary)
 
     provider_name = (
