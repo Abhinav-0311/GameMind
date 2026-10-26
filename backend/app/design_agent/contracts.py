@@ -960,6 +960,7 @@ class DesignAgentState(TypedDict, total=False):
     rejection_reason: str
     revision_targets: list[str]
     revision_failed: bool
+    finalization_failed: bool
     confirmed_proposals: list[dict[str, Any]]
     final_artifact_id: str
     blueprint_id: str

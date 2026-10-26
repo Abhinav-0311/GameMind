@@ -166,14 +166,18 @@ class DesignAgentJobService:
                 logger.warning("Design-agent job %s completed after its lease was lost", job_id)
                 return
             rejected_revision = isinstance(resumed, dict) and resumed.get("revision_failed")
-            job.status = "failed" if rejected_revision else "succeeded"
+            rejected_finalization = isinstance(resumed, dict) and resumed.get("finalization_failed")
+            job.status = "failed" if rejected_revision or rejected_finalization else "succeeded"
             if rejected_revision:
                 job.last_error = "Revision rejected; previous draft retained for human review. No automatic retry."
+            if rejected_finalization:
+                job.last_error = db.get(DesignAgentRun, run_id).last_error
             job.locked_at = None
             job.locked_by = None
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
-        logger.info("Design-agent job %s %s", job_id, "revision rejected" if rejected_revision else "succeeded")
+        logger.info("Design-agent job %s %s", job_id, "finalization rejected" if rejected_finalization
+                    else "revision rejected" if rejected_revision else "succeeded")
 
     def _heartbeat(self, job_id: UUID, worker_id: str | None, stop: Event) -> None:
         interval = max(5.0, settings.DESIGN_AGENT_JOB_LEASE_SECONDS / 3)

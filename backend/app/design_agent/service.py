@@ -375,6 +375,9 @@ class DesignAgentService:
                 detail="The design-agent workflow could not resume. Inspect the run trace for details.",
             ) from error
         db.expire_all()
+        if isinstance(resumed, dict) and resumed.get("finalization_failed"):
+            run = self._get_run(db, run_id, game_project_id)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=run.last_error)
         if isinstance(resumed, dict) and resumed.get("revision_failed"):
             run = self._get_run(db, run_id, game_project_id)
             remaining = max(0, run.max_revisions - run.revision_count)

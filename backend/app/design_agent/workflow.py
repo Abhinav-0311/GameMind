@@ -31,6 +31,7 @@ from app.design_agent.provider import (
     ProviderResult,
 )
 from app.design_agent.llm_provider import NvidiaProviderError
+from app.design_agent.finding_reviews import content_digest
 from app.design_agent.review_policy import canonical_review_request, requires_design_quality_review, saved_review_request, validate_persisted_design_approval
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
@@ -45,6 +46,10 @@ from app.models.design_agent import (
 from app.models.document import Document
 from app.models.design_decision import DesignDecision
 from app.services.rag_service import RAGService
+
+
+class FinalizationIntegrityError(ValueError):
+    """A final candidate must not silently change the reviewed draft."""
 
 
 class DesignAgentWorkflow:
@@ -100,7 +105,7 @@ class DesignAgentWorkflow:
         )
         graph.add_conditional_edges("revise", lambda state: "human_review" if state.get("revision_failed") else "critique")
         graph.add_edge("revision_limit", END)
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges("finalize", lambda state: "human_review" if state.get("finalization_failed") else END)
         return graph.compile(checkpointer=saver)
 
     def start(self, run: DesignAgentRun) -> dict[str, Any]:
@@ -675,6 +680,7 @@ class DesignAgentWorkflow:
             )
         return {
             "review_decision": decision.decision,
+            "finalization_failed": False,
             "rejection_reason": decision.reason or "",
             "revision_targets": review_targets(decision.reason or "", decision.target_sections) if decision.decision == "reject" else [],
             "confirmed_proposals": [item.model_dump() for item in decision.confirmed_proposals],
@@ -787,14 +793,21 @@ class DesignAgentWorkflow:
                         "blueprint_id": str(existing.blueprint_id),
                     }
 
+                latest = db.query(DesignAgentArtifact).filter(
+                    DesignAgentArtifact.run_id == run.id,
+                    DesignAgentArtifact.game_project_id == run.game_project_id,
+                    DesignAgentArtifact.artifact_type != "final",
+                ).order_by(DesignAgentArtifact.version.desc()).first()
+                if latest is None or str(latest.id) != state["current_artifact_id"]:
+                    raise ValueError("Review the current draft; the approval is stale.")
+                integrity_error = (
+                    "Finalization blocked: candidate content differs from the reviewed artifact outside "
+                    "the documented server-metadata exceptions. No blueprint or final artifact was saved; "
+                    "the reviewed draft is unchanged."
+                )
+                if content_digest(state["current_artifact"]) != content_digest(latest.content):
+                    raise FinalizationIntegrityError(integrity_error)
                 if requires_design_quality_review(run, state.get("confirmed_proposals")):
-                    latest = db.query(DesignAgentArtifact).filter(
-                        DesignAgentArtifact.run_id == run.id,
-                        DesignAgentArtifact.game_project_id == run.game_project_id,
-                        DesignAgentArtifact.artifact_type != "final",
-                    ).order_by(DesignAgentArtifact.version.desc()).first()
-                    if latest is None or str(latest.id) != state["current_artifact_id"]:
-                        raise ValueError("Review the current draft; the approval is stale.")
                     validate_persisted_design_approval(
                         db, run, latest, state.get("confirmed_proposals"),
                         expected={"content": state["current_artifact"], "evidence": state["evidence_items"],
@@ -803,21 +816,28 @@ class DesignAgentWorkflow:
                     state["current_artifact"],
                     state["evidence_items"],
                     require_actionable=self.provider.name in {"nvidia", "gemini"},
+                    design_contract_version=(run.model_config or {}).get("design_contract_version", 1),
                 )
+                expected_content = copy.deepcopy(latest.content)
+                # Only these server-owned metadata additions may differ from reviewed content.
+                # They remain final-only because section validation discards these extra fields.
                 if (run.model_config or {}).get("defer_runtime") is True:
-                    # Server-owned final snapshot metadata, never model authority.
-                    content["unity_runtime_preview"]["runtime_deferred"] = True
-                    content["unity_runtime_preview"]["warnings"] = list(dict.fromkeys([
-                        *content["unity_runtime_preview"]["warnings"],
-                        "Runtime integration explicitly deferred. Approved design only; no runtime release or materialization.",
-                    ]))
-                if memory_is_unspecified(content, saved_review_request(run)):
+                    for snapshot_content in (content, expected_content):
+                        snapshot_content["unity_runtime_preview"]["runtime_deferred"] = True
+                        snapshot_content["unity_runtime_preview"]["warnings"] = list(dict.fromkeys([
+                            *snapshot_content["unity_runtime_preview"]["warnings"],
+                            "Runtime integration explicitly deferred. Approved design only; no runtime release or materialization.",
+                        ]))
+                if memory_is_unspecified(latest.content, saved_review_request(run)):
                     content["npc_memory_design"]["memory_unspecified"] = True
+                    expected_content["npc_memory_design"]["memory_unspecified"] = True
                 first_document = db.query(Document).filter(
                     Document.id == UUID(run.document_ids[0]),
                     Document.game_project_id == run.game_project_id,
                 ).first()
                 title = first_document.title if first_document else "Game design"
+                if content_digest(content) != content_digest(expected_content):
+                    raise FinalizationIntegrityError(integrity_error)
                 blueprint = GameBlueprint(
                     title=f"Agent Blueprint: {title}",
                     document_id=UUID(run.document_ids[0]),
@@ -850,6 +870,7 @@ class DesignAgentWorkflow:
                 run.status = "completed"
                 run.current_node = "finalize"
                 run.completed_at = datetime.now(timezone.utc)
+                run.last_error = None
                 db.add(final_artifact)
                 db.commit()
                 db.refresh(final_artifact)
@@ -872,4 +893,9 @@ class DesignAgentWorkflow:
                 execution = db.get(DesignAgentNodeExecution, execution.id)
                 run = db.get(DesignAgentRun, run.id)
                 self._fail_execution(db, run, execution, started, error)
+                if isinstance(error, FinalizationIntegrityError):
+                    run.status = "awaiting_review"
+                    run.current_node = "human_review"
+                    db.commit()
+                    return {"finalization_failed": True}
                 raise

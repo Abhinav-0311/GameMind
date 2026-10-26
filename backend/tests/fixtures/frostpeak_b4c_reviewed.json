@@ -1,0 +1,885 @@
+{
+  "critique": {
+    "summary": "The Project Frostpeak design blueprint successfully preserves all required GDD source facts, including both starting NPCs, both quest hooks with precise quantities and rewards, narrative direction, art style, gameplay systems, and platform requirements.",
+    "verdict": "ready_for_review",
+    "findings": [],
+    "review_mode": "defect_detection",
+    "source_coverage": {
+      "summary": "covered",
+      "quest_hooks": "covered",
+      "npc_archetypes": "covered",
+      "gameplay_systems": "covered",
+      "npc_memory_design": "covered",
+      "art_style_direction": "covered",
+      "narrative_direction": "covered",
+      "unity_runtime_preview": "covered",
+      "level_design_suggestions": "covered"
+    },
+    "quality_scorecard": {
+      "passed": false,
+      "metrics": [
+        {
+          "key": "grounding",
+          "label": "Grounding",
+          "value": 1,
+          "detail": "Every generated section and every NPC or quest record cites frozen GDD evidence.",
+          "passed": true
+        },
+        {
+          "key": "completeness",
+          "label": "Completeness",
+          "value": 1,
+          "detail": "Checks nonempty design content, not proof of source coverage. Empty uncited sections with warnings need source/scope review; do not invent facts to fill them. NPCs need dialogue hooks; quests need objectives and either declared failure states or an explicit failure-free state contract. Dependencies may be empty when unsupported by the GDD.",
+          "passed": true
+        },
+        {
+          "key": "consistency",
+          "label": "Contradiction checks",
+          "value": 1,
+          "detail": "Checks duplicate NPC names/quest IDs and explicit mirrored objective flags that cannot both pass after both required actions. No records means no positive score; other semantic and narrative conflicts still require review.",
+          "passed": true
+        },
+        {
+          "key": "integration_readiness",
+          "label": "Integration readiness",
+          "value": 0,
+          "detail": "NPCs need integration notes; quests need a validated state contract, or per-objective Objective/Event/State/Check notes for legacy drafts. Legacy prose checks do not prove flag assignment or reset semantics. No unresolved assumptions or unsupported/empty sections remain. Checks establish structure, not semantic quality or playtest proof.",
+          "passed": false
+        }
+      ],
+      "blockers": [
+        "Integration readiness"
+      ],
+      "overall_score": 0.75,
+      "recovered_sections": [],
+      "incomplete_sections": [],
+      "unsupported_sections": [],
+      "confirmed_assumptions": [],
+      "quest_check_conflicts": [],
+      "request_coverage_gaps": [],
+      "quest_integration_gaps": [],
+      "unresolved_assumptions": [
+        {
+          "record": "NPC Eldrin",
+          "section": "npc_archetypes",
+          "record_id": "NPC Eldrin",
+          "assumption": "Proposed speaker-to-quest association: Quest Hook 0 assigned to Eldrin."
+        },
+        {
+          "record": "NPC Eldrin",
+          "section": "npc_archetypes",
+          "record_id": "NPC Eldrin",
+          "assumption": "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts."
+        },
+        {
+          "record": "NPC Eldrin",
+          "section": "npc_archetypes",
+          "record_id": "NPC Eldrin",
+          "assumption": "Generated dialogue hooks are creative drafts and require narrative approval before runtime use."
+        },
+        {
+          "record": "NPC Eldrin",
+          "section": "npc_archetypes",
+          "record_id": "NPC Eldrin",
+          "assumption": "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+        },
+        {
+          "record": "NPC Kaelen",
+          "section": "npc_archetypes",
+          "record_id": "NPC Kaelen",
+          "assumption": "Proposed speaker-to-quest association: Quest Hook 1 assigned to Kaelen."
+        },
+        {
+          "record": "NPC Kaelen",
+          "section": "npc_archetypes",
+          "record_id": "NPC Kaelen",
+          "assumption": "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts."
+        },
+        {
+          "record": "NPC Kaelen",
+          "section": "npc_archetypes",
+          "record_id": "NPC Kaelen",
+          "assumption": "Generated dialogue hooks are creative drafts and require narrative approval before runtime use."
+        },
+        {
+          "record": "NPC Kaelen",
+          "section": "npc_archetypes",
+          "record_id": "NPC Kaelen",
+          "assumption": "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Proposed failure state: Guard reinforcements overwhelm the player."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Proposed restart action: Player confirms reload from the nearest checkpoint."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Generated quest objectives, failure states, event actions are creative proposals and require design approval before runtime use."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Failure rule proposal (not verified in cited GDD): Player is defeated by Cinder Vanguard guards during the assault. Requires explicit design confirmation before runtime use."
+        },
+        {
+          "record": "Quest Hook 1",
+          "section": "quest_hooks",
+          "record_id": "quest_1",
+          "assumption": "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Proposed failure state: Player is knocked off the vertical cliffside path."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Proposed restart action: Player confirms respawn at the nearest steam checkpoint."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Generated quest failure states, event actions are creative proposals and require design approval before runtime use."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Failure rule proposal (not verified in cited GDD): Player falls from the vertical cliffside path during mining operations. Requires explicit design confirmation before runtime use."
+        },
+        {
+          "record": "Quest Hook 2",
+          "section": "quest_hooks",
+          "record_id": "quest_2",
+          "assumption": "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+        }
+      ]
+    },
+    "model_review_provenance": {
+      "clean": true,
+      "version": 1,
+      "model_output": {
+        "summary": "The Project Frostpeak design blueprint successfully preserves all required GDD source facts, including both starting NPCs, both quest hooks with precise quantities and rewards, narrative direction, art style, gameplay systems, and platform requirements.",
+        "verdict": "ready_for_review",
+        "findings": [],
+        "review_mode": "defect_detection",
+        "source_coverage": {
+          "summary": "covered",
+          "quest_hooks": "covered",
+          "npc_archetypes": "covered",
+          "gameplay_systems": "covered",
+          "npc_memory_design": "covered",
+          "art_style_direction": "covered",
+          "narrative_direction": "covered",
+          "unity_runtime_preview": "covered",
+          "level_design_suggestions": "covered"
+        }
+      },
+      "request_sha256": "2c9cc3b41dddc1ee6aeba46da0ae1492c4ceeda0aa3bdfa531dd544ffc21da10",
+      "artifact_sha256": "8c6b049ab9793c5594de8e4be45248e6644541b7ed732b71957bfc6533955817",
+      "evidence_sha256": "26b780f20a4e0d0be3e3007d8e3d0c802368925dd0575e59141b45e0511b792d"
+    }
+  },
+  "objective": "Create a source-grounded design blueprint for Project Frostpeak with both starting NPCs and both quest hooks. Preserve every objective, quantity and reward. Include useful distinct spoken dialogue and practical implementation notes. Clearly label proposals; do not invent source support.",
+  "content": {
+    "summary": {
+      "content": {
+        "description": "Project Frostpeak is an immersive tactical role-playing game set in the frozen ruins of the Northern kingdom of Frostpeak. The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance in reclaiming their home and restoring the lineage of King Arven from the occupying forces of the Cinder Vanguard."
+      },
+      "warnings": [
+        "Locally extracted exact source excerpt, not model-authored. Review the cited premise in context."
+      ],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18"
+      ],
+      "confidence": "Low"
+    },
+    "quest_hooks": {
+      "content": {
+        "quests": [
+          {
+            "id": "quest_1",
+            "title": "Quest Hook 1",
+            "reward": "100 gold and 250 XP.",
+            "runtime": {
+              "npc_slug": "eldrin",
+              "xp_reward": 250,
+              "difficulty": "Normal",
+              "objectives": [
+                {
+                  "target_id": "cinder_guard",
+                  "description": "Clear guards at the Ash Pass border post",
+                  "target_type": "EnemyNPC",
+                  "quantity_required": 4
+                },
+                {
+                  "target_id": "northern_flag",
+                  "description": "Raise the Northern flag",
+                  "target_type": "WorldObject",
+                  "quantity_required": 1
+                }
+              ],
+              "gold_reward": 100
+            },
+            "objective": "Reclaim the Ash Pass border post. Players must clear guards and raise the Northern flag.",
+            "objectives": [
+              "Clear guards at the Ash Pass border post",
+              "Raise the Northern flag"
+            ],
+            "assumptions": [
+              "Proposed failure state: Guard reinforcements overwhelm the player.",
+              "Proposed restart action: Player confirms reload from the nearest checkpoint.",
+              "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated quest objectives, failure states, event actions are creative proposals and require design approval before runtime use.",
+              "Failure rule proposal (not verified in cited GDD): Player is defeated by Cinder Vanguard guards during the assault. Requires explicit design confirmation before runtime use.",
+              "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+            ],
+            "dependencies": [],
+            "dialogue_hooks": [
+              "Reclaim the Ash Pass border post.",
+              "Clear guards and raise the Northern flag."
+            ],
+            "failure_states": [
+              "Player is defeated by Cinder Vanguard guards during the assault."
+            ],
+            "state_contract": {
+              "failure": {
+                "events": [
+                  "q1_failure_1"
+                ],
+                "lifecycle": "failed"
+              },
+              "restart": {
+                "event": "q1_confirmed_restart",
+                "lifecycle": "active",
+                "clear_flags": [
+                  "q1_objective_1",
+                  "q1_objective_2"
+                ]
+              },
+              "version": "1",
+              "completion": {
+                "mode": "all",
+                "lifecycle": "completed",
+                "reevaluate_on": "each_objective_update",
+                "required_flags": [
+                  "q1_objective_1",
+                  "q1_objective_2"
+                ]
+              },
+              "objectives": [
+                {
+                  "flag": "q1_objective_1",
+                  "event": "q1_objective_1_completed",
+                  "objective": "Clear guards at the Ash Pass border post"
+                },
+                {
+                  "flag": "q1_objective_2",
+                  "event": "q1_objective_2_completed",
+                  "objective": "Raise the Northern flag"
+                }
+              ],
+              "event_actions": {
+                "q1_failure_1": "Player is defeated by Cinder Vanguard guards during the assault.",
+                "q1_confirmed_restart": "Player confirms checkpoint reload upon defeat.",
+                "q1_objective_1_completed": "Defeat all assigned guard entities within the designated post zone.",
+                "q1_objective_2_completed": "Interact with the flag pole to successfully hoist the Northern flag."
+              }
+            },
+            "source_chunk_ids": [
+              "320753af-09c4-49eb-bf85-4a76386507e2"
+            ],
+            "implementation_notes": [
+              "Ensure the guard entity triggers are properly linked to objective progress.",
+              "Flag raising requires an interaction state change.",
+              "Structured state proposal: start an attempt active with all objective flags false. While active, each declared objective event sets only its own flag true; preserve other flags. Do not mutate a completed/failed attempt from objective events.",
+              "Completion proposal: reevaluate after each objective update; set lifecycle to completed only when all required_flags are true. Test every partial state and both action orders; event descriptions are not executable bindings or playtest evidence.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: interact without an objective event. Expect: active; q1_objective_1=false, q1_objective_2=false; play dialogue only if its declared situation is satisfied.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: Defeat all assigned guard entities within the designated post zone. until its proposed event (q1_objective_1_completed) occurs. Expect: active; q1_objective_1=true, q1_objective_2=false. Action: perform remaining objectives (Interact with the flag pole to successfully hoist the Northern flag. (event: q1_objective_2_completed)). Expect: completed; q1_objective_1=true, q1_objective_2=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: Interact with the flag pole to successfully hoist the Northern flag. until its proposed event (q1_objective_2_completed) occurs. Expect: active; q1_objective_1=false, q1_objective_2=true. Action: perform remaining objectives (Defeat all assigned guard entities within the designated post zone. (event: q1_objective_1_completed)). Expect: completed; q1_objective_1=true, q1_objective_2=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: completed; q1_objective_1=true, q1_objective_2=true. Action: replay each objective event. Expect: completed; q1_objective_1=true, q1_objective_2=true; active-only dialogue must remain suppressed.",
+              "Contract check (not executed): Setup: active with each incomplete flag state above. Action: exercise each failure event separately (Player is defeated by Cinder Vanguard guards during the assault.). Expect: failed with exactly the setup flags. Action: ordinary interaction. Expect: failed, flags unchanged; active-only dialogue must remain suppressed; no implicit restart.",
+              "Contract check (not executed): Setup: failed with each preserved incomplete flag state above. Action: Player confirms checkpoint reload upon defeat.. Expect: active; q1_objective_1=false, q1_objective_2=false, cleared atomically. Interact and recheck dialogue eligibility; a reset does not guarantee replay or establish an event binding."
+            ]
+          },
+          {
+            "id": "quest_2",
+            "title": "Quest Hook 2",
+            "reward": "150 gold and sky-iron gear.",
+            "runtime": {
+              "npc_slug": "kaelen",
+              "xp_reward": 0,
+              "difficulty": "Hard",
+              "objectives": [
+                {
+                  "target_id": "sky_iron_vein",
+                  "description": "Mine raw sky-iron ore from cliffside veins",
+                  "target_type": "ResourceNode",
+                  "quantity_required": 5
+                }
+              ],
+              "gold_reward": 150
+            },
+            "objective": "Mine 5 chunks of raw sky-iron ore from the cliffside veins.",
+            "objectives": [
+              "Mine 5 chunks of raw sky-iron ore from the cliffside veins"
+            ],
+            "assumptions": [
+              "Proposed failure state: Player is knocked off the vertical cliffside path.",
+              "Proposed restart action: Player confirms respawn at the nearest steam checkpoint.",
+              "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated quest failure states, event actions are creative proposals and require design approval before runtime use.",
+              "Failure rule proposal (not verified in cited GDD): Player falls from the vertical cliffside path during mining operations. Requires explicit design confirmation before runtime use.",
+              "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+            ],
+            "dependencies": [
+              "Quest Hook 1"
+            ],
+            "dialogue_hooks": [
+              "Mine 5 chunks of raw sky-iron ore from the cliffside veins."
+            ],
+            "failure_states": [
+              "Player falls from the vertical cliffside path during mining operations."
+            ],
+            "state_contract": {
+              "failure": {
+                "events": [
+                  "q2_failure_1"
+                ],
+                "lifecycle": "failed"
+              },
+              "restart": {
+                "event": "q2_confirmed_restart",
+                "lifecycle": "active",
+                "clear_flags": [
+                  "q2_objective_1"
+                ]
+              },
+              "version": "1",
+              "completion": {
+                "mode": "all",
+                "lifecycle": "completed",
+                "reevaluate_on": "each_objective_update",
+                "required_flags": [
+                  "q2_objective_1"
+                ]
+              },
+              "objectives": [
+                {
+                  "flag": "q2_objective_1",
+                  "event": "q2_objective_1_completed",
+                  "objective": "Mine 5 chunks of raw sky-iron ore from the cliffside veins"
+                }
+              ],
+              "event_actions": {
+                "q2_failure_1": "Player falls from the vertical cliffside path during mining operations.",
+                "q2_confirmed_restart": "Player confirms respawn at the nearest steam checkpoint.",
+                "q2_objective_1_completed": "Perform the mining interaction on cliffside veins until 5 chunks of raw sky-iron ore are acquired."
+              }
+            },
+            "source_chunk_ids": [
+              "320753af-09c4-49eb-bf85-4a76386507e2",
+              "a9d6e05a-ebd2-4770-94b1-a4f06788bc83"
+            ],
+            "implementation_notes": [
+              "Sky-iron ore quantity counter must track exactly 5 units.",
+              "Veins are located in the Geothermal Vents zone.",
+              "Structured state proposal: start an attempt active with all objective flags false. While active, each declared objective event sets only its own flag true; preserve other flags. Do not mutate a completed/failed attempt from objective events.",
+              "Completion proposal: reevaluate after each objective update; set lifecycle to completed only when all required_flags are true. Test every partial state and both action orders; event descriptions are not executable bindings or playtest evidence.",
+              "Contract check (not executed): Setup: active; q2_objective_1=false. Action: interact without an objective event. Expect: active; q2_objective_1=false; play dialogue only if its declared situation is satisfied.",
+              "Contract check (not executed): Setup: active; q2_objective_1=false. Action: Perform the mining interaction on cliffside veins until 5 chunks of raw sky-iron ore are acquired. until its proposed event (q2_objective_1_completed) occurs. Expect: completed; q2_objective_1=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: completed; q2_objective_1=true. Action: replay each objective event. Expect: completed; q2_objective_1=true; active-only dialogue must remain suppressed.",
+              "Contract check (not executed): Setup: active with each incomplete flag state above. Action: exercise each failure event separately (Player falls from the vertical cliffside path during mining operations.). Expect: failed with exactly the setup flags. Action: ordinary interaction. Expect: failed, flags unchanged; active-only dialogue must remain suppressed; no implicit restart.",
+              "Contract check (not executed): Setup: failed with each preserved incomplete flag state above. Action: Player confirms respawn at the nearest steam checkpoint.. Expect: active; q2_objective_1=false, cleared atomically. Interact and recheck dialogue eligibility; a reset does not guarantee replay or establish an event binding."
+            ]
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "320753af-09c4-49eb-bf85-4a76386507e2",
+        "a9d6e05a-ebd2-4770-94b1-a4f06788bc83"
+      ],
+      "confidence": "Low"
+    },
+    "npc_archetypes": {
+      "content": {
+        "npcs": [
+          {
+            "name": "NPC Eldrin",
+            "archetype": "Archmage of the Watchtower",
+            "assumptions": [
+              "Proposed speaker-to-quest association: Quest Hook 0 assigned to Eldrin.",
+              "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+              "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+            ],
+            "dialogue_hooks": [
+              "Greetings, pathfinder. The annals of history record the resilience of Frostpeak against the fires of Vulcana.",
+              "Let ancient wisdom guide your path through the Ash Pass.",
+              "A commendable deed. The legacy of King Arven endures through your efforts."
+            ],
+            "dialogue_style": "Formal, slow manner, referencing ancient lore history to guide the player",
+            "fresh_dialogue": false,
+            "source_chunk_ids": [
+              "2cdd448f-bb5d-477b-945d-4e656a1e4058"
+            ],
+            "dialogue_triggers": [
+              {
+                "text": "Greetings, pathfinder. The annals of history record the resilience of Frostpeak against the fires of Vulcana.",
+                "trigger": "npc_1_greeting_1",
+                "situation": "Initial meeting with Eldrin at the Watchtower",
+                "eligibility": {
+                  "stage": "greeting",
+                  "progress": "incomplete",
+                  "quest_id": "quest_1",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Initial meeting with Eldrin at the Watchtower; eligibility stage=greeting, quest=quest_1, lifecycle=active, progress=incomplete. Action: interact. Expect: Greetings, pathfinder. The annals of history record the resilience of Frostpeak against the fires of Vulcana. Repeat: once per session Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "once per session"
+              },
+              {
+                "text": "Let ancient wisdom guide your path through the Ash Pass.",
+                "trigger": "npc_1_progress_2",
+                "situation": "Player has active quest to reclaim Ash Pass",
+                "eligibility": {
+                  "stage": "progress",
+                  "progress": "incomplete",
+                  "quest_id": "quest_1",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Player has active quest to reclaim Ash Pass; eligibility stage=progress, quest=quest_1, lifecycle=active, progress=incomplete. Action: interact. Expect: Let ancient wisdom guide your path through the Ash Pass. Repeat: always Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "always"
+              },
+              {
+                "text": "A commendable deed. The legacy of King Arven endures through your efforts.",
+                "trigger": "npc_1_completion_3",
+                "situation": "Player completes quest 0",
+                "eligibility": {
+                  "stage": "completion",
+                  "progress": "complete",
+                  "quest_id": "quest_1",
+                  "lifecycle": "completed"
+                },
+                "manual_test": "Setup: Player completes quest 0; eligibility stage=completion, quest=quest_1, lifecycle=completed, progress=complete. Action: interact. Expect: A commendable deed. The legacy of King Arven endures through your efforts. Repeat: once Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "once"
+              }
+            ],
+            "relationship_notes": [
+              "Serves as a high-trust scholar and dialogue advisor to the legendary pathfinder."
+            ],
+            "implementation_notes": [
+              "Eldrin acts as a high-trust scholar and dialogue advisor.",
+              "Dialogue text is styled to reflect formal speech patterns.",
+              "Create a stable NPC profile for 'NPC Eldrin' and retain its source_chunk_ids in the review trace.",
+              "Bind each dialogue_triggers entry only while its eligibility holds. Run its manual_test and enforce repeat_policy; these are proposed checks, not executed tests.",
+              "Do not implement listed assumptions until a designer confirms them."
+            ]
+          },
+          {
+            "name": "NPC Kaelen",
+            "archetype": "Commander of the Cinder Vanguard garrison",
+            "assumptions": [
+              "Proposed speaker-to-quest association: Quest Hook 1 assigned to Kaelen.",
+              "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+              "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+            ],
+            "dialogue_hooks": [
+              "State your business. Strength and faction standing are all that matter here.",
+              "Keep your guard up near the cliffside veins; those ores don't mine themselves.",
+              "Acceptable work. You have proven your strength today."
+            ],
+            "dialogue_style": "Pragmatic, cautious warrior, valuing faction standing and strength above all",
+            "fresh_dialogue": false,
+            "source_chunk_ids": [
+              "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+              "320753af-09c4-49eb-bf85-4a76386507e2"
+            ],
+            "dialogue_triggers": [
+              {
+                "text": "State your business. Strength and faction standing are all that matter here.",
+                "trigger": "npc_2_greeting_1",
+                "situation": "Encountering Kaelen at the garrison",
+                "eligibility": {
+                  "stage": "greeting",
+                  "progress": "incomplete",
+                  "quest_id": "quest_2",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Encountering Kaelen at the garrison; eligibility stage=greeting, quest=quest_2, lifecycle=active, progress=incomplete. Action: interact. Expect: State your business. Strength and faction standing are all that matter here. Repeat: once per session Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "once per session"
+              },
+              {
+                "text": "Keep your guard up near the cliffside veins; those ores don't mine themselves.",
+                "trigger": "npc_2_progress_2",
+                "situation": "Player has active quest to mine sky-iron ore",
+                "eligibility": {
+                  "stage": "progress",
+                  "progress": "incomplete",
+                  "quest_id": "quest_2",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Player has active quest to mine sky-iron ore; eligibility stage=progress, quest=quest_2, lifecycle=active, progress=incomplete. Action: interact. Expect: Keep your guard up near the cliffside veins; those ores don't mine themselves. Repeat: always Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "always"
+              },
+              {
+                "text": "Acceptable work. You have proven your strength today.",
+                "trigger": "npc_2_completion_3",
+                "situation": "Player completes quest 1",
+                "eligibility": {
+                  "stage": "completion",
+                  "progress": "complete",
+                  "quest_id": "quest_2",
+                  "lifecycle": "completed"
+                },
+                "manual_test": "Setup: Player completes quest 1; eligibility stage=completion, quest=quest_2, lifecycle=completed, progress=complete. Action: interact. Expect: Acceptable work. You have proven your strength today. Repeat: once Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "once"
+              }
+            ],
+            "relationship_notes": [
+              "Pragmatic commander of the Cinder Vanguard opposition/garrison contact."
+            ],
+            "implementation_notes": [
+              "Kaelen offers high-risk quests and emphasizes strength.",
+              "Tone is grounded in pragmatism and caution.",
+              "Create a stable NPC profile for 'NPC Kaelen' and retain its source_chunk_ids in the review trace.",
+              "Bind each dialogue_triggers entry only while its eligibility holds. Run its manual_test and enforce repeat_policy; these are proposed checks, not executed tests.",
+              "Do not implement listed assumptions until a designer confirms them."
+            ]
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2"
+      ],
+      "confidence": "Low"
+    },
+    "gameplay_systems": {
+      "content": {
+        "systems": [
+          {
+            "name": "Guerrilla Attacks & Pathfinding",
+            "description": "Players assume the role of a legendary pathfinder launching guerrilla attacks from the Ash Pass to free the frozen city."
+          },
+          {
+            "name": "Mining & Gathering",
+            "description": "Players gather raw sky-iron ore from cliffside veins in the Geothermal Vents zone."
+          },
+          {
+            "name": "Combat & Post Clearance",
+            "description": "Tactical role-playing mechanics requiring players to clear guards and interact with world flags such as raising the Northern flag."
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2",
+        "a9d6e05a-ebd2-4770-94b1-a4f06788bc83"
+      ],
+      "confidence": "Low"
+    },
+    "npc_memory_design": {
+      "content": {
+        "rules": [
+          "Faction choice holds high consequences for gameplay and world state flags.",
+          "WARNING: Concrete NPC memory, persistence, recall, and dialogue-history behavior require human design and are not specified in the source GDD.",
+          "Faction choice consequences for gameplay and world-state flags are sourced, but specific tracking mechanics or adaptive dialogue rules are not present in the source material."
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2"
+      ],
+      "confidence": "Low"
+    },
+    "art_style_direction": {
+      "content": {
+        "visual_notes": [
+          "High-contrast color palette pairing warm oranges and elemental reds from the Cinder Vanguard's fire engines against deep icy blues and granite grays of the frozen Northern citadel ruins",
+          "Characters have sharp, hand-painted textures that highlight the gritty, cold environment"
+        ],
+        "visual_theme": "Stylized Dark Fantasy"
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "a9d6e05a-ebd2-4770-94b1-a4f06788bc83"
+      ],
+      "confidence": "Low"
+    },
+    "narrative_direction": {
+      "content": {
+        "themes": [
+          "Tactical role-playing",
+          "Freeing the frozen city",
+          "Geothermal energy and sky-iron deposits conflict"
+        ],
+        "lore_background": "The story centers around the aftermath of the Ember Siege of 842. The volcanic nation of Vulcana, led by Warlord Ignis, launched an elemental assault to seize control of Frostpeak's geothermal energy and rich sky-iron deposits. Today, the Cinder Vanguard guards the mines, while rangers launch guerrilla attacks from the Ash Pass to free the frozen city."
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2"
+      ],
+      "confidence": "Low"
+    },
+    "unity_runtime_preview": {
+      "content": {
+        "primary_input": "Keyboard and Mouse",
+        "runtime_notes": [
+          "All data structures align with Project Frostpeak design specifications.",
+          "Server derives quest IDs, flags, and state bookkeeping automatically."
+        ],
+        "engine_version": "Unity 2022 LTS (Proposed)",
+        "target_platform": "Windows PC"
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2",
+        "a9d6e05a-ebd2-4770-94b1-a4f06788bc83"
+      ],
+      "confidence": "Low"
+    },
+    "level_design_suggestions": {
+      "content": {
+        "levels": [
+          {
+            "focus": "Vertical cliffside path interspersed with active volcanic vents, sky-iron ore veins, and steam checkpoints",
+            "title": "Geothermal Vents Zone"
+          },
+          {
+            "focus": "Monumental terminal barrier defended by Cinder Vanguard forces",
+            "title": "East Gate"
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "89692eda-b26f-4836-b697-a54f03b9eb18",
+        "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+        "320753af-09c4-49eb-bf85-4a76386507e2"
+      ],
+      "confidence": "Low"
+    }
+  },
+  "config": {
+    "phase": "phase_8",
+    "models": {
+      "plan": {
+        "model": "gemini-3.5-flash-lite",
+        "provider": "gemini",
+        "max_tokens": 1024,
+        "max_retries": 2,
+        "temperature": 0
+      },
+      "revise": {
+        "model": "gemini-3.5-flash-lite",
+        "provider": "gemini",
+        "max_tokens": 4096,
+        "max_retries": 2,
+        "temperature": 0
+      },
+      "critique": {
+        "model": "gemini-3.5-flash-lite",
+        "provider": "gemini",
+        "max_tokens": 4000,
+        "max_retries": 2,
+        "temperature": 0
+      },
+      "generate_blueprint": {
+        "model": "gemini-3.5-flash-lite",
+        "provider": "gemini",
+        "max_tokens": 4096,
+        "max_retries": 2,
+        "temperature": 0
+      }
+    },
+    "degraded": false,
+    "provider": "gemini",
+    "plan_model": "gemini-3.5-flash-lite",
+    "defer_runtime": false,
+    "fresh_dialogue": false,
+    "dialogue_policy": null,
+    "evidence_payload": {
+      "max_items": 10,
+      "max_chars_per_item": 1200
+    },
+    "fallback_enabled": true,
+    "fallback_provider": "mock",
+    "resolved_decisions": [
+      {
+        "title": "Platform and controls",
+        "decision": "The target platform is Windows PC. Set unity_runtime_preview.content.target_platform to the exact string \"Windows PC\"; this is human design direction, not a GDD fact.",
+        "guidance": "Name the target platform and the primary input assumptions.",
+        "decision_id": "887fbdf1-b24a-410b-960f-f23ead530cad",
+        "document_id": "40165c50-415a-4573-b83b-a74872b7f15b"
+      }
+    ],
+    "consented_document_ids": [
+      "40165c50-415a-4573-b83b-a74872b7f15b"
+    ],
+    "design_contract_version": 2,
+    "fallback_disabled_nodes": [
+      "revise"
+    ],
+    "hosted_provider_consent": true,
+    "allow_unspecified_memory": false
+  },
+  "evidence": [
+    {
+      "title": "sample_gdd_frostpeak.md",
+      "content": "# Project Frostpeak Game Design Document\n**Version 1.0**\n\n## Section 1: Game Summary & Overview\nProject Frostpeak is an immersive tactical role-playing game set in the frozen ruins of the Northern kingdom of Frostpeak. The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance in reclaiming their home and restoring the lineage of King Arven from the occupying forces of the Cinder Vanguard.\n\n## Section 2: Narrative Direction & Lore\nThe story centers around the aftermath of the Ember Siege of 842. The volcanic nation of Vulcana, led by Warlord Ignis, launched an elemental assault to seize control of Frostpeak's geothermal energy and rich sky-iron deposits. Today, the Cinder Vanguard guards the mines, while rangers launch guerrilla attacks from the Ash Pass to free the frozen city. Faction choice holds high consequences for gameplay and world state flags.\n\n## Section 3: Art Style Direction\nThe visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy",
+      "chunk_id": "89692eda-b26f-4836-b697-a54f03b9eb18",
+      "confidence": "Low",
+      "similarity": 0.1893,
+      "chunk_index": 0,
+      "document_id": "40165c50-415a-4573-b83b-a74872b7f15b",
+      "game_project_id": "gemini-acceptance-frostpeak-b4b-f04-adaptive-schema-20261026-01",
+      "matched_sections": [
+        "summary",
+        "narrative_direction",
+        "art_style_direction",
+        "npc_archetypes",
+        "npc_memory_design",
+        "level_design_suggestions",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview"
+      ],
+      "section_similarities": {
+        "summary": 0.1181,
+        "quest_hooks": 0.0738,
+        "npc_archetypes": 0.1104,
+        "gameplay_systems": 0.1262,
+        "npc_memory_design": 0.1262,
+        "art_style_direction": 0.1893,
+        "narrative_direction": 0.142,
+        "unity_runtime_preview": 0.0738,
+        "level_design_suggestions": 0.1262
+      }
+    },
+    {
+      "title": "sample_gdd_frostpeak.md",
+      "content": "the frozen city. Faction choice holds high consequences for gameplay and world state flags.\n\n## Section 3: Art Style Direction\nThe visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy theme. We utilize a high-contrast color palette, pairing warm oranges and elemental reds from the Cinder Vanguard's fire engines against deep icy blues and granite grays of the frozen Northern citadel ruins. Characters have sharp, hand-painted textures that highlight the gritty, cold environment.\n\n## Section 4: NPC Archetypes\nThe game features two key starting NPCs:\n- **NPC Eldrin**: Archmage of the Watchtower. Eldrin serves as a high-trust scholar and dialogue advisor. He speaks in a formal, slow manner and references ancient lore history to guide the player.\n- **NPC Kaelen**: Commander of the Cinder Vanguard garrison. Kaelen is a pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all.\n\n## Section 5: Level Design Suggestions\nThe",
+      "chunk_id": "2cdd448f-bb5d-477b-945d-4e656a1e4058",
+      "confidence": "Low",
+      "similarity": 0.1547,
+      "chunk_index": 1,
+      "document_id": "40165c50-415a-4573-b83b-a74872b7f15b",
+      "game_project_id": "gemini-acceptance-frostpeak-b4b-f04-adaptive-schema-20261026-01",
+      "matched_sections": [
+        "summary",
+        "narrative_direction",
+        "art_style_direction",
+        "npc_archetypes",
+        "npc_memory_design",
+        "level_design_suggestions",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview"
+      ],
+      "section_similarities": {
+        "summary": 0.1085,
+        "quest_hooks": 0.0543,
+        "npc_archetypes": 0.116,
+        "gameplay_systems": 0.0387,
+        "npc_memory_design": 0.1543,
+        "art_style_direction": 0.1547,
+        "narrative_direction": 0.0387,
+        "unity_runtime_preview": 0,
+        "level_design_suggestions": 0.0967
+      }
+    },
+    {
+      "title": "sample_gdd_frostpeak.md",
+      "content": "der of the Cinder Vanguard garrison. Kaelen is a pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all.\n\n## Section 5: Level Design Suggestions\nThe starting layout centers on the Geothermal Vents zone. Players navigate a vertical cliffside path interspersed with active volcanic vents, sky-iron ore veins, and steam checkpoints. The level culminates at the monumental East Gate, which remains barricaded by Cinder Vanguard defenses.\n\n## Section 6: Quest Hooks\nThe golden path includes the following quest lines:\n- **Quest Hook 1**: Objective: Reclaim the Ash Pass border post. Players must clear guards and raise the Northern flag. Reward: 100 gold and 250 XP.\n- **Quest Hook 2**: Objective: Mine 5 chunks of raw sky-iron ore from the cliffside veins. Reward: 150 gold and sky-iron gear.",
+      "chunk_id": "320753af-09c4-49eb-bf85-4a76386507e2",
+      "confidence": "Low",
+      "similarity": 0.1106,
+      "chunk_index": 2,
+      "document_id": "40165c50-415a-4573-b83b-a74872b7f15b",
+      "game_project_id": "gemini-acceptance-frostpeak-b4b-f04-adaptive-schema-20261026-01",
+      "matched_sections": [
+        "summary",
+        "narrative_direction",
+        "npc_archetypes",
+        "npc_memory_design",
+        "level_design_suggestions",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview"
+      ],
+      "section_similarities": {
+        "summary": 0.0553,
+        "quest_hooks": 0.1106,
+        "npc_archetypes": 0.0394,
+        "gameplay_systems": 0,
+        "npc_memory_design": 0.0197,
+        "narrative_direction": 0,
+        "unity_runtime_preview": 0.0867,
+        "level_design_suggestions": 0.0985
+      }
+    },
+    {
+      "title": "sample_gdd_frostpeak.md",
+      "content": "t clear guards and raise the Northern flag. Reward: 100 gold and 250 XP.\n- **Quest Hook 2**: Objective: Mine 5 chunks of raw sky-iron ore from the cliffside veins. Reward: 150 gold and sky-iron gear.",
+      "chunk_id": "a9d6e05a-ebd2-4770-94b1-a4f06788bc83",
+      "confidence": "Low",
+      "similarity": 0.0735,
+      "chunk_index": 3,
+      "document_id": "40165c50-415a-4573-b83b-a74872b7f15b",
+      "game_project_id": "gemini-acceptance-frostpeak-b4b-f04-adaptive-schema-20261026-01",
+      "matched_sections": [
+        "art_style_direction",
+        "npc_archetypes",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview"
+      ],
+      "section_similarities": {
+        "quest_hooks": 0.0367,
+        "npc_archetypes": 0,
+        "gameplay_systems": 0,
+        "art_style_direction": 0.0501,
+        "unity_runtime_preview": 0.0735
+      }
+    }
+  ]
+}
