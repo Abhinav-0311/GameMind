@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     GEMINI_DEV_MODEL: str = ""
     GEMINI_SHOWCASE_MODEL: str = ""
     GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_SCHEMA_REDUCTION_NODES: frozenset[Literal["plan", "generate_blueprint", "critique", "revise"]] = frozenset({"revise"})
     GEMINI_DEV_RPM: int = Field(5, gt=0)
     GEMINI_DEV_RPD: int = Field(500, gt=0)
     GEMINI_SHOWCASE_RPM: int = Field(3, gt=0)

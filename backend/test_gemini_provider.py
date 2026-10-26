@@ -128,8 +128,7 @@ def test_existing_prompt_builder_moves_policy_but_not_source_or_source_bound_sch
     body = calls[0]
     assert "Independently assess" in body["system_instruction"]
     assert "PRIVATE_SOURCE_GDD" not in body["system_instruction"] and "PRIVATE_SCHEMA_GDD" not in body["system_instruction"]
-    assert "PRIVATE_SOURCE_GDD" in body["input"]
-    assert body['response_format'][0]['schema']['properties']['answer'] == {'title': 'Answer', 'type': 'string'}
+    assert "PRIVATE_SOURCE_GDD" in body["input"] and "PRIVATE_SCHEMA_GDD" in json.dumps(body["response_format"])
     transport.close()
 
 
@@ -335,19 +334,29 @@ def schema_nodes(schema):
 
 
 @pytest.mark.parametrize('node', ['plan', 'generate_blueprint', 'critique', 'revise', 'speech_patch'])
-def test_gemini_wire_schema_is_reduced_for_every_node_without_mutating_full_contract(design_schemas, node):
+def test_gemini_schema_reduction_defaults_to_revision_only_without_mutating_full_contract(design_schemas, node):
     from app.design_agent.gemini_provider import GeminiProvider
+    from app.design_agent.llm_provider import NvidiaStructuredOutputError
     full = design_schemas[node].model_json_schema()
     before = copy.deepcopy(full)
     calls = []
     def respond(r):
         calls.append(json.loads(r.content))
-        return interaction('{"answer":"unused"}')
+        return interaction('{}')
     provider = GeminiProvider(config(), client=sdk(respond))
     try:
-        provider._send(config=provider.node_model_config['revise' if node == 'speech_patch' else node],
-                       api_key='offline-key', messages=request().messages, max_tokens=100, guided_json_schema=full)
+        with pytest.raises(NvidiaStructuredOutputError):
+            provider.complete(CompletionRequest('revise' if node == 'speech_patch' else node,
+                              request().messages, design_schemas[node]))
         reduced = calls[0]['response_format'][0]['schema']
+        assert all(call['response_format'][0]['schema'] == reduced for call in calls)
+        assert full == before == design_schemas[node].model_json_schema()
+        if node not in {'revise', 'speech_patch'}:
+            assert reduced == full
+            if node == 'generate_blueprint':
+                assert reduced['$defs']['DraftDialogue']['properties']['stage']['enum'] == [
+                    'greeting', 'progress', 'completion', 'failed', 'other']
+            return
         types.JSONSchema.model_validate(reduced)
         assert json.loads(json.dumps(reduced)) == reduced
         forbidden = {'enum', 'const', 'pattern', 'minLength', 'maxLength', 'minItems', 'maxItems',
@@ -374,22 +383,15 @@ def test_gemini_wire_schema_is_reduced_for_every_node_without_mutating_full_cont
 
 
 def test_gemini_reduction_preserves_keyword_named_properties_and_enum_only_types():
-    from app.design_agent.gemini_provider import GeminiProvider
+    from app.design_agent.gemini_provider import _gemini_response_schema
     full = {'type': 'object', 'properties': {
         'pattern': {'enum': ['red', 'blue'], 'not': {'enum': ['null']}},
         'minItems': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1},
     }, 'required': ['pattern', 'minItems'], 'additionalProperties': False}
-    calls = []
-    provider = GeminiProvider(config(), client=sdk(lambda r: calls.append(json.loads(r.content)) or interaction('{}')))
-    try:
-        provider._send(config=provider.node_model_config['plan'], api_key='offline-key', messages=request().messages,
-                       max_tokens=100, guided_json_schema=full)
-        assert calls[0]['response_format'][0]['schema'] == {
-            'type': 'object', 'properties': {'pattern': {'type': 'string'},
-                'minItems': {'type': 'array', 'items': {'type': 'string'}}},
-            'required': ['pattern', 'minItems'], 'additionalProperties': False}
-    finally:
-        provider.close()
+    assert _gemini_response_schema(full) == {
+        'type': 'object', 'properties': {'pattern': {'type': 'string'},
+            'minItems': {'type': 'array', 'items': {'type': 'string'}}},
+        'required': ['pattern', 'minItems'], 'additionalProperties': False}
 
 
 @pytest.mark.parametrize('repair', [False, True])
@@ -409,7 +411,7 @@ def test_gemini_relaxed_wire_constraints_still_use_full_local_validation_and_rep
         calls.append(json.loads(r.content))
         return interaction(json.dumps(valid if repair and len(calls) == 2 else invalid))
     provider = GeminiProvider(config(), client=sdk(respond))
-    req = CompletionRequest('plan', request().messages, FullContract)
+    req = CompletionRequest('revise', request().messages, FullContract)
     try:
         if repair:
             result = provider.complete(req)
@@ -449,3 +451,23 @@ def test_nvidia_guided_output_still_sends_the_full_unreduced_schema():
         result = provider.complete(CompletionRequest('plan', request().messages, FullContract, guided_json=True))
         assert result.content == {'code': 'OK', 'state': 'ready'}
         assert calls[0]['response_format']['json_schema']['schema'] == FullContract.model_json_schema()
+
+
+@pytest.mark.parametrize(('setting', 'reduced_nodes'), [
+    ('[]', set()), ('["revise"]', {'revise'}), ('["generate_blueprint"]', {'generate_blueprint'}),
+])
+def test_gemini_node_reduction_setting_is_honored_without_leaking_between_completions(monkeypatch, setting, reduced_nodes):
+    from app.design_agent.gemini_provider import GeminiProvider
+    monkeypatch.setenv('GEMINI_SCHEMA_REDUCTION_NODES', setting)
+    class EnumAnswer(BaseModel):
+        answer: Literal['ok', 'blocked']
+    calls = []
+    provider = GeminiProvider(config(), client=sdk(lambda r: calls.append(json.loads(r.content)) or interaction('{"answer":"ok"}')))
+    try:
+        for node in ('revise', 'plan', 'generate_blueprint', 'critique'):
+            result = provider.complete(CompletionRequest(node, request().messages, EnumAnswer))
+            assert result.content == {'answer': 'ok'}
+            prop = calls[-1]['response_format'][0]['schema']['properties']['answer']
+            assert ('enum' not in prop) is (node in reduced_nodes)
+    finally:
+        provider.close()

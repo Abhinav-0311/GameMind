@@ -73,6 +73,7 @@ class GeminiProvider(NvidiaProvider):
         }
         self._key_reader = lambda _: app_settings.GEMINI_API_KEY
         self.timeout_seconds = app_settings.GEMINI_TIMEOUT_SECONDS
+        self.schema_reduction_nodes = app_settings.GEMINI_SCHEMA_REDUCTION_NODES
         self.repair_enabled = True
         self._client = client
         self._sleep, self._jitter = sleep, jitter
@@ -83,6 +84,7 @@ class GeminiProvider(NvidiaProvider):
         self._run_id = ContextVar("gemini_run_id", default=None)
         self._active_model = ContextVar("gemini_active_model", default=None)
         self._fallback = ContextVar("gemini_model_fallback", default=None)
+        self._schema_node = ContextVar("gemini_schema_node", default=None)
         self._hook_client = None
 
     @contextmanager
@@ -243,7 +245,8 @@ class GeminiProvider(NvidiaProvider):
 
     def _send(self, *, config, api_key, messages, max_tokens, guided_json_schema):
         policy, data = self._roles(messages)
-        schema = _gemini_response_schema(guided_json_schema)
+        schema = (_gemini_response_schema(guided_json_schema)
+                  if self._schema_node.get() in self.schema_reduction_nodes else guided_json_schema)
         def send(model):
             return self._execute(lambda: self._sdk().interactions.create(
                 model=model, system_instruction=policy, input=data, store=False,
@@ -276,6 +279,7 @@ class GeminiProvider(NvidiaProvider):
     def complete(self, request: CompletionRequest):
         owns_client = self._client is None
         fallback_token = self._fallback.set(None)
+        schema_token = self._schema_node.set(request.node_name)
         started_requests = self._requests
         try:
             result = super().complete(replace(request, guided_json=True))
@@ -291,6 +295,7 @@ class GeminiProvider(NvidiaProvider):
             raise error from None
         finally:
             self._fallback.reset(fallback_token)
+            self._schema_node.reset(schema_token)
             if owns_client:
                 self.close()
 
