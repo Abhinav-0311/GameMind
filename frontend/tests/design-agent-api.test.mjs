@@ -33,3 +33,16 @@ for (const status of [502, 503]) {
     assert.equal(calls, 1);
   });
 }
+
+test("offline unsupported correction preserves the 409 message without retrying", async (context) => {
+  let calls = 0;
+  const message = "The offline provider cannot make this correction. Use a hosted provider or start a new run.";
+  context.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json({ detail: message }, { status: 409 });
+  });
+  await assert.rejects(api.reviewDesignAgentRun("run", { decision: "reject", artifact_id: "draft-v1",
+    reason: "Correct the missing systems", target_sections: ["gameplay_systems"] }),
+    (error) => error instanceof ApiRequestError && error.status === 409 && error.message === message);
+  assert.equal(calls, 1);
+});

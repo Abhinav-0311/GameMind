@@ -24,6 +24,8 @@ from app.design_agent.grounding import (
     validate_structured_revision,
     review_targets,
     memory_is_unspecified,
+    NoMaterialRevisionError,
+    OFFLINE_REVISION_UNAVAILABLE,
 )
 from app.design_agent.provider import (
     DesignAgentProvider,
@@ -295,7 +297,11 @@ class DesignAgentWorkflow:
             if result.metadata.get("degraded"):
                 run.model_config = {**(run.model_config or {}), "degraded": True}
                 execution.details.update(degraded=True, fallback_to=result.metadata.get("fallback_to"))
-        if (execution.node_name in {"plan", "generate_blueprint", "critique", "revise"}
+        if execution.node_name == "revise" and isinstance(error, NoMaterialRevisionError) and run.provider_name == "mock":
+            error = NoMaterialRevisionError(OFFLINE_REVISION_UNAVAILABLE)
+            execution.error = str(error)
+            execution.details["http_status"] = 409
+        elif (execution.node_name in {"plan", "generate_blueprint", "critique", "revise"}
                 and (isinstance(error, (ValueError, NvidiaStructuredOutputError, NvidiaTruncatedOutputError))
                      or isinstance(error, NvidiaProviderError) and error.code == "invalid_response_envelope")):
             execution.details["http_status"] = 502

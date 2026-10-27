@@ -280,6 +280,7 @@ export default function DesignAgentPage() {
   const [runs, setRuns] = useState<DesignAgentRun[]>([]);
   const [activeRun, setActiveRun] = useState<DesignAgentRun | null>(null);
   const [trace, setTrace] = useState<DesignAgentTrace | null>(null);
+  const [configuredProvider, setConfiguredProvider] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<DesignAgentEvaluation | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
@@ -366,6 +367,7 @@ export default function DesignAgentPage() {
     && latestCritiqueExecution?.status === "failed" ? latestCritiqueExecution : undefined;
 
   const critiqueRetry = critiqueRetryChoice && critiqueRetryChoice.runId === activeRunId && critiqueRetryChoice.artifactId === artifactId ? critiqueRetryChoice : null;
+  const offlineConsent = (critiqueRetry ? activeRun?.provider_name : configuredProvider) === "mock";
 
   useEffect(() => {
     if (error && !startConsentOpen && !critiqueRetry) document.getElementById("design-run-error")?.focus();
@@ -384,13 +386,14 @@ export default function DesignAgentPage() {
       if (!mounted) return null;
       setInitialLoading(true);
       setLoadError(null);
-      return Promise.all([api.getDocuments(), api.getDesignAgentRuns()]);
+      return Promise.all([api.getDocuments(), api.getDesignAgentRuns(), api.getHealth().catch(() => null)]);
     })
       .then((result) => {
         if (!mounted || !result) return;
-        const [loadedDocuments, loadedRuns] = result;
+        const [loadedDocuments, loadedRuns, health] = result;
         setDocuments(loadedDocuments);
         setRuns(loadedRuns);
+        setConfiguredProvider(health?.llm_provider ?? null);
         const params = new URLSearchParams(window.location.search);
         const requestedDocument = loadedDocuments.find(
           (document) => document.id === params.get("document") && document.chunks_count > 0,
@@ -845,17 +848,17 @@ export default function DesignAgentPage() {
       {(startConsentOpen || critiqueRetry) && (
         <ModalDialog labelledBy="start-agent-review-title" dismissible={action !== "start" && action !== "critique"} onClose={() => { setStartConsentOpen(false); setCritiqueRetry(null); }}>
           <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
-            <p className="page-kicker">Governed AI review</p>
+            <p className="page-kicker">{offlineConsent ? "Offline review" : "Governed AI review"}</p>
             <h2 id="start-agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{critiqueRetry ? "Retry this draft's critique?" : "Start a cited review?"}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-              {critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured hosted provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm."}
+              {offlineConsent ? "This run is offline. The mock provider processes source excerpts locally and sends nothing to a hosted provider. It uses deterministic extraction, not newly generated content." : critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured hosted provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm."}
             </p>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button type="button" onClick={() => { setStartConsentOpen(false); setCritiqueRetry(null); }} disabled={action === "start" || action === "critique"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={critiqueRetry ? retryCritique : startRun} disabled={action === "start" || action === "critique"} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
-                {critiqueRetry ? action === "critique" ? "Retrying critique" : "Retry saved draft review" : action === "start" ? "Starting review" : "Start governed review"}
+                {critiqueRetry ? action === "critique" ? "Retrying critique" : "Retry saved draft review" : action === "start" ? "Starting review" : offlineConsent ? "Start offline review" : "Start governed review"}
               </button>
             </div>
           </section>
@@ -1125,7 +1128,9 @@ export default function DesignAgentPage() {
                     )}
                     <button
                       type="button"
-                      className="btn-primary w-full"
+                      className={action !== null || approvalBlocked
+                        ? "inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center border border-[var(--border)] bg-[var(--card-muted)] px-4 text-sm font-semibold text-[var(--text-secondary)]"
+                        : "btn-primary w-full"}
                       onClick={() => submitReview("approve")}
                       disabled={action !== null || approvalBlocked}
                       title={approvalBlocked ? "Resolve the listed review blockers before approval." : undefined}

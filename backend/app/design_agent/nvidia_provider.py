@@ -781,16 +781,10 @@ class NvidiaDesignAgentProvider:
             sources = [item for item in compacted_evidence if "summary" in item.get("matched_sections", [])]
             # shortcut: seed only one document's explicitly headed premise; other layouts stay model-reviewed.
             if sources and sources[0].get("document_id") and len({item.get("document_id") for item in sources}) == 1:
-                for item in sorted(sources, key=lambda entry: entry.get("chunk_index", 0)):
-                    chunk = SimpleNamespace(id=item["chunk_id"], content=item.get("content", ""), chunk_index=0)
-                    for _, line, _, heading in BlueprintService()._iter_chunk_lines_with_context([chunk]):
-                        if re.search(r"\b(summary|overview|synopsis|high concept|introduction)\b", heading, re.I) and line in chunk.content:
-                            source_summary = {"content": {"description": line}, "citations": [chunk.id],
-                                "confidence": "Medium", "warnings": [
-                                    "Locally extracted exact source excerpt, not model-authored. Review the cited premise in context."]}
-                            break
-                    if source_summary:
-                        break
+                source_summary = BlueprintService().extract_heading_summary([
+                    SimpleNamespace(id=item["chunk_id"], content=item.get("content", ""), chunk_index=0)
+                    for item in sorted(sources, key=lambda entry: entry.get("chunk_index", 0))
+                ])
         broad = self._invoke(
             node_name="generate_blueprint",
             expected_model=ContentBlueprintDraft if plan.get("design_contract_version") == 2 else GeneratedBlueprintContent,

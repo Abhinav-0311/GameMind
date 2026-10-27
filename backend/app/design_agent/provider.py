@@ -127,6 +127,10 @@ class MockDesignAgentProvider:
 
     @staticmethod
     def _extract_blueprint(evidence: list[dict[str, Any]]) -> BlueprintContent:
+        documents = {document: index for index, document in enumerate(dict.fromkeys(
+            item.get("document_id") for item in evidence))}
+        evidence = sorted(evidence, key=lambda item: (
+            documents[item.get("document_id")], int(item.get("chunk_index") or 0)))
         chunks = [
             _EvidenceChunk(
                 id=str(item["chunk_id"]),

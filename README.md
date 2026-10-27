@@ -58,6 +58,14 @@ LangChain chain, owns orchestration. [Architecture](ARCHITECTURE.md) and
 
 Prerequisites: Docker Engine/Compose, Node.js 20 and npm.
 
+Start with the [synthetic Frostpeak GDD](docs/demo/sample_gdd_frostpeak.md): create
+a new workspace, then use **Sources → Load Frostpeak demo** (or upload that file).
+Use a fresh workspace so historical QA runs do not block the selected source.
+The default `LLM_PROFILE=test` mock mode is local deterministic extraction: it
+does not generate new content and cannot take the governed Frostpeak design run
+through approval.
+It is for inspecting sources and the workflow, not an approval/export demo.
+
 From the repository root in PowerShell (create `.env` only if it is absent):
 
 ```powershell
@@ -84,7 +92,15 @@ the separate queued configuration described in [deployment.md](docs/deployment.m
 ### Local versus hosted behavior
 
 The example environment defaults to mock/local behavior and needs no hosted key.
-Local blueprints extract existing text; they are not fresh NVIDIA generation.
+Local blueprints extract existing text; they are not fresh NVIDIA/Gemini generation.
+The full generation → correction → approval → design-brief workflow needs a free
+Gemini API key with `LLM_PROFILE=dev` and an explicitly configured
+`GEMINI_DEV_MODEL=gemini-3.5-flash-lite`. Hosted execution still needs consent
+and passing content checks; a key is not a guarantee that a run will pass.
+The recorded approval/export success is an **API-path check**, not a
+browser-verified approval/export UI. The live mock browser walkthrough stopped
+at a blocked draft and failed correction; see the
+[browser report](docs/acceptance/2026-10-27-browser-walkthrough.md).
 The general runtime dialogue provider is also currently local/mock. NVIDIA is
 implemented in the design-agent provider, not every endpoint with an AI label.
 
@@ -110,6 +126,12 @@ For Gemini, set `GEMINI_API_KEY` and the model IDs in `.env` (never commit keys)
 - `LLM_PROFILE=dev`: all nodes use `GEMINI_DEV_MODEL` (example: `gemini-3.5-flash-lite`).
 - `LLM_PROFILE=showcase`: planning uses `GEMINI_DEV_MODEL`; generation, critique and
   revision use `GEMINI_SHOWCASE_MODEL` (example: `gemini-3.8-flash`).
+
+The newer Gemini Flash models often returned **503 on the free tier in our
+recorded acceptance attempts**; this is not a statement about every account or
+current service availability. The documented dev profile therefore uses
+Flash-Lite. See [the failed showcase attempts and API acceptance evidence](docs/acceptance/2026-10-23.md).
+Models remain environment-selected; no model or `.env` is silently changed.
 
 API and worker startup check every distinct configured model with Google's model
 API and fail clearly if unavailable. No model ID is silently substituted. Requests
@@ -159,7 +181,8 @@ keys/projects using a different database are not covered. Existing `.env` values
 are never automatically rewritten.
 
 Free-tier Gemini input/output may be used by Google to improve its products;
-use demo or non-confidential GDDs. See [Google's unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
+use only the synthetic Frostpeak sample or other non-confidential GDDs in that
+mode, not private production documents. See [Google's unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
 Stateless requests do not override those terms.
 
 Manual smoke (inside an SDK-equipped backend environment, **not pytest**):

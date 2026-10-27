@@ -1460,6 +1460,13 @@ def _without_implementation_notes(value: Any) -> Any:
     return value
 
 
+OFFLINE_REVISION_UNAVAILABLE = "The offline provider cannot make this correction. Use a hosted provider or start a new run."
+
+
+class NoMaterialRevisionError(ValueError):
+    """A revision changed only bookkeeping, not the requested design content."""
+
+
 def validate_structured_revision(
     before: dict[str, Any],
     after: dict[str, Any],
@@ -1507,7 +1514,8 @@ def validate_structured_revision(
             changed_targets.append(target)
     unchanged_targets = targets - set(changed_targets)
     if unchanged_targets:
-        raise ValueError(
+        error_type = ValueError if changed_targets else NoMaterialRevisionError
+        raise error_type(
             "Revision did not materially change every human-targeted section; unchanged: "
             + ", ".join(sorted(unchanged_targets))
         )

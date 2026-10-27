@@ -250,7 +250,23 @@ class BlueprintService:
         db.refresh(blueprint)
         return blueprint
 
+    def extract_heading_summary(self, chunks: List[DocumentChunk]) -> Dict[str, Any] | None:
+        """Preserve the hosted adapter's exact, explicitly headed source premise."""
+        for chunk in chunks:
+            for _, line, _, heading in self._iter_chunk_lines_with_context([chunk]):
+                if re.search(r"\b(summary|overview|synopsis|high concept|introduction)\b", heading, re.I) and line in chunk.content:
+                    return {"content": {"description": line}, "citations": [str(chunk.id)],
+                            "confidence": "Medium", "warnings": [
+                                "Locally extracted exact source excerpt, not model-authored. Review the cited premise in context."]}
+        return None
+
     def _parse_summary(self, doc_title: str, chunks: List[DocumentChunk]) -> Dict[str, Any]:
+        headed = self.extract_heading_summary(chunks)
+        if headed:
+            return self._section(
+                {"title": doc_title, "description": headed["content"]["description"]},
+                headed["citations"], "High", [],
+            )
         citations: List[str] = []
         description = None
         for chunk, line in self._iter_chunk_lines(chunks):

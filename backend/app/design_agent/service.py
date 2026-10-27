@@ -11,6 +11,7 @@ from app.design_agent.contracts import ResumeDecision
 from app.design_agent.jobs import DesignAgentJobService
 from app.design_agent.provider_factory import build_design_agent_provider
 from app.design_agent.llm_provider import NvidiaProviderError
+from app.design_agent.grounding import OFFLINE_REVISION_UNAVAILABLE
 from app.design_agent.schemas import (
     DesignAgentArtifactResponse,
     DesignAgentCritiqueResponse,
@@ -398,8 +399,11 @@ class DesignAgentService:
             remaining = max(0, run.max_revisions - run.revision_count)
             failures = (run.model_config or {}).get("consecutive_revision_failures", 0)
             limit = settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES
+            message = (OFFLINE_REVISION_UNAVAILABLE + " The previous draft and critique are unchanged. "
+                       if run.provider_name == "mock" and run.last_error == OFFLINE_REVISION_UNAVAILABLE
+                       else "The revision failed; the previous draft and critique are unchanged. ")
             raise HTTPException(status_code=self._failure_status(db, run, 409, node_name="revise"),
-                detail="The revision failed; the previous draft and critique are unchanged. "
+                detail=message +
                 f"No revision was consumed; {remaining} successful revision slot(s) remain. "
                 f"Consecutive failed revisions: {failures}/{limit}. "
                 + ("Failed revision limit reached; start a new run with fresh consent." if failures >= limit
