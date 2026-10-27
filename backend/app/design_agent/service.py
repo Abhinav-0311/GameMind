@@ -32,11 +32,19 @@ from app.models.design_agent import (
     DesignAgentEvidenceSnapshot,
     DesignAgentJob,
     DesignAgentNodeExecution,
+    DesignAgentReviewEvent,
     DesignAgentRun,
 )
 from app.models.document import Document
 from app.models.user import User
 from app.services.blueprint_brief_service import BlueprintBriefService
+
+
+REJECTED_DRAFT_APPROVAL_MESSAGE = (
+    "This draft already has a recorded rejection. The correction failed and no "
+    "revised draft was saved, so this draft cannot currently be approved. Request "
+    "another correction or start a new isolated run."
+)
 
 
 class DesignAgentService:
@@ -89,6 +97,11 @@ class DesignAgentService:
             DesignAgentCritique.game_project_id == run.game_project_id,
             DesignAgentCritique.artifact_id == reviewed_artifact.id,
         ).order_by(DesignAgentCritique.created_at.desc(), DesignAgentCritique.id.desc()).first() if reviewed_artifact else None
+        rejected = db.query(DesignAgentReviewEvent.id).filter(
+            DesignAgentReviewEvent.run_id == run.id,
+            DesignAgentReviewEvent.game_project_id == run.game_project_id,
+            DesignAgentReviewEvent.artifact_id == artifact.id,
+            DesignAgentReviewEvent.decision == "reject").first() if artifact and artifact.artifact_type != "final" else None
         return DesignAgentRunResponse(
             id=run.id,
             game_project_id=run.game_project_id,
@@ -106,6 +119,7 @@ class DesignAgentService:
             consecutive_revision_failures=(run.model_config or {}).get("consecutive_revision_failures", 0),
             max_consecutive_revision_failures=settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES,
             last_error=run.last_error,
+            approval_blocked_reason=REJECTED_DRAFT_APPROVAL_MESSAGE if rejected else None,
             created_at=run.created_at,
             updated_at=run.updated_at,
             completed_at=run.completed_at,
@@ -333,16 +347,23 @@ class DesignAgentService:
                 require_degraded_acknowledgement(db, run, acknowledge_degraded)
             except ValueError as error:
                 raise HTTPException(status_code=409, detail=str(error)) from error
-        artifact = None
         requires_quality_review = requires_design_quality_review(run, confirmed_proposals)
+        artifact = db.query(DesignAgentArtifact).filter(
+            DesignAgentArtifact.run_id == run.id,
+            DesignAgentArtifact.game_project_id == game_project_id,
+        ).order_by(DesignAgentArtifact.version.desc()).first()
         if artifact_id is not None or (decision == "approve" and requires_quality_review):
-            artifact = db.query(DesignAgentArtifact).filter(
-                DesignAgentArtifact.run_id == run.id,
-                DesignAgentArtifact.game_project_id == game_project_id,
-            ).order_by(DesignAgentArtifact.version.desc()).first()
             if artifact is None or (artifact_id is not None and artifact.id != artifact_id):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                                     detail="Review the current draft; the selected artifact is unavailable or stale.")
+        existing_review = db.query(DesignAgentReviewEvent).filter(
+            DesignAgentReviewEvent.run_id == run.id,
+            DesignAgentReviewEvent.game_project_id == game_project_id,
+            DesignAgentReviewEvent.artifact_id == artifact.id).first() if artifact else None
+        if existing_review and existing_review.decision != decision:
+            raise HTTPException(status_code=409, detail=(REJECTED_DRAFT_APPROVAL_MESSAGE
+                if existing_review.decision == "reject" else
+                "This draft already has a recorded approval and cannot currently be rejected."))
         if (confirmed_proposals or acknowledge_degraded) and artifact_id is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                                 detail="Proposal confirmation or degraded acknowledgement requires the exact artifact_id.")

@@ -451,6 +451,7 @@ export interface DesignAgentRun {
   consecutive_revision_failures: number;
   max_consecutive_revision_failures: number;
   last_error?: string | null;
+  approval_blocked_reason?: string | null;
   created_at: string;
   updated_at: string;
   completed_at?: string | null;

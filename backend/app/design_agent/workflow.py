@@ -1,5 +1,7 @@
 import time
 import copy
+import logging
+import traceback
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -49,6 +51,9 @@ from app.models.design_agent import (
 from app.models.document import Document
 from app.models.design_decision import DesignDecision
 from app.services.rag_service import RAGService
+
+
+logger = logging.getLogger(__name__)
 
 
 class FinalizationIntegrityError(ValueError):
@@ -129,11 +134,35 @@ class DesignAgentWorkflow:
             return self._compile(saver).invoke(initial_state, self._thread_config(run.id))
 
     def resume(self, run_id: UUID, decision: ResumeDecision) -> dict[str, Any]:
-        with self._checkpointer() as saver:
-            return self._compile(saver).invoke(
-                Command(resume=decision.model_dump()),
-                self._thread_config(run_id),
-            )
+        started = time.perf_counter()
+        try:
+            with self._checkpointer() as saver:
+                return self._compile(saver).invoke(
+                    Command(resume=decision.model_dump()),
+                    self._thread_config(run_id),
+                )
+        except Exception as error:
+            messages = [f"{type(error).__name__}: {error}", traceback.format_exc()]
+            # Traceback formatting omits locals; redact configured credentials in exception text too.
+            for name in type(settings).model_fields:
+                value = getattr(settings, name)
+                if (isinstance(value, str) and len(value) >= 4
+                        and (name == "DATABASE_URL" or any(part in name for part in ("KEY", "SECRET", "PASSWORD", "TOKEN")))):
+                    messages = [message.replace(value, "[REDACTED]") for message in messages]
+            logger.error("Design-agent resume failed for run %s\n%s", run_id, messages[1])
+            with self._session() as db:
+                run = db.get(DesignAgentRun, run_id)
+                if run and run.current_node == "human_review":
+                    execution = db.query(DesignAgentNodeExecution).filter_by(
+                        run_id=run.id, game_project_id=run.game_project_id,
+                        node_name="human_review", status="waiting").order_by(
+                        DesignAgentNodeExecution.attempt.desc()).first()
+                    if execution is None:
+                        execution = self._begin_execution(db, run, "human_review")
+                    self._fail_execution(db, run, execution, started, RuntimeError(messages[0]))
+                    execution.details = {**(execution.details or {}), "http_status": 500}
+                    db.commit()
+            raise
 
     @contextmanager
     def _session(self) -> Iterator[Session]:

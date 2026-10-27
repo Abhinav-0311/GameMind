@@ -167,7 +167,7 @@ def test_revalidating_derived_notes_ignores_declared_ids_but_not_unsupported_qua
 def test_normal_governed_api_flow_requires_consent_confirmation_and_explicit_design_approval(audit_client, monkeypatch, allow_memory):
     client, app, db, _, tables, *_ = audit_client
     metadata = next(iter(tables.values())).metadata
-    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint, DesignAgentReviewEvent):
+    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint):
         Table(model.__tablename__, metadata, *[
             Column(c.name, JSON() if isinstance(c.type, JSONB) else c.type, primary_key=c.primary_key,
                    server_default=None if isinstance(c.type, JSONB) else c.server_default)

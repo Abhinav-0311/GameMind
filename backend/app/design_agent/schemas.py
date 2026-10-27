@@ -173,6 +173,7 @@ class DesignAgentRunResponse(BaseModel):
     consecutive_revision_failures: int = 0
     max_consecutive_revision_failures: int = 3
     last_error: str | None = None
+    approval_blocked_reason: str | None = None
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None

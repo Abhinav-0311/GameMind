@@ -46,3 +46,27 @@ test("offline unsupported correction preserves the 409 message without retrying"
     (error) => error instanceof ApiRequestError && error.status === 409 && error.message === message);
   assert.equal(calls, 1);
 });
+
+test("run response exposes the current draft approval blocker unchanged", async (context) => {
+  const message = "This draft already has a recorded rejection. Request another correction or start a new isolated run.";
+  context.mock.method(globalThis, "fetch", async () => Response.json({
+    id: "run", status: "awaiting_review", approval_blocked_reason: message,
+    current_artifact: { id: "unchanged-draft" },
+  }));
+  const run = await api.getDesignAgentRun("run");
+  assert.equal(run.approval_blocked_reason, message);
+  assert.equal(run.current_artifact.id, "unchanged-draft");
+});
+
+test("conflicting approval preserves the 409 explanation and sends no retry", async (context) => {
+  let calls = 0;
+  const message = "This draft already has a recorded rejection. The correction failed and no revised draft was saved, so this draft cannot currently be approved. Request another correction or start a new isolated run.";
+  context.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json({ detail: message }, { status: 409 });
+  });
+  await assert.rejects(api.reviewDesignAgentRun("run", {
+    decision: "approve", artifact_id: "unchanged-draft",
+  }), (error) => error instanceof ApiRequestError && error.status === 409 && error.message === message);
+  assert.equal(calls, 1);
+});

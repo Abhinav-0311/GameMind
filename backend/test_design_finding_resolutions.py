@@ -25,7 +25,8 @@ def audit_client():
     event.listen(engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
     metadata = MetaData()
     classes = [models.DesignAgentRun, models.DesignAgentArtifact, models.DesignAgentCritique,
-               models.DesignAgentEvidenceSnapshot, models.DesignAgentNodeExecution, User, ProjectMembership]
+               models.DesignAgentEvidenceSnapshot, models.DesignAgentNodeExecution,
+               models.DesignAgentReviewEvent, User, ProjectMembership]
     resolution = getattr(models, "DesignAgentFindingResolution", None)
     if resolution is not None:
         classes.append(resolution)

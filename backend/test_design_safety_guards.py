@@ -1,5 +1,7 @@
 """Safety-policy regressions through the normal API and disposable database."""
 import copy
+import logging
+from unittest.mock import Mock
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -122,6 +124,82 @@ def test_failed_revision_preserves_budget_and_has_bounded_attempts(review_api, d
     assert db_session.query(DesignAgentArtifact).filter_by(run_id=run.id).count() == 1
 
 
+@pytest.mark.parametrize('mode', ['inline', 'queued'])
+@pytest.mark.parametrize('include_artifact', [True, False])
+def test_rejected_unchanged_draft_conflict_never_resumes_and_can_reject_again(
+        review_api, db_session, monkeypatch, mode, include_artifact):
+    client, workflow, run, draft, critique, state = review_api
+    before, critique_before = copy.deepcopy(draft.content), copy.deepcopy(critique.content)
+    workflow.provider.revise = Mock(side_effect=NvidiaStructuredOutputError(
+        'Offline invalid revision', code='structured_output_invalid'))
+    assert review(client, run, draft, state).status_code == 502
+    event = db_session.query(DesignAgentReviewEvent).filter_by(run_id=run.id).one()
+    event_before = (event.id, event.decision, event.reason, copy.deepcopy(event.details))
+    with workflow._checkpointer() as saver:
+        graph, config = workflow._compile(saver), workflow._thread_config(run.id)
+        checkpoint = graph.get_state(config)
+    assert checkpoint.next == ('human_review',) and checkpoint.values['revision_failed']
+    resume = Mock(wraps=workflow.resume)
+    monkeypatch.setattr(workflow, 'resume', resume)
+    monkeypatch.setattr(settings, 'DESIGN_AGENT_EXECUTION_MODE', mode)
+    body = {'decision': 'approve'}
+    if include_artifact:
+        body.update(artifact_id=str(draft.id), confirmed_proposals=state['confirmed_proposals'])
+    response = client.post(f'/api/v1/design-agent/runs/{run.id}/review',
+                          headers={'X-Game-Project-ID': run.game_project_id}, json=body)
+    assert response.status_code == 409, response.text
+    message = response.json()['detail']
+    assert 'recorded rejection' in message and 'cannot currently be approved' in message
+    assert 'another correction' in message and 'new isolated run' in message
+    resume.assert_not_called()
+    with workflow._checkpointer() as saver:
+        unchanged = workflow._compile(saver).get_state(config)
+    assert unchanged.config == checkpoint.config and unchanged.next == checkpoint.next
+    assert unchanged.tasks == checkpoint.tasks
+    db_session.expire_all()
+    assert (event.id, event.decision, event.reason, event.details) == event_before
+    assert db_session.query(DesignAgentReviewEvent).filter_by(run_id=run.id).count() == 1
+    assert draft.content == before and critique.content == critique_before
+    current = client.get(f'/api/v1/design-agent/runs/{run.id}',
+                         headers={'X-Game-Project-ID': run.game_project_id}).json()
+    assert current['approval_blocked_reason'] == message
+    assert current['status'] == 'awaiting_review'
+    monkeypatch.setattr(settings, 'DESIGN_AGENT_EXECUTION_MODE', 'inline')
+    assert review(client, run, draft, state).status_code == 502
+    assert resume.call_count == 1 and workflow.provider.revise.call_count == 2
+    db_session.expire_all()
+    assert run.revision_count == 1 and run.model_config['consecutive_revision_failures'] == 2
+    assert (event.id, event.decision, event.reason, event.details) == event_before
+    assert draft.content == before and critique.content == critique_before
+
+
+def test_unexpected_review_resume_failure_is_logged_and_visible_in_trace(
+        review_api, db_session, monkeypatch, caplog):
+    client, workflow, run, draft, _, state = review_api
+    secret = 'offline-sensitive-key-for-redaction'
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', secret)
+    # Alembic's test setup disables pre-existing application loggers.
+    monkeypatch.setattr(logging.getLogger('app.design_agent.workflow'), 'disabled', False)
+    def unexpected(_state):
+        raise RuntimeError('Unexpected review failure ' + secret)
+    monkeypatch.setattr(workflow, '_human_review', unexpected)
+    with caplog.at_level('ERROR'):
+        response = review(client, run, draft, state, approve=True)
+    assert response.status_code == 500
+    assert response.json()['detail'] == 'The design-agent workflow could not resume. Inspect the run trace for details.'
+    assert str(run.id) in caplog.text and 'Traceback (most recent call last)' in caplog.text
+    assert 'RuntimeError' in caplog.text and 'Unexpected review failure' in caplog.text
+    assert secret not in caplog.text and '[REDACTED]' in caplog.text
+    trace = client.get(f'/api/v1/design-agent/runs/{run.id}/trace',
+                       headers={'X-Game-Project-ID': run.game_project_id}).json()['items']
+    failed = [item for item in trace if item['node_name'] == 'human_review' and item['status'] == 'failed']
+    assert len(failed) == 1 and 'Unexpected review failure' in failed[0]['error']
+    assert secret not in str(failed) and failed[0]['details']['http_status'] == 500
+    db_session.expire_all()
+    assert secret not in run.last_error
+    assert not db_session.query(DesignAgentReviewEvent).filter_by(run_id=run.id).count()
+
+
 def test_invalid_mock_result_retains_degraded_evidence(review_api, db_session):
     _, workflow, run, _, _, state = review_api
     def result():
@@ -164,6 +242,7 @@ def test_queued_failed_revisions_have_distinct_bounded_attempts(review_api, db_s
 
 
 def test_successful_revision_increments_saved_budget_and_resets_failures(review_api, db_session):
+    from app.design_agent.review_policy import build_review_provenance
     client, workflow, run, draft, _, state = review_api
     run.model_config = {**run.model_config, 'consecutive_revision_failures': 1}
     db_session.commit()
@@ -171,15 +250,29 @@ def test_successful_revision_increments_saved_budget_and_resets_failures(review_
     candidate['npc_memory_design']['content']['rules'][1] += ' Do not infer any persistence implementation from these source excerpts.'
     workflow.provider.revise = lambda *args, **kwargs: ProviderResult(content=candidate,
         provider_name='gemini', model_name='offline-revision')
-    workflow.provider.critique = lambda *args, **kwargs: ProviderResult(content={
-        'verdict': 'ready_for_review', 'summary': 'Offline review control', 'findings': [],
-        'review_mode': 'defect_detection', 'source_coverage': {key: 'covered' for key in candidate}},
-        provider_name='gemini', model_name='offline-critic')
+    def critique(content, evidence, *, review_request):
+        raw = {'verdict': 'ready_for_review', 'summary': 'Offline review control', 'findings': [],
+               'review_mode': 'defect_detection', 'source_coverage': {key: 'covered' for key in content}}
+        return ProviderResult(content=raw, provider_name='gemini', model_name='offline-critic',
+            metadata={'finding_review_provenance': build_review_provenance(
+                raw, content, evidence, review_request, clean=True)})
+    workflow.provider.critique = critique
     response = review(client, run, draft, state)
     assert response.status_code == 200, response.text
     db_session.expire_all()
     assert run.revision_count == 2 and run.model_config['consecutive_revision_failures'] == 0
     assert db_session.query(DesignAgentArtifact).filter_by(run_id=run.id).count() == 2
+    revised = response.json()
+    assert revised['approval_blocked_reason'] is None
+    confirmations = [{key: item[key] for key in ('section', 'record_id', 'assumption')}
+                     for item in revised['critique']['content']['quality_scorecard']['unresolved_assumptions']]
+    approved = client.post(f'/api/v1/design-agent/runs/{run.id}/review',
+        headers={'X-Game-Project-ID': run.game_project_id}, json={'decision': 'approve',
+        'artifact_id': revised['current_artifact']['id'], 'confirmed_proposals': confirmations})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()['status'] == 'completed'
+    events = db_session.query(DesignAgentReviewEvent).filter_by(run_id=run.id).all()
+    assert len(events) == 2 and {event.decision for event in events} == {'reject', 'approve'}
 
 
 @pytest.mark.parametrize('provider_name', ['nvidia', 'gemini'])

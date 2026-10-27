@@ -193,7 +193,7 @@ function PreApprovalScorecard({ scorecard, current = false, findings = [] }: { s
   );
 }
 
-function ApprovalGate({ scorecard, needsRevision, status, revisionBudgetExhausted, proposalsSelected }: { scorecard?: DesignAgentQualityScorecard; needsRevision: boolean; status: string; revisionBudgetExhausted: boolean; proposalsSelected: boolean }) {
+function ApprovalGate({ scorecard, needsRevision, status, revisionBudgetExhausted, proposalsSelected, approvalBlockedReason }: { scorecard?: DesignAgentQualityScorecard; needsRevision: boolean; status: string; revisionBudgetExhausted: boolean; proposalsSelected: boolean; approvalBlockedReason?: string | null }) {
   const blockers = scorecard?.blockers ?? [];
   const blocked = needsRevision || (scorecard ? !scorecard.passed : false);
   if (status !== "awaiting_review") {
@@ -215,6 +215,15 @@ function ApprovalGate({ scorecard, needsRevision, status, revisionBudgetExhauste
         <p className="page-kicker">Approval status</p>
         <p className="mt-2 text-sm font-bold text-[var(--foreground)]">{lifecycle.title}</p>
         <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{lifecycle.body}</p>
+      </section>
+    );
+  }
+  if (approvalBlockedReason) {
+    return (
+      <section className="border-b border-[var(--border)] bg-[var(--card-muted)] p-5" aria-label="Approval status">
+        <p className="page-kicker">Approval status</p>
+        <p className="mt-2 text-sm font-bold">Approval unavailable</p>
+        <p id="recorded-rejection-help" className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{approvalBlockedReason}</p>
       </section>
     );
   }
@@ -347,7 +356,8 @@ export default function DesignAgentPage() {
     && !preApprovalScorecard.quest_integration_gaps?.length
     && !preApprovalScorecard.recovered_sections?.length && pendingProposals.length > 0
     && pendingProposals.length <= 64 && selectedProposals.length === pendingProposals.length && !needsRevision);
-  const approvalBlocked = findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
+  const approvalBlocked = Boolean(activeRun?.approval_blocked_reason)
+    || findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
     || (activeRun?.degraded === true && !degradedAcknowledged)
     || Boolean(preApprovalScorecard && !preApprovalScorecard.passed && !confirmationReady);
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
@@ -1039,7 +1049,7 @@ export default function DesignAgentPage() {
             </section>
 
             <aside className="status-strip overflow-hidden rounded-lg">
-              <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} status={activeRun.status} revisionBudgetExhausted={revisionBudgetExhausted} proposalsSelected={confirmationReady} />
+              <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} status={activeRun.status} revisionBudgetExhausted={revisionBudgetExhausted} proposalsSelected={confirmationReady} approvalBlockedReason={activeRun.approval_blocked_reason} />
               {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} current={Boolean(systemChecks)} findings={systemChecks?.findings} />}
               {reviewable && pendingProposals.length > 0 && (
                 <fieldset className="border-b border-[var(--border)] p-5" disabled={action !== null} aria-describedby="proposal-choice-help">
@@ -1133,7 +1143,8 @@ export default function DesignAgentPage() {
                         : "btn-primary w-full"}
                       onClick={() => submitReview("approve")}
                       disabled={action !== null || approvalBlocked}
-                      title={approvalBlocked ? "Resolve the listed review blockers before approval." : undefined}
+                      aria-describedby={activeRun.approval_blocked_reason ? "recorded-rejection-help" : undefined}
+                      title={activeRun.approval_blocked_reason || (approvalBlocked ? "Resolve the listed review blockers before approval." : undefined)}
                     >
                       {action === "approve" ? "Finalizing…" : approvalBlocked ? "Approval blocked" : "Approve run"}
                     </button>
