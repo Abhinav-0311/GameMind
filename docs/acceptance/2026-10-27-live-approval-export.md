@@ -294,3 +294,139 @@ No new dashboard UX behavior or content quality was observed. The earlier quest-
 ### Cleanup and scope
 
 Neither backend nor frontend was started by this attempt, and no browser session was opened, so there were no newly started application services to stop. Docker itself reported startup termination. No application data, source, `.env`, README or MVP file was modified; the only authorized repository change is this appended report. No push.
+
+### Resumed with Docker running — 2026-10-28
+
+**Verdict: FAIL — one real browser correction was submitted; Gemini returned HTTP 200, but its response failed local schema validation. No revised artifact, follow-up critique, approval or export was produced.** The earlier Docker-start failure above remains historical; it did not consume this correction attempt.
+
+#### Preparation and eligibility
+
+- Docker was now running with the existing application PostgreSQL and Chroma containers. Sandbox access to its named pipe was denied, so the same commands were run with the required host-tool permission; no application repair was made.
+- Application source still matched **`f79e059281ffd302358b18e15e94cbbc864dc330`**: `git diff f79e059 HEAD -- backend frontend docker-compose.yml` was empty. HEAD before this addition was `fb7b0fd`, another document-only commit. The running backend used **`gamemind-revise-tests:local`**, image `sha256:77a2481d5d69bc58d1f4f2fa93a6ff032dbf6a9c653c93ea7545d095d9ba592a`, with **`E:\College\Project\Bot\backend:/app`** source bind-mounted and restart policy **`no`**.
+- Process-only settings: `LLM_PROFILE=dev`, `GEMINI_DEV_MODEL=gemini-3.5-flash-lite`, `GEMINI_TIMEOUT_SECONDS=180`, `DESIGN_AGENT_FALLBACK_TO_MOCK=true`, `PYTHONPATH=/app`. Effective revise fallback exclusion was `['revise']`; schema reduction nodes `['revise']`; literal-preservation threshold **6,000 bytes**; per-run cap **12**; job lease **300 seconds**. No `.env` change.
+- Before starting the backend, `gemini_usage.py` reported Pacific date **2026-10-28**, Flash-Lite **0/500**, **500 remaining**, RPM **5**, not exhausted; Flash **0/20**, RPM **3**. The required remaining budget of 15 passed. The CLI itself did not contact Google.
+- A PostgreSQL **READ ONLY** transaction confirmed the target run was **awaiting_review / human_review, revision 0/2, no review events**, one mutable v1 draft, and existing per-run usage **3/12**. No protected run was resumed, rejected or otherwise modified.
+- Started the existing backend with the preceding stdin Compose override, cached image, `--no-build --pull never`; frontend with `NEXT_PUBLIC_API_URL=http://localhost:8000`, `LLM_PROFILE=dev`, `NEXT_TELEMETRY_DISABLED=1`, `npm run dev`. `/health` and `/ready` both returned **200**, database/Chroma healthy, effective `llm_provider=gemini`. The health response still says `ai_mode=local_demo` despite the effective hosted provider; this label is not evidence that the run is offline.
+- Startup's model-verification GET returned **200**, moving Flash-Lite usage **0→1**. Known Chroma telemetry signature noise was non-fatal. No startup traceback, readiness failure or container restart occurred.
+
+#### Browser action — exactly once
+
+Used real installed Playwright/Chromium **149.0.7827.55**, headless, **1440×1000**, against `http://localhost:3000/design-agent` and the live backend. No intercepted routes, fixtures or `dashboard-states.mjs`.
+
+Selected the existing **Final MVP Frostpeak Dev 20261027 01** workspace through the dashboard dropdown and opened its existing run. Read-only API verification returned **200**, current draft **`729caf30-1a03-49fb-82b7-0dab811ac4e6`**, critique **`b860c8ca-d8e6-492c-ad5b-d01a8b25b5f2`**. Its canonical v1 content hash still matched:
+
+```text
+ad1b7cee32ed49ca804b217362703569ef49a499da02df0cbac9af7d5d516d34
+```
+
+Opened **Request revision**. The form initially selected **Summary**, so explicitly unchecked it and checked **NPCs only**. Entered and verified this exact reason, then clicked **Send revision request ONCE**:
+
+> The critic identifies a real numbering inconsistency, but the stored quest IDs match the spoken topics. Preserve Eldrin's completion eligibility as quest_2 because his line acknowledges sky-iron retrieval; change its situation to 'Quest 2 completion acknowledgment'. Preserve Kaelen's completion eligibility as quest_1 because his line acknowledges the border post; change its situation to 'Quest 1 completion acknowledgment'. Also correct Eldrin's progress label from Quest 0 to Quest 1 and Kaelen's progress label from Quest 1 to Quest 2, including corresponding manual-test wording. Do not swap quest IDs, change spoken lines, rewards, objectives or unrelated sections.
+
+Retained browser request confirms `decision=reject`, `target_sections=['npc_archetypes']`, the exact current artifact ID and exact reason. No finding-resolution control was used; no second rejection, approval or retry request was made. Existing run consent remained in effect; no new consent dialog appeared for this correction.
+
+#### Transport and failure
+
+The single browser POST `/api/v1/design-agent/runs/4a1e7f1f-b6a2-410c-a746-d8e52daf2ba2/review` returned **502** after **4,352 ms**.
+
+```text
+2026-10-28T07:38:31.995563105Z Gemini schema node=revise mode=reduced bytes=11212
+2026-10-28T07:38:35.675123536Z POST https://generativelanguage.googleapis.com/v1beta/interactions HTTP/1.1 200 OK
+```
+
+This is a locally rejected successful Google response, **not** a Google 400/503 or a timeout. The log retains wire mode and compact byte size, not the complete wire schema. Failed revise execution **`46635d67-32b0-4352-9a0f-977ae71c2b86`** records:
+
+| Field | Actual result |
+| --- | --- |
+| Provider/model | Gemini / `gemini-3.5-flash-lite`; no mock revision substituted |
+| Node latency | **3,848 ms** |
+| Tokens | **4,004 input + 779 output = 4,783**; cost unavailable |
+| Requests/retries/backoff | **1 request**, no retry or backoff |
+| Finish / validation | `stop` / `failure_kind=schema`, `failure_code=structured_output_invalid` |
+| Repair | `repair_skipped=governed_schema_failure`; no repair or truncation resend |
+| Diagnostic error | `Gemini output has invalid governed design fields; regeneration is required.` |
+
+Diagnostics report **81 validation errors**, but retain only the first **20** sanitized records. These include alternative union-arm failures; **81 is not a count of 81 independently established defects**. Actual returned values, their input types and union-arm names are not retained: `llm_provider.py` uses `errors(include_input=False, include_context=False, include_url=False)` and stores only rule codes and sanitized paths. Therefore **sanitized returned type is unavailable for every row below**; it would be dishonest to invent it. `<unknown_field>` is the actual retained redaction.
+
+| Retained records | Sanitized path beneath `changes/0/<unknown_field>/` | Rule |
+| --- | --- | --- |
+| 1, 10, 12, 14, 17 | `artifact_path` | `literal_error`: allowed literal/path did not match that union arm |
+| 2, 3, 5 | `replacement/0/<unknown_field>/dialogue_triggers/2/quest_index` | `less_than_equal`: upper-bound failure; the dialogue contract limits indices to 0–1 |
+| 4 | `replacement/0/<unknown_field>/name` | `literal_error` |
+| 6, 8, 9 | `replacement/1/<unknown_field>/dialogue_triggers/1/quest_index` | `less_than_equal` |
+| 7 | `replacement/1/<unknown_field>/name` | `literal_error` |
+| 11 | `replacement` | `literal_error` |
+| 13 | `replacement` | `string_type`: that union arm expected a string |
+| 15 | `replacement/0` | `string_type` |
+| 16 | `replacement/1` | `string_type` |
+| 18 | `replacement/0/stage` | `missing` |
+| 19 | `replacement/0/quest_index` | `missing` |
+| 20 | `replacement/0/situation` | `missing` |
+
+The other **61** error records and the raw rejected model response cannot be recovered from these saved diagnostics. No extra model request was made to investigate them.
+
+#### Exact UI result and persisted state
+
+The visible error alert matched the API response:
+
+> The revision failed; the previous draft and critique are unchanged. No revision was consumed; 2 successful revision slot(s) remain. Consecutive failed revisions: 1/3. Inspect the failed revision in the trace before trying again.
+
+The dashboard also displayed **Saved revisions: 0/2**, **Consecutive failed corrections: 1/3**, and **Last correction error: Gemini output has invalid governed design fields; regeneration is required.** The NPC-only form and entered reason remained available. No retry was submitted.
+
+Read-only API and PostgreSQL verification (`transaction_read_only=on`, then rollback) established:
+
+- Status returned to **awaiting_review / human_review**. Saved revision count remains **0/2**, failed-correction count is now **1/3**. Per-run real-request counter rose **3→4/12**. Stored degraded remains **false**; that is **not** a successful correction claim. The trace explicitly records Gemini failure, not mock success.
+- Exactly **one artifact**, the original mutable v1 draft, remains. Before/after API content and database content match; canonical draft hash remains **`ad1b7cee32ed49ca804b217362703569ef49a499da02df0cbac9af7d5d516d34`**. All sections, quest IDs, spoken lines, rewards and objectives are unchanged because no candidate was saved. The section-level diff is empty.
+- Exactly **one critique** remains, with the same ID and unchanged before/after API content; its two medium findings and `needs_revision` verdict remain. No follow-up critique occurred. Its persisted canonical hash, calculated inside the read-only transaction, is **`efb166050c5ec7e25af4793598960eb312b1c66035de9906feb060125a201354`**.
+- **Review events are NOT unchanged:** the legitimate browser correction recorded one **reject** event before attempting revision. Event **`df57aba8-2356-47af-954b-76ab6872030b`**, created **2026-10-28 07:38:31.833839 UTC**, reviewer **`local_developer`**, user ID null, contains the exact supplied reason. Before: **0 events**; after: **1 rejection**. This is normal current workflow behavior, not a second/manual rejection or an approval. It cannot truthfully be reported as an unchanged audit trail.
+- Human-review execution 2 completed the rejection; revise execution 1 failed; human-review execution 3 is now waiting on the original draft. No existing checkpoint was repaired.
+- The API returned, and the rendered dashboard visibly showed, the LIVE02 guard message:
+
+  > This draft already has a recorded rejection. The correction failed and no revised draft was saved, so this draft cannot currently be approved. Request another correction or start a new isolated run.
+
+Stopped here as instructed. No proposals were confirmed; no approval was attempted; no export, final artifact, reviewed/final hash comparison or immutable-final verification was possible. No runtime or Unity operation occurred.
+
+#### QA evidence and screenshots
+
+QA directory (outside the repository): **`E:\College\Project\GameMind-QA\correction-same-run-20261028-01`**.
+
+1. `01-before-correction.png` — original draft and review state.
+2. `02-npcs-only-exact-reason.png` — only NPCs selected, supplied reason entered.
+3. `03-correction-in-progress.png` — the single submitted correction.
+4. `04-failed-correction-ui.png` — full error/review screen after failure.
+5. `05-stopped-after-failure.png` — retained blocked state, no further submission.
+6. `06-exact-error-alert.png` — exact error toast/alert.
+7. `07-preserved-draft-counters.png` — original findings, saved revisions 0/2, failure count 1/3, retained NPC selection. Visually inspected this screenshot.
+
+Additional evidence: `before-api.json`, `after-api.json`, `correction-response.json`, `browser-evidence.json`, `trace.json`, `database-verification.json`, `backend.log`, `usage-before.json`, `usage-after-startup.json`, `usage-after.json`. Initial usage snapshots transcribe the actual CLI outputs; final usage is captured CLI stdout. Offline assertions checked exact reason/target scope, one browser POST, identical draft/critique content and the one retained rejection event. No browser page exceptions were recorded.
+
+#### Request accounting and cleanup
+
+| Checkpoint | Flash-Lite today | Remaining | Flash today |
+| --- | ---: | ---: | ---: |
+| Before backend startup | 0 | 500 | 0 |
+| After startup GET | 1 | 499 | 0 |
+| After failed correction; final CLI | 2 | 498 | 0 |
+
+**Total this attempt: 2 Google HTTP requests = one startup GET + one revise POST.** Per-node this attempt: plan **0**, retrieve **0**, generate **0**, revise **1**, follow-up critique **0**, finalize/export **0**. The original run's three earlier inference requests belong to the previous day/attempt and are not counted again. No retry, repair, correction re-ask or fallback-model request occurred.
+
+Closed Chromium and exited the Node session. Stopped the frontend with Ctrl+C (expected interrupted-process exit), then `docker compose stop backend`. Backend exited **0**, restart count **0**, restart policy **no**; shutdown logs showed graceful worker/application termination. No remaining listeners on **3000/8000**. Existing PostgreSQL and Chroma were left running; no volume, project, run or QA folder was deleted.
+
+#### UX findings, assessment and honest demo script
+
+| ID | Rating | Finding |
+| --- | --- | --- |
+| CA02 | **blocker** | Even this explicit NPC-only numbering correction produced locally invalid model output. The user cannot reach approval/export through the requested path. Google availability and schema acceptance did not establish usable output. |
+| CA03 | **annoying** | The revision form initially selected Summary although both visible critic findings concern NPCs. A reviewer must inspect and replace the default scope; otherwise the wrong section would be selected. |
+| CA04 | **annoying** | The visible last error says regeneration is required, while the UI also offers further corrections and the API accurately reports two saved-revision slots/two consecutive-failure attempts remaining. The guidance does not identify which recovery is likely to work. No additional correction was tried. |
+
+What worked: explicit scope selection, preservation of the original draft and critique, accurate saved/failure counters, visible 502/error trace, no mock revision, and the recorded-rejection approval guard. What did not work: the actual correction. The output still has the same real quest-label mismatches and copied quest-objective dialogue documented above; it is not newly improved content or a usable exported brief. No extra numeric inventions were assessed in a new revision because none exists. The original critic missed the progress-label and copied-dialogue issues; it was not rerun. **No brief exists from this attempt, so no exported-brief quality claim is made.**
+
+Numbered demo script, limited to actions that actually worked:
+
+1. Select the existing isolated Frostpeak workspace and inspect its saved v1 draft and critique.
+2. Open Request revision, replace the default Summary selection with NPCs only, and enter the exact requested correction.
+3. Submit once; show the visible failure and failed Gemini execution rather than claiming a successful revision.
+4. Show that the original draft/critique and saved budget are preserved, failure count is 1/3, and approval is blocked by the recorded rejection. End the demo here. Approval/export are **not** successful demo steps.
+
+No code, `.env`, README, MVP status or protected run was edited. This acceptance report is the only repository file changed; no push.
