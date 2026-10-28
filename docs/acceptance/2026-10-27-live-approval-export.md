@@ -240,3 +240,57 @@ The first usage launcher used an unsupported `docker compose run --no-build` fla
 Closed Chromium and exited its Node session. Stopped the frontend's `npm run dev` with Ctrl+C, then ran **`docker compose stop backend`**. Backend exited **0**, restart count **0**; `shutdown.log` records graceful cleanup-worker/application shutdown. Ports **3000 and 8000 had no remaining listeners**. Application PostgreSQL and Chroma were left running; no volumes or QA workspaces were deleted.
 
 No code, `.env`, existing run, README or MVP status was changed. The only repository addition for this task is this report. No application-database tests, model probe, manual workflow retry, runtime approval, runtime bundle or Unity operation occurred. No push.
+
+## Correction attempt on the same run
+
+Attempt date: **2026-10-28 (Asia/Calcutta)**. Target run: **`4a1e7f1f-b6a2-410c-a746-d8e52daf2ba2`**.
+
+**Verdict: FAIL — blocked during environment startup; no correction was submitted.** Approval, export, reviewed/final hash equality and final-artifact immutability were not reached or verified.
+
+### Preconditions and exact failure
+
+- Repository HEAD before this report update was `fdad260`, the preceding document-only acceptance commit. `git diff f79e059 HEAD -- backend frontend docker-compose.yml` returned no differences: application source still matches `f79e059281ffd302358b18e15e94cbbc864dc330`. No running backend could be confirmed.
+- Docker was not running. `docker ps --format '{{.Names}} {{.Image}} {{.Status}}'` failed because the Docker Desktop Linux engine named pipe did not exist. `docker desktop status` reported: `Could not retrieve status. Is Docker Desktop running?` and suggested `docker desktop start`.
+- Tried the normal startup **once**, using `docker desktop start`. It exited **1** with:
+
+  ```text
+  Failed to start Docker Desktop
+  Docker Desktop terminated unexpectedly
+  ```
+
+- A subsequent read-only `docker ps` check again failed:
+
+  ```text
+  failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine;
+  check if the path is correct and if the daemon is running:
+  open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+  ```
+
+Stopped at that real startup failure. No Docker repair, restart loop, image rebuild, alternate runtime, dependency installation or environment-file change was attempted.
+
+### Requested flow and evidence limits
+
+1. **Quota:** `backend/gemini_usage.py` could not be run in the required container environment because the engine was unavailable. Today's Pacific quota date, starting counts, remaining budget and final counts are **unverified**; the preceding attempt's historical counts are not reused as current evidence. The minimum remaining-budget precondition was not established.
+2. **Run eligibility:** no live API or database access occurred. Current `awaiting_review`, revision `0/2`, review-event absence, draft hash and critique identity could not be reverified. Historical saved state is not proof of current eligibility.
+3. **Browser correction:** not attempted. The supplied reason was not submitted, no target section was selected, and no finding-resolution control was used. There were **zero correction/review submissions**.
+4. **Provider evidence:** no backend process or Gemini transport was started by this attempt, so there were **zero model requests made by this attempt**. There is no revision wire schema mode/byte size, Google response, local validation error, retry/backoff or per-node latency to report. This is not a measured before/after ledger comparison.
+5. **Artifacts and review:** no new revision, critique, review event, proposal confirmation, approval, final artifact, blueprint or export was created by this attempt. No section diff, final hash comparison, immutability attempt or exported-brief assessment is possible. No application run was deliberately changed, including B3, B4b and the protected faulted walkthrough run.
+6. **Screenshots:** none. No browser was launched; no screenshot or brief was fabricated. The earlier QA-folder screenshots remain historical evidence only.
+
+### UX findings and assessment
+
+| ID | Rating | Finding |
+| --- | --- | --- |
+| CA01 | **blocker (environment)** | Docker Desktop terminated during its single startup attempt, preventing the required live backend, quota check and browser correction. This is not evidence of a new dashboard or model defect. |
+
+No new dashboard UX behavior or content quality was observed. The earlier quest-label inconsistency, copied objective dialogue and failed MVP proof remain unresolved; this attempt neither corrected nor retested them. There is no exported brief to assess.
+
+### Demo script — only what actually worked
+
+1. Show that the application source matches `f79e059` despite the later documentation-only commit.
+2. Show the Docker engine/status failure and the single failed startup result.
+3. Explain that the correction and all downstream actions were withheld because the live environment and quota preconditions could not be verified. **There is no successful product-flow demo from this attempt.**
+
+### Cleanup and scope
+
+Neither backend nor frontend was started by this attempt, and no browser session was opened, so there were no newly started application services to stop. Docker itself reported startup termination. No application data, source, `.env`, README or MVP file was modified; the only authorized repository change is this appended report. No push.
