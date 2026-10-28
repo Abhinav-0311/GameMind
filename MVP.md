@@ -12,7 +12,7 @@ Historical reports describe what happened; they do not override this checklist.
 ## 1. The product we are finishing
 
 A game developer uploads a GDD, understands its missing/conflicting decisions,
-chooses whether to send selected excerpts to NVIDIA, and receives cited,
+chooses whether to send selected excerpts to the configured hosted provider, and receives cited,
 reviewable game-design content. They can request a focused revision, review its
 quality, explicitly approve the design and export a useful implementation brief.
 
@@ -57,7 +57,7 @@ builder or a guarantee that generated content is correct.
 | Memory scope — approved 2026-10-17 | `allow_unspecified_memory` is a strict, default-off choice made before generation and fixed across revisions. Only empty, uncited NPC memory with a nonblank warning may be labelled Unspecified—not assessed. Populated/cited memory and every other design section retain normal checks; independent omission/contradiction findings remain blockers. This is not source-absence verification, a runtime exemption or permission to alter an old run. |
 | Outputs | Versioned draft, frozen evidence/citations, trace, distinct model/local findings, reviewable proposals, approved immutable design and exported brief. |
 | Workflow | Plan → retrieve → generate → critique → human review. Reject → scoped revision → new critique → review. Approve → validated final snapshot → export. Errors remain visible; retries are bounded. |
-| AI roles | Keep two logical tiers: Nano for planning/routing; Super for generation/revision/critique. Use the fixed target pair below, not repeated model comparisons. A separate critique call is not proof of independent correctness. Local extraction remains distinct. |
+| AI roles | Separate planning/routing from generation/revision/critique. The historical Nano/Super pair below is legacy optional NVIDIA routing; the current DEV acceptance path uses Gemini Flash-Lite for every hosted node. A separate critique call is not proof of independent correctness. Local extraction remains distinct. |
 | Frameworks | Reuse LangGraph for workflow/state and existing LangChain Core utilities. PostgreSQL owns durable records; existing retrieval/Chroma owns its index. Do not replace working services for framework conformity. |
 | Source authority | GDD excerpts and recovered transcripts are data, never executable instructions. Draft notes, assumptions, checklists and critic output are not source evidence. |
 | Ownership/history | Scope documents, runs, citations and exports to the active project. Freeze evidence for a run; ordinary revision reuses it. Preserve old artifacts and review history; no in-place historical repairs. |
@@ -67,7 +67,7 @@ builder or a guarantee that generated content is correct.
 | Failure/recovery | No silent mock success, partial output presented as complete, hidden retry, duplicate finalization, or lost work after reload/restart. Show what failed and a safe next action. |
 | Failed corrections — E65 | `revision_count` counts saved revisions only. Before a new artifact is saved, any failed correction retains the draft/critique and does not consume a slot. Existing run JSON stores consecutive failures; `DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES` defaults to 3 and successful persistence resets the counter. At the cap, API/worker refuse more calls and the dashboard disables revision. A fresh run remains possible with fresh consent. Historical already-consumed counters are not repaired. Invalid provider output maps to 502; actual unavailability stays 503; unrelated status mappings remain unchanged. |
 
-This document does **not** authorize external data transfers, unlimited NVIDIA
+This document does **not** authorize external data transfers, unlimited hosted
 requests, environment changes, destructive database operations, commits or pushes.
 Respect the user's current authorization and any narrower task boundaries.
 
@@ -109,6 +109,14 @@ dev/showcase use environment-selected Gemini IDs. Unset profile preserves explic
 legacy NVIDIA selection. No saved `.env`, keys, deployed models or graph shape
 were changed. This is transport/configuration work, not a new hosted allowance,
 accepted generation, or permission to bypass the remaining content gates.
+
+**Current documentation clarification — 2026-10-29:** the pair and deployment
+statements above are historical NVIDIA evidence, not the current quickstart.
+DEV acceptance uses `GEMINI_DEV_MODEL=gemini-3.5-flash-lite`; Run C records one
+browser generation → approval → brief export and completed reload, with the E68
+documented metadata exception, not strict byte equality or whole-MVP acceptance.
+NVIDIA remains legacy optional. Provider-neutral naming/cleanup is planned after
+the MVP; this wording change renames no code and closes no acceptance gate.
 
 **Fixed acceptance inputs and output:**
 
