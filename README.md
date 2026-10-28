@@ -113,7 +113,7 @@ This reads the approval-linked draft and immutable final in one PostgreSQL READ 
 ## Providers and request budgets
 
 - `LLM_PROFILE=test`: key-less, offline extraction. `dev`: environment-selected `GEMINI_DEV_MODEL` for every hosted node; the recorded default is `gemini-3.5-flash-lite`. `showcase`: dev model for planning, `GEMINI_SHOWCASE_MODEL` for artifact work. Recorded newer-Flash failures make showcase **not** the quickstart. [Profiles and outcomes](docs/acceptance/2026-10-23.md).
-- Mock fallback is degraded local output, not hosted quality. It waives no approval checks; revise is excluded by default. [B3 warning](docs/acceptance/2026-10-27-browser-walkthrough.md#part-a--b3-read-only), [E65/E67](MVP.md#8-evidence-ledger).
+- Mock fallback is degraded local output, not hosted quality. It waives no approval checks; Gemini profiles exclude revise by default. Legacy NVIDIA does not apply that node-exclusion setting. [Provider selection](backend/app/design_agent/provider_factory.py), [B3 warning](docs/acceptance/2026-10-27-browser-walkthrough.md#part-a--b3-read-only), [E65/E67](MVP.md#8-evidence-ledger).
 - **NVIDIA is a legacy optional design-agent provider**, not the current DEV path or every runtime endpoint. Existing code/configuration remains; provider-neutral naming/cleanup is planned after the MVP. [Historical routing and Gemini extension](MVP.md#chunk-1-execution-contract--decided-2026-10-18).
 
 Local Gemini budget defaults in `.env.example`: **dev 5 RPM / 500 RPD**, **showcase 3 RPM / 20 RPD**, **12 attempts/run**, preflight estimate **8**. PostgreSQL reservations use the `America/Los_Angeles` day; every real HTTP attempt, including startup GETs and failed/retried sends, counts before sending. RPM is process-local, not distributed. These limits do not establish Google's quota or billing; a reservation can exceed actual sends after a crash. [Offline E60](MVP.md#8-evidence-ledger), [live reconciliation](docs/acceptance/2026-10-27-live-approval-export.md#final-quota-evidence-and-cleanup).
@@ -135,7 +135,7 @@ docker compose exec -T backend python gemini_usage.py
 | LangGraph workflow / checkpoints / provider boundary | `backend/app/design_agent/` |
 | Optional, later Unity client | `Unity/Assets/Scripts/` — not MVP proof |
 
-LangGraph owns orchestration; a declared LangChain dependency is not a separate demonstrated agent workflow. [ARCHITECTURE.md](ARCHITECTURE.md) and [DOMAIN_MODEL.md](DOMAIN_MODEL.md) are orientation maps, not release evidence. They still need provider/revision-policy and final-metadata documentation updates; current status is in [MVP.md](MVP.md).
+LangGraph owns orchestration; a declared LangChain dependency is not a separate demonstrated agent workflow. [ARCHITECTURE.md](ARCHITECTURE.md) and [DOMAIN_MODEL.md](DOMAIN_MODEL.md) map provider, budget, revision and final-metadata behavior; they are not release evidence. Current status is in [MVP.md](MVP.md).
 
 **Never run pytest inside the normal application container:** `backend/conftest.py` drops/recreates its target schema. Use fresh disposable storage via the [CI workflow](.github/workflows/verify.yml) or guarded [MVP baseline procedure](MVP.md#7-current-blockers-and-next-work). Never reset an application or retained QA database.
 
