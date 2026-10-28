@@ -7,8 +7,8 @@
 A dashboard-first assistant for turning game design documents into cited,
 reviewable NPC dialogue, quests and implementation guidance.
 
-**MVP status: NOT ACCEPTED.** Useful hosted generation, correction, reliable
-critique and the complete approval/export journey remain unresolved. See
+**MVP status: NOT ACCEPTED.** Hosted content quality, reliable correction/critique
+and broader acceptance remain unresolved. See
 [MVP.md](MVP.md) for the single current checklist, blockers and evidence. Passing
 infrastructure tests is not acceptance of generated content. Unity comes last.
 
@@ -36,6 +36,36 @@ or guarantee that model output is correct.
 - Runtime NPC, quest, hint, memory and world-state services; a Unity C# adapter.
 
 These are implemented capabilities, not a claim that every end-to-end flow passes.
+
+## Final artifact integrity
+
+The immutable final artifact preserves the reviewed design content, with explicitly enumerated deterministic server metadata additions (memory_unspecified and runtime_deferred plus its warning). Raw reviewed and final hashes may therefore differ; the verifier checks both hashes and rejects every other difference.
+
+`backend/verify_final_integrity.py` reports `EXACT`,
+`EQUAL_EXCEPT_DOCUMENTED_METADATA`, or `MISMATCH`. It derives the allowed additions
+from the frozen run settings and reviewed content, never from claims in the final
+artifact. It does not ignore whole sections or change saved data. Moving these
+flags before human review is planned after the MVP.
+
+Run C reached real Flash-Lite browser generation, approval and brief export. Its
+only final-content addition was `npc_memory_design.memory_unspecified=true`:
+it met this documented-exception policy but **did not meet strict byte equality**.
+The original FAIL verdict under that stricter rule remains historical evidence;
+this does not establish reliable correction, semantic quality or full MVP acceptance.
+See [Run C](docs/acceptance/2026-10-27-live-approval-export.md#fresh-run-approval-attempts).
+
+To inspect a completed run later, from `backend/` in the configured environment:
+
+```powershell
+python verify_final_integrity.py <run-id>
+```
+
+The CLI reads the recorded approval's draft and immutable final in one PostgreSQL
+READ ONLY transaction; it does not construct an LLM provider or contact Google.
+Exit codes: **0** for either equality verdict, **1** for mismatch, **2** for a
+read/input failure. It prints both raw UTF-8 canonical JSON SHA-256 hashes, all
+differing paths, independently permitted additions and offending paths. A metadata
+exception verdict is not an approval, authenticity check or content-quality score.
 
 ## Stack and code map
 
@@ -97,10 +127,11 @@ The full generation → correction → approval → design-brief workflow needs 
 Gemini API key with `LLM_PROFILE=dev` and an explicitly configured
 `GEMINI_DEV_MODEL=gemini-3.5-flash-lite`. Hosted execution still needs consent
 and passing content checks; a key is not a guarantee that a run will pass.
-The recorded approval/export success is an **API-path check**, not a
-browser-verified approval/export UI. The live mock browser walkthrough stopped
-at a blocked draft and failed correction; see the
-[browser report](docs/acceptance/2026-10-27-browser-walkthrough.md).
+The mock browser walkthrough stopped at a blocked draft and failed correction;
+see the [mock report](docs/acceptance/2026-10-27-browser-walkthrough.md).
+The later [Run C real-provider browser check](docs/acceptance/2026-10-27-live-approval-export.md#fresh-run-approval-attempts)
+did approve and export one fresh Frostpeak draft, subject to the documented
+metadata exception above. This is one observed success, not a reliability claim.
 The general runtime dialogue provider is also currently local/mock. NVIDIA is
 implemented in the design-agent provider, not every endpoint with an AI label.
 
