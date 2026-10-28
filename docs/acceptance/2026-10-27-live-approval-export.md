@@ -430,3 +430,197 @@ Numbered demo script, limited to actions that actually worked:
 4. Show that the original draft/critique and saved budget are preserved, failure count is 1/3, and approval is blocked by the recorded rejection. End the demo here. Approval/export are **not** successful demo steps.
 
 No code, `.env`, README, MVP status or protected run was edited. This acceptance report is the only repository file changed; no push.
+
+## Fresh-run approval attempts
+
+Run C date: **2026-10-28 (Asia/Calcutta)**. **Overall verdict: FAIL under the requested acceptance rule.** The real browser completed generation, proposal confirmation, approval and technical-brief export on **attempt 1**, and the final artifact is immutable. However, reviewed/final content hashes differ by **one final-only memory metadata field**. Stopped at that mismatch, without modifying the result or making another attempt.
+
+**Critic blocked approval: 0 of 1 completed attempts.** Attempts 2 and 3 were **not started**: attempt 1 was approvable, and the later hash mismatch independently required stopping. This is not a three-run reliability measurement or full MVP acceptance.
+
+### Shared setup, scope and quota
+
+- `git diff f79e059 HEAD -- backend frontend docker-compose.yml` was empty. Running application source matched **`f79e059281ffd302358b18e15e94cbbc864dc330`**; later commits before this task were documentation only. No code or `.env` changes.
+- Used the cached **`gamemind-revise-tests:local`** SDK image, source bind mount **`E:\College\Project\Bot\backend:/app`**, restart policy **`no`**, process-only `LLM_PROFILE=dev`, `GEMINI_TIMEOUT_SECONDS=180`, `DESIGN_AGENT_FALLBACK_TO_MOCK=true`, `PYTHONPATH=/app`. Effective model: **`gemini-3.5-flash-lite`** for all hosted nodes. Revise fallback remained excluded by default; no revise call occurred. Normal retry and per-run cap **12** stayed in place.
+- First ran `gemini_usage.py` in a one-off container using those overrides, before backend startup. Pacific date **2026-10-28**: Flash-Lite **2/500**, **498 remaining**, RPM **5**; Flash **0/20**, RPM **3**. The minimum 30-request remaining-budget guard passed. CLI reads made no Google request.
+- Started backend with the stdin-only Compose override and `up -d --no-build --pull never backend`; frontend with `NEXT_PUBLIC_API_URL=http://localhost:8000`, `LLM_PROFILE=dev`, `NEXT_TELEMETRY_DISABLED=1`, `npm run dev`. Health and readiness both returned **200**, effective provider `gemini`, healthy PostgreSQL/Chroma. Known non-fatal Chroma telemetry noise was ignored; no container restart or startup-stopping traceback occurred.
+- Startup model verification consumed **one GET**, HTTP **200**; ledger rose **2→3**. It is counted separately from run inference. The health response still combined `llm_provider=gemini` with `ai_mode=local_demo`; the latter is not proof of offline execution.
+- Drove real Playwright/Chromium **149.0.7827.55**, headless **1440×1000**, against the live frontend/backend. No route interception, fixtures, sign-in, finding adjudication, rejection or revision. Protected B3/B4b/faulted walkthrough/previously rejected run were not opened for mutation or changed. No runtime export/materialization or Unity operation.
+- QA root, outside the repository: **`E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01`**. All screenshot names below are beneath its **`attempt-1`** subdirectory.
+
+### Attempt 1 — approval/export worked; strict content equality failed
+
+#### Workspace, source, decision and consent
+
+| Record | Value |
+| --- | --- |
+| New workspace | **Run C Frostpeak approval 20261028 01** |
+| Project ID | `run-c-frostpeak-approval-20261028-01` |
+| Frostpeak source | `14d41feb-5757-47b0-9c52-662118414da1`, revision 1, four chunks |
+| Resolved platform decision | `d3f9444c-7484-4349-8685-2e39dcc03558` |
+| Run | **`fc541ba1-fa2d-48bc-bf04-20822bc37b18`** |
+| Reviewed draft | `9e24ae35-3d46-46a3-a079-adfe20fd7700`, v1 |
+| Frozen snapshot | `824a59b8-be30-4ad6-a45d-ff30076251b3` |
+
+Created everything through the browser in the brand-new workspace. Loaded Frostpeak, ran local **Review GDD**, continued locally from its automatic hosted-review offer, then saved and marked resolved the exact decision:
+
+> The target platform is Windows PC. Set unity_runtime_preview.content.target_platform to the exact string "Windows PC"; this is human design direction, not a GDD fact.
+
+The same objective as the prior comparable run was used:
+
+> Create a source-grounded design blueprint for Project Frostpeak with both starting NPCs and both quest hooks. Preserve every objective, quantity and reward. Include useful distinct spoken dialogue and practical implementation notes. Clearly label proposals; do not invent source support.
+
+Run request had **max_revisions=2**, **defer_runtime=false** (runtime preview enabled), **allow_unspecified_memory=true** (same explicit memory scope as the comparable run), fresh-dialogue opt-in off and no fixed repeat/reset policy. Other three local questions remained open; they were not invented into source evidence.
+
+The actual hosted-consent modal said:
+
+> GOVERNED AI REVIEW — Start a cited review? The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm.
+
+Clicked **Start governed review once**. Browser run creation returned **201**, reaching **awaiting_review** after **34,730 ms**. The selected-source/consent/decision setup is preserved in the request/response evidence.
+
+| Browser mutation | Status |
+| --- | ---: |
+| POST `/api/v1/projects/` | 201 |
+| POST `/api/v1/documents/demo/frostpeak` | 201 |
+| POST `/api/v1/decisions/sync` | 200 |
+| PUT decision text | 200 |
+| PUT mark decision resolved | 200 |
+| POST `/api/v1/design-agent/runs` | 201 |
+| POST run `/review`, **approve only**, once | 200 |
+
+#### Actual nodes, retries and requests
+
+Transport logs show HTTP **200** for all four inference POSTs. No node used mock fallback, and the run was **not degraded**. The Summary itself was the correctly cited, locally extracted Section 1 premise, not a Gemini-authored premise.
+
+| Node | Actual serving provider/model | Result / degraded | Latency | Input / output tokens | Real requests |
+| --- | --- | --- | ---: | ---: | ---: |
+| Plan | Gemini / Flash-Lite | completed / false | 5,422 ms | 395 / 174 | 1 |
+| Retrieve | local retrieval / existing local lexical collection | completed / not a hosted fallback | 353 ms | 0 / 0 | 0 |
+| Generate | Gemini / Flash-Lite | completed / false | 13,290 ms | 3,424 / 2,400 | 1 |
+| Critique | Gemini / Flash-Lite | completed / false | 14,820 ms | 13,287 / 347, aggregate | **2** |
+| Human review | local | waiting, then explicit approval completed | 41 ms recorded for resumed review | 0 / 0 | 0 |
+| Finalize | local | completed | 68 ms | 0 / 0 | 0 |
+
+The critic's first response failed the source-omission anchoring rule. Production code made its **one bounded corrective re-ask**, recorded as **`source_omission_reask=accepted`** / `independent_review_retries=1`. The initial response used **6,601 input / 193 output tokens**; re-ask **6,686 / 154**. This is why the trace has `retry_count=1`, `request_attempts=2`; it was **not** a transport 5xx retry or manual workflow retry. Diagnostics retain one initial `value_error` at the root, not the initial offending finding text. No claim is made about the truth of that discarded finding.
+
+There were **zero transport retries/backoff**, truncation resends or repair completions. Total inference usage was **17,106 input + 2,921 output = 20,027 tokens**; cost unavailable, not measured zero. Full wire schemas: plan **2,364 bytes**, generation **20,525 bytes**, critique **16,071 bytes**, sent twice. No reduced revision schema was used.
+
+#### Critique, scorecard and Approve control
+
+Accepted critique:
+
+> **ready_for_review** — Source coverage is fully realized and compliant with all document citations and design requirements.
+
+**Findings: none.** Thus there are no accepted finding severities, paths, evidence indexes or quotes to list. Coverage: **covered** for Summary, narrative, art, NPCs, levels, systems, quests and runtime preview; **not_specified** for NPC memory. Exact accepted review and provenance remain in `review-evidence.json` and `final-trace.json`.
+
+Scorecard before confirmations: grounding **1**, completeness **1**, consistency **1**, integration readiness **0**; **0.75 overall / passed=false**, with **Integration readiness only** as blocker and **20 unconfirmed proposals**. No unsupported/incomplete/recovered sections, quest integration gaps or request coverage gaps were reported. `finding-resolutions` read-only policy returned **`critique_blocked=false`**.
+
+The Approve button was initially disabled solely because proposals were not confirmed, **not because the critic blocked it**. Checked the 20 displayed, artifact-bound proposal checkboxes individually. **Approve run then became enabled.** No degraded acknowledgement appeared: no fallback/degraded node existed, and the approval request correctly had `acknowledge_degraded=false`.
+
+Clicked Approve **once**. Browser POST returned **200 in 426 ms**, run **completed**, final artifact v2, immutable. Request contained the exact draft ID and **20 proposal confirmations**. Only one review event exists, an **approve** event; no reject event was created.
+
+#### Export and completed UI
+
+Clicked **Download technical brief**. The governed run-final-artifact export GET returned **200** and triggered a real browser download, suggested filename `gamemind-agent-brief.md`. Saved **28,336 UTF-8 bytes** to:
+
+```text
+E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01\attempt-1\technical-brief.md
+```
+
+Brief structure: approved status/project/run/final version and frozen snapshot; source list; frozen resolved Windows PC decision; Summary/narrative/art/NPCs/memory/levels/systems/quests/runtime; source citations and frozen evidence excerpts. Quest state contracts are labelled **design proposals, not runtime bindings**, and checks are labelled **not executed**. Approved design is still `planning_only`, not a runtime release.
+
+For repeat approve/reject/revise, the completed UI exposes **no such controls**: Approve run **0**, Request revision **0**, Send revision request **0**, Reject **0**. Thus those UI actions cannot be initiated; no hidden/forged API requests were sent. **These are UI unavailability results, not tested HTTP refusals.** After reload, the completed state, locked v2 artifact and export control still rendered. No second approval, rejection, revision or extra model request occurred.
+
+#### Read-only persistence and strict integrity result
+
+API and PostgreSQL **READ ONLY** transactions (verified `on`, then rolled back) confirm:
+
+- Run **completed**, revision **0/2**, per-run real-request count **4/12**.
+- Final artifact **`5c9d875a-4482-4063-9a82-b65808ac4fa1`**, **version 2**, **immutable=true**.
+- GameBlueprint **`2e0d9e8b-e421-45f4-a7e7-cefb742833c2`**, same new project, **status=approved**.
+- API final content equals persisted final content. Original v1 draft is retained.
+
+Canonical hashes use Python `json.dumps(content, sort_keys=True, separators=(',', ':'), ensure_ascii=False)` then SHA-256, as in the previous verification. Both API snapshots and database rows produce:
+
+```text
+Reviewed v1: dbe29661c605d09f589d3963c4c94b33021af9f19e3c8b20dd10d79096e1b118
+Final v2:    11b12b7aabc3f2c7f02982f7450c66b9af4336d1f22bf98f12960bf7618052b7
+Equality:   FALSE
+```
+
+**Every differing JSON path (exactly one):**
+
+| JSON path | Reviewed value | Final value |
+| --- | --- | --- |
+| `/npc_memory_design/memory_unspecified` | absent | `true` |
+
+This is the existing, explicitly documented final-only metadata exception at **`backend/app/design_agent/workflow.py:895–897`**, which adds the marker to both candidate content and its expected comparison copy. The guard therefore allowed finalization. It is not a model-created lore change or the older six-note normalization defect. Nevertheless, the user's required rule for **this proof** is exact reviewed/final hash equality, with no exception: **FAIL**. No other content path differs. Stopped at that result; no final artifact/blueprint was edited or repaired, and no new attempt was started.
+
+#### Plain assessment against the Frostpeak GDD
+
+- **Good:** exact Section 1 premise; both starting NPCs; source lore/art/level details; both Ash Pass actions preserved independently; correct **100 gold + 250 XP**, **5 chunks**, **150 gold + sky-iron gear**. Windows PC is separately recorded as frozen human direction, not asserted as a GDD platform fact. Empty NPC memory remains honestly unassessed.
+- **Numbering:** no Quest 0/off-by-one mismatch was found in this draft. Eldrin's progress/completion situations explicitly name **Quest Hook 1**, matching `quest_1` and border-post speech; Kaelen's explicitly name **Quest Hook 2**, matching `quest_2` and ore speech.
+- **Dialogue:** no complete quest objective was simply pasted verbatim as the entire dialogue line. It now has speaker-labelled lines and NPC-specific greeting/progress/completion speech. However, quest dialogue hooks duplicate the same NPC progress lines in another section and mostly restate objectives. Eldrin sounds somewhat scholarly; Kaelen remains generic. This is improved scaffolding, not polished branching narrative.
+- **Invented numbers:** no extra gameplay reward, quantity or timer number was found beyond source values. IDs, contract versions and generated test-state bookkeeping are implementation structure, not extra source-backed mechanics.
+- **Unsupported/proposed facts:** source does not specify these speaker-to-quest/reward-giver assignments, a player party being wiped out, Eldrin paying resistance spoils, Kaelen's promised delivery reward, a camp location, flagpole interactions or death/reload/respawn rules. Major speaker associations, failure/restart rules and generated dialogue are labelled proposals, but details embedded in lines/situations/implementation notes are not individually distinguished as sourced versus invented. The source establishes faction choice matters; it does **not** resolve why the resistance pathfinder is delivering ore to the occupying commander. That branch needs human design work, not a claim of source contradiction or automatic correctness.
+- **Concrete missed defect:** both NPC progress triggers have literal **`repeat_policy="name resets"`**, copied into their manual tests. This is a placeholder, not a specified repeat/reset rule. Greeting/completion use `no reset` without a clear frequency contract. The critic returned no finding despite the unusable progress policy.
+- **Other missed issue:** Quest 1 says **“Ensure guard trigger zones reset correctly if player disengages.”** The source does not define that reset. It is not reconciled with the quest's explicit player-confirmed restart contract; the developer must decide what resets and when. The clean critic did not flag this ambiguity.
+- **Brief usability:** usable as a first-pass design/integration discussion document: cited premise, distinct objective flags, event/action proposals, explicit limitations, frozen excerpts and repeatable proposed checks. Not ready to hand directly to an implementer as a finished contract: undefined reset language, faction/reward assumptions, verbose raw dialogue-trigger JSON and repeated boilerplate still need editing. The summary of the critic overstates compliance; no-findings does not validate these semantic details. No gameplay/manual integration tests were executed.
+
+#### Screenshots and UX findings
+
+All ten screenshots are in **`E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01\attempt-1`**:
+
+1. `01-source-loaded.png`
+2. `02-platform-resolved.png`
+3. `03-run-setup.png`
+4. `04-hosted-consent.png`
+5. `05-generating.png`
+6. `06-review-before-confirmations.png`
+7. `07-proposals-confirmed-approve-enabled.png`
+8. `08-after-approval.png`
+9. `09-brief-exported.png` — dashboard after download; not an inline brief viewer.
+10. `10-completed-after-reload.png` — visually inspected; locked completed state persists.
+
+| ID | Rating | Finding |
+| --- | --- | --- |
+| C01 | **blocker for the requested integrity proof** | Final-only `memory_unspecified` metadata changes the canonical content hash despite successful approval/export. Existing exception permits this; the stricter acceptance rule does not. |
+| C02 | **annoying** | A clean critic overlooks literal `name resets` placeholders and unsupported/ambiguous implementation details, while declaring full compliance. The user must still perform substantive content review. |
+| C03 | **annoying** | Twenty mostly verbose/repetitive proposal checkboxes must be reviewed in the narrow sidebar; useful distinctions between sourced facts and proposals are buried in boilerplate. |
+| C04 | **annoying** | The locked final Summary still displays **Review before approval**, and historical review advice says it cannot approve “this draft”. These labels remain confusing after completion. |
+| C05 | **annoying** | Initial local Review GDD opens hosted consent before the platform decision is entered, requiring Continue with local review and then a second, deliberate entry into governed review. No inference happens on dismissal. |
+| C06 | **cosmetic/wording** | Frozen evidence excerpts can begin/end mid-word or mid-heading, and brief dialogue triggers render as long JSON bullets. Citations are retained but the reading experience is rough. |
+
+No browser page exceptions were recorded. Setup driver errors were limited to a diagnostic `main` locator matching nested main elements and attempting an absent Cancel button in the local-review offer (whose actual dismissal was Continue with local review). These caused no failed workflow/API request or duplicate mutation. No extra model request was used to recover the browser driver.
+
+### Attempts 2 and 3
+
+**Not run.** No additional workspace was created. Attempt 1 already cleared the critic gate and reached approval; the hash mismatch then triggered the mandatory stop. Critic-block frequency remains **0/1**, not 0/3.
+
+### Final quota, evidence and cleanup
+
+| Checkpoint | Flash-Lite requests today | Remaining | Flash requests |
+| --- | ---: | ---: | ---: |
+| Before Run C startup | 2 | 498 | 0 |
+| After startup verification GET | 3 | 497 | 0 |
+| After attempt 1 generation/critique | 7 | 493 | 0 |
+| After approval/export; final CLI | 7 | 493 | 0 |
+
+**Run C total: 5 new Google requests = one model-verification GET + four inference POSTs (plan 1, generate 1, critique 2).** Retrieval, human approval, finalize, export and reload used zero Google requests. No manual retry, transport retry/backoff, rejection, revision, finding-resolution write or sign-in. The run used **4/12** of its own cap. CLI snapshots, ordered transport logs and per-node `request_attempts` agree; intermediate per-node ledger positions **3→4→5→7** are reconstructed from those ordered calls, not separate CLI invocations between each node.
+
+Root QA evidence: `usage-before.json`, `usage-after-startup.json`, `usage-after.json`, `backend.log`, `browser-evidence.json`. Attempt evidence: `start-response.json`, `review-evidence.json`, `reviewed-db.json`, `approval-response.json`, `final-api.json`, `final-db.json`, `final-trace.json`, `attempt-evidence.json`, `verification.json`, and downloaded `technical-brief.md`. Initial usage JSON transcribes the actual CLI output; later snapshots retain captured CLI stdout. Offline assertions verify one new run/approval, twenty exact confirmations, no reject/adjudication mutation, matching API/DB hashes and the **single** final-content difference.
+
+Closed Chromium and exited Node. Frontend stopped with Ctrl+C; backend stopped with `docker compose stop backend`, exit **0**, restart count **0**, restart policy **no**, graceful worker/application shutdown. No remaining listeners on **3000/8000**. Existing PostgreSQL and Chroma remain running. No resources or historical data were deleted.
+
+### Numbered demo script — only what worked
+
+1. Create a fresh isolated workspace and load the Frostpeak sample.
+2. Review local decisions, save and resolve Windows PC as human direction.
+3. Open governed setup, retain runtime preview and explicit unspecified-memory scope, read hosted consent and start once.
+4. Inspect the cited Summary, draft, evidence and accepted no-findings critique; explain that the critic used one bounded anchoring re-ask.
+5. Review and select the twenty proposals; show Approve becoming enabled without a degraded acknowledgement.
+6. Approve once; show completed, locked final v2 and retained review history.
+7. Download the governed technical brief and show its saved file, citations, proposal labels and version.
+8. Show approve/reject/revise controls are absent after completion, then reload and show the completed state persists.
+9. Disclose the verified metadata hash difference. **Do not end the demo by claiming strict integrity acceptance, finished content quality or full MVP readiness.**
+
+Only this acceptance document was changed in the repository. No `.env`, code, README, MVP status or protected-run modification; no push.
