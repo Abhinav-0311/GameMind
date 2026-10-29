@@ -1,10 +1,12 @@
 # CyberRakshak Dashboard Demo
 
-This is the portfolio-facing GameMind walkthrough. It demonstrates an agentic
-AI workflow that turns a real GDD into reviewable game-design work without
-silently turning generated suggestions into runtime facts.
+This is a historical presenter script, not evidence that CyberRakshak passes the
+current workflow. CyberRakshak has not been run on the current code. Use the
+Frostpeak quickstart in [README.md](../../README.md) for the recorded current-path
+evidence and limitations. The steps below are proposed demonstration steps that
+require fresh verification before presenting them as working behavior.
 
-## What this proves
+## Intended demonstration scope — not current proof
 
 ```text
 GDD evidence
@@ -137,9 +139,12 @@ approval happens.
 
 ## Verification before recording
 
-```bash
-docker compose exec -T backend pytest -q test_design_agent_evaluation.py test_design_agent_semantic_quality.py test_blueprint_materialization.py
+Run backend verification only against fresh disposable storage using the guarded
+procedure in [MVP.md](../../MVP.md#7-current-blockers-and-next-work), never pytest
+inside the application container. Historical results do not verify this script
+on current code.
 
+```bash
 cd frontend
 npm.cmd run lint
 npm.cmd run build

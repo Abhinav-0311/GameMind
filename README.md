@@ -37,6 +37,10 @@ Individual observations, not averages. `P/R/G/C/V/F` mean plan / local retrieval
 
 The historical [2026-10-27 full browser attempt](docs/acceptance/2026-10-27-live-browser-walkthrough.md) also failed correction and then returned 500 on approval. [E67](MVP.md#8-evidence-ledger) records offline containment of that conflicting-review error, not repair of that historical run or proof of useful correction.
 
+## Demo
+
+A recorded walkthrough will be linked here; the app can be tried with the Frostpeak sample in the quickstart.
+
 ## Quickstart — synthetic Frostpeak, hosted DEV profile
 
 Prerequisites: Docker Engine with Compose, Node.js 20+ and npm. This is local setup, **not production deployment**. Free-tier Gemini input/output may be used by Google to improve its products: use only the [synthetic Frostpeak sample](docs/demo/sample_gdd_frostpeak.md) or other non-confidential GDDs. [Unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
