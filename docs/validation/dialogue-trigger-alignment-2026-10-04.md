@@ -21,12 +21,12 @@ The intended source-derived examples are: URL warning for an untrusted link, exe
 - Changed Python sources and the new test parsed successfully. `git diff --check` passed. Optional Ruff/mypy were not installed; no type/lint/coverage percentage is claimed.
 - No frontend source changed in this slice, and no new browser or frontend-build result is claimed. The prior 64 browser-fixture / production-build results belong to the earlier slice.
 
-Run from `E:\College\Project\Bot`:
+Run from `<REPO_ROOT>/`:
 
 ```powershell
 docker compose exec -T backend pytest -q test_dialogue_trigger_alignment.py
 docker compose exec -T backend pytest -q --durations=5
-git -c safe.directory=E:/College/Project/Bot -c core.autocrlf=false diff --check
+git -c safe.directory=<REPO_ROOT>/ -c core.autocrlf=false diff --check
 ```
 
 Tests use the guarded `gamemind_test` database and mock inference. Docker Desktop was stopped at the beginning of this slice; the existing installation was started hidden, and the existing containers resumed without installation, rebuild, volume removal or configuration edits.

@@ -51,7 +51,7 @@ Manual comparison found the line relevant to the event and the repeat/reset test
 
 ## Repeatable checks
 
-From `E:\College\Project\Bot`:
+From `<REPO_ROOT>/`:
 
 ```powershell
 docker compose exec -T backend pytest -q test_structured_output_diagnostics.py test_dialogue_json_probe.py

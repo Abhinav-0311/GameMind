@@ -16,8 +16,8 @@ This proves live mock-path behavior and safety gates, not hosted generation qual
 - No `page.route`, request fulfillment, intercepted fixture responses, or `dashboard-states.mjs`. Creation, upload, consent, run start and rejection were driven through the rendered UI. Read-only API calls checked persisted state.
 - The in-app browser and persistent `node_repl` kernels failed to initialize (`failed to write kernel assets`). Direct installed Node/Playwright launched and drove real Chromium successfully. This was not replaced by a simulated DOM.
 - The browser stayed open across an idle/continuation interval. Its accumulated 957 API responses include 919 `/health` responses. The shell polls health every 30 seconds (`frontend/src/components/DashboardLayout.tsx`); these totals are not a generation latency or evidence of a request storm.
-- QA directory: `E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/`.
-- Raw saved run, draft, critique, trace, console and page-network evidence: `E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/browser-evidence.json`.
+- QA directory: `<QA_DIR>/browser-walkthrough-20261027-01/`.
+- Raw saved run, draft, critique, trace, console and page-network evidence: `<QA_DIR>/browser-walkthrough-20261027-01/browser-evidence.json`.
 - Screenshot links below are local files, intentionally not committed. A remote reviewer needs the QA files separately to view them.
 
 ## Part A — B3, read-only
@@ -39,7 +39,7 @@ The workspace was selected in the browser and its current run opened. No approva
 | Critique context | Saved critique says ready for judgment and records no findings; current checks still show integration readiness 0% and unconfirmed proposals. Approval remains blocked. |
 | After inspection | Read-only run API response was JSON-identical to the before response, including status, revision count, artifact and critique. This was checked again at the end. |
 
-Evidence: [01 — B3 full page](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/01-b3-full.png>), [02 — degraded acknowledgement and disabled approval](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/02-b3-degraded-guard.png>).
+Evidence: 01 — B3 full page (`<QA_DIR>/browser-walkthrough-20261027-01/01-b3-full.png`), 02 — degraded acknowledgement and disabled approval (`<QA_DIR>/browser-walkthrough-20261027-01/02-b3-degraded-guard.png`).
 
 ## Part B — fresh isolated workspace
 
@@ -47,7 +47,7 @@ Evidence: [01 — B3 full page](</E:/College/Project/GameMind-QA/browser-walkthr
 
 - Workspace name: **Browser walkthrough Frostpeak mock 20261027 01**.
 - Workspace ID: `browser-walkthrough-frostpeak-mock-20261027-01`.
-- Uploaded existing demo file: `E:/College/Project/Bot/docs/demo/sample_gdd_frostpeak.md`.
+- Uploaded existing demo file: `<REPO_ROOT>/docs/demo/sample_gdd_frostpeak.md`.
 - Document ID: `a9c31ff1-7ff6-4a9c-b9e3-d5bf66093d35`; revision 1, **4 indexed chunks**.
 - Run ID: **`1b00f97a-04c6-4dd2-b3a7-bf839d4dfaa2`**.
 - Draft artifact ID: `84793e3a-8312-44d9-84e2-89eb9d403acf`, version **1**.
@@ -145,30 +145,30 @@ The honest demo ends at the current blocked review. **Do not script approval/exp
 
 ## Screenshot index
 
-All files are under `E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/`.
+All files are under `<QA_DIR>/browser-walkthrough-20261027-01/`.
 
 | File | Captured state |
 | --- | --- |
-| [01-b3-full.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/01-b3-full.png>) | B3 full read-only review |
-| [02-b3-degraded-guard.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/02-b3-degraded-guard.png>) | Unchecked acknowledgement and disabled approval |
-| [03-new-workspace-dialog.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/03-new-workspace-dialog.png>) | Workspace creation modal |
-| [04-new-workspace-created.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/04-new-workspace-created.png>) | Immediately after creation, including loading transition |
-| [05-sources-empty.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/05-sources-empty.png>) | New workspace's empty source library |
-| [06-frostpeak-uploaded.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/06-frostpeak-uploaded.png>) | Successful upload and indexed chunks |
-| [07-run-setup.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/07-run-setup.png>) | Initial run setup |
-| [08-run-configured.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/08-run-configured.png>) | Objective and scope selected |
-| [09-hosted-transfer-consent.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/09-hosted-transfer-consent.png>) | Consent dialog before confirmation |
-| [10-awaiting-review-v1.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/10-awaiting-review-v1.png>) | First complete review screen |
-| [11-draft-npcs.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/11-draft-npcs.png>) | NPC tab |
-| [12-draft-quests.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/12-draft-quests.png>) | Quest tab |
-| [13-frozen-evidence.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/13-frozen-evidence.png>) | Loaded frozen source excerpt |
-| [14-independent-critique.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/14-independent-critique.png>) | Independent critique panel |
-| [15-reject-once-reason.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/15-reject-once-reason.png>) | Systems-only rejection and exact reason |
-| [16-revision-failed-banner.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/16-revision-failed-banner.png>) | Failed revision banner |
-| [17-revision-failed-full.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/17-revision-failed-full.png>) | Full page after failed correction |
-| [18-systems-empty-approval-blocked.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/18-systems-empty-approval-blocked.png>) | Empty Systems, source warnings and approval blocker |
-| [19-approval-still-disabled.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/19-approval-still-disabled.png>) | Disabled approval, 0/2 saved revisions and 1/3 failed attempts |
-| [20-failed-revision-trace.png](</E:/College/Project/GameMind-QA/browser-walkthrough-20261027-01/20-failed-revision-trace.png>) | Expanded persisted node trace |
+| 01-b3-full.png (`<QA_DIR>/browser-walkthrough-20261027-01/01-b3-full.png`) | B3 full read-only review |
+| 02-b3-degraded-guard.png (`<QA_DIR>/browser-walkthrough-20261027-01/02-b3-degraded-guard.png`) | Unchecked acknowledgement and disabled approval |
+| 03-new-workspace-dialog.png (`<QA_DIR>/browser-walkthrough-20261027-01/03-new-workspace-dialog.png`) | Workspace creation modal |
+| 04-new-workspace-created.png (`<QA_DIR>/browser-walkthrough-20261027-01/04-new-workspace-created.png`) | Immediately after creation, including loading transition |
+| 05-sources-empty.png (`<QA_DIR>/browser-walkthrough-20261027-01/05-sources-empty.png`) | New workspace's empty source library |
+| 06-frostpeak-uploaded.png (`<QA_DIR>/browser-walkthrough-20261027-01/06-frostpeak-uploaded.png`) | Successful upload and indexed chunks |
+| 07-run-setup.png (`<QA_DIR>/browser-walkthrough-20261027-01/07-run-setup.png`) | Initial run setup |
+| 08-run-configured.png (`<QA_DIR>/browser-walkthrough-20261027-01/08-run-configured.png`) | Objective and scope selected |
+| 09-hosted-transfer-consent.png (`<QA_DIR>/browser-walkthrough-20261027-01/09-hosted-transfer-consent.png`) | Consent dialog before confirmation |
+| 10-awaiting-review-v1.png (`<QA_DIR>/browser-walkthrough-20261027-01/10-awaiting-review-v1.png`) | First complete review screen |
+| 11-draft-npcs.png (`<QA_DIR>/browser-walkthrough-20261027-01/11-draft-npcs.png`) | NPC tab |
+| 12-draft-quests.png (`<QA_DIR>/browser-walkthrough-20261027-01/12-draft-quests.png`) | Quest tab |
+| 13-frozen-evidence.png (`<QA_DIR>/browser-walkthrough-20261027-01/13-frozen-evidence.png`) | Loaded frozen source excerpt |
+| 14-independent-critique.png (`<QA_DIR>/browser-walkthrough-20261027-01/14-independent-critique.png`) | Independent critique panel |
+| 15-reject-once-reason.png (`<QA_DIR>/browser-walkthrough-20261027-01/15-reject-once-reason.png`) | Systems-only rejection and exact reason |
+| 16-revision-failed-banner.png (`<QA_DIR>/browser-walkthrough-20261027-01/16-revision-failed-banner.png`) | Failed revision banner |
+| 17-revision-failed-full.png (`<QA_DIR>/browser-walkthrough-20261027-01/17-revision-failed-full.png`) | Full page after failed correction |
+| 18-systems-empty-approval-blocked.png (`<QA_DIR>/browser-walkthrough-20261027-01/18-systems-empty-approval-blocked.png`) | Empty Systems, source warnings and approval blocker |
+| 19-approval-still-disabled.png (`<QA_DIR>/browser-walkthrough-20261027-01/19-approval-still-disabled.png`) | Disabled approval, 0/2 saved revisions and 1/3 failed attempts |
+| 20-failed-revision-trace.png (`<QA_DIR>/browser-walkthrough-20261027-01/20-failed-revision-trace.png`) | Expanded persisted node trace |
 
 ## Final safeguards and limits
 

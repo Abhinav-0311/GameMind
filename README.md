@@ -43,7 +43,7 @@ A recorded walkthrough will be linked here; the app can be tried with the Frostp
 
 ## Quickstart — synthetic Frostpeak, hosted DEV profile
 
-Prerequisites: Docker Engine with Compose, Node.js 20+ and npm. This is local setup, **not production deployment**. Free-tier Gemini input/output may be used by Google to improve its products: use only the [synthetic Frostpeak sample](docs/demo/sample_gdd_frostpeak.md) or other non-confidential GDDs. [Unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
+Prerequisites: Docker Engine with Compose, Node.js 20.9.0+ and npm. This is local setup, **not production deployment**. Free-tier Gemini input/output may be used by Google to improve its products: use only the [synthetic Frostpeak sample](docs/demo/sample_gdd_frostpeak.md) or other non-confidential GDDs. [Unpaid-service data terms](https://ai.google.dev/gemini-api/terms#unpaid-services).
 
 1. Clone and enter the repository:
 
@@ -146,3 +146,5 @@ LangGraph owns orchestration; a declared LangChain dependency is not a separate 
 Frontend checks from `frontend/`: `npm run lint`, `npm run build`, `npm run test:design-agent-api`. The separate `npm run test:dashboard-states` intercepts API responses; it is **not** live browser/backend acceptance. Passing tests/builds do not establish useful hosted output, reliable correction or Unity execution. [Verification ledger](MVP.md#8-evidence-ledger).
 
 Further reference: [dashboard workflow](docs/workflows/dashboard_workspace.md), [deployment](docs/deployment.md), [security baseline](SECURITY_BASELINE.md), [optional runtime contracts](docs/integrations/runtime_api.md). Next work and open gates remain in [MVP.md](MVP.md), not a test count or historical phase label.
+
+Licensed under the [MIT License](LICENSE); demo GDD provenance is recorded in [PROVENANCE.md](docs/demo/PROVENANCE.md).

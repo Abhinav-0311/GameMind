@@ -43,4 +43,4 @@ The known-bad and initial candidate controls used identical manually source-grou
 
 Freeze these controls and fix the independent semantic review boundary before expanding features or changing models. Use focused per-record/state review contracts and verify detection of the known-bad control, correct handling of a manually valid control, and rejection of draft-note-as-source citations. Do not promote a new review/generation path merely because it returns valid JSON. After those controls pass, perform fresh normal-dashboard generation, actual designer review, then design-only approval and brief export in an isolated workspace.
 
-Private machine-readable evidence: `E:\College\Project\GameMind-QA\qa-frostpeak-slots-20261016-3938242c\\results.json`, `final-results.json`, `baseline.json`, `isolation-verification.json`. Full requests/responses remain in the isolated QA accounting rows.
+Private machine-readable evidence: `<QA_DIR>/qa-frostpeak-slots-20261016-3938242c\\results.json`, `final-results.json`, `baseline.json`, `isolation-verification.json`. Full requests/responses remain in the isolated QA accounting rows.

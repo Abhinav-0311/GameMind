@@ -8,16 +8,16 @@ This document establishes the security guidelines and project governance rules f
 
 ### 1. Repository & Workspace Boundaries
 * **Rule:** Never inspect, read, search, or reuse credentials (including passwords, tokens, API keys, or certificates) from other repositories, projects, folders, applications, containers, or environment files outside the immediate scope of this project's workspace.
-* **Scope:** No file system scans, directory listings, or searches are permitted outside of the current project directory (`E:\College\Project\Bot`).
+* **Scope:** No file system scans, directory listings, or searches are permitted outside of the current project directory (`<REPO_ROOT>/`).
 
 ### 2. Allowable Credential Sources
 * **Rule:** Only use credentials explicitly provided through:
-  * The current project's local `.env` file (e.g. `E:\College\Project\Bot\.env`).
+  * The current project's local `.env` file (e.g. `<REPO_ROOT>/.env`).
   * Process environment variables of the active shell context.
   * Direct, explicit user inputs.
 * **Single Environment File Policy:**
   * Only one environment file is permitted:
-    `E:\College\Project\Bot\.env`
+    `<REPO_ROOT>/.env`
   * Duplicate `.env` files are prohibited because they create configuration drift.
 
 ### 3. Procedure for Missing Credentials
@@ -40,5 +40,5 @@ All code edits, environment configurations, and verification runs must strictly 
 ---
 
 ## Development & Repository Governance
-* **Rule:** All future implementation, testing, documentation, and builds must occur inside `E:\College\Project\Bot` unless explicit approval is given.
+* **Rule:** All future implementation, testing, documentation, and builds must occur inside `<REPO_ROOT>/` unless explicit approval is given.
 

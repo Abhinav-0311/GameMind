@@ -10,7 +10,7 @@ The known-bad control received zero raw model findings. The manually authored co
 
 All 234 preserved-table fingerprints and environment hashes were unchanged; no approval/export, model changes, installs, commits or pushes occurred. Intermediate API approval checks intermittently failed before final clean runs; no proven cause or fix is claimed for that observation.
 
-Detailed private QA report: [README](E:/College/Project/GameMind-QA/qa-frostpeak-evidence-20261016-6e8b20af/README.md).
+Detailed private QA report: README (`<QA_DIR>/qa-frostpeak-evidence-20261016-6e8b20af/README.md`).
 
 Do not advance product readiness based on these results. Next proof must demonstrate useful staged dialogue/quests and correct discrimination between known-bad and corrected drafts.
 

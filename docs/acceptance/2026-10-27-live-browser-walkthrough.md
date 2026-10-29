@@ -34,7 +34,7 @@ Effective process settings:
 | DESIGN_AGENT_EXECUTION_MODE | inline |
 | DESIGN_AGENT_JOB_LEASE_SECONDS | 300; no opt-in worker started |
 
-Startup commands, from `E:\College\Project\Bot`:
+Startup commands, from `<REPO_ROOT>/`:
 
 ```powershell
 $override = @'
@@ -52,7 +52,7 @@ services:
 $override | docker compose -f docker-compose.yml -f - up -d --no-build --pull never backend
 ```
 
-Frontend, from `E:\College\Project\Bot\frontend`:
+Frontend, from `<REPO_ROOT>/frontend`:
 
 ```powershell
 $env:NEXT_PUBLIC_API_URL='http://localhost:8000'
@@ -67,7 +67,7 @@ Frontend served `/design-agent` successfully. This was a development-server brow
 
 All screenshots, logs and machine-readable evidence are outside the repository:
 
-**QA folder:** `E:\College\Project\GameMind-QA\live-browser-walkthrough-20261027-01`.
+**QA folder:** `<QA_DIR>/live-browser-walkthrough-20261027-01`.
 
 Screenshot filenames below are relative to that exact folder. Supporting files: `browser-evidence.json`, `current-run.json`, `verification.json`, `backend.log`, `shutdown.log`, and the four usage snapshots plus `usage-before-approval.json`. The original backend log was preserved; graceful shutdown was recorded separately.
 

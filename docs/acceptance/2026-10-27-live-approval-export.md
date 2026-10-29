@@ -24,7 +24,7 @@ The browser-QA skill guided the real interaction/network/error capture. This was
 
 ## QA evidence and identities
 
-**QA folder:** `E:\College\Project\GameMind-QA\live-approval-export-20261027-01`.
+**QA folder:** `<QA_DIR>/live-approval-export-20261027-01`.
 
 All screenshot names below refer to this exact folder, outside the repo. Supporting files: `browser-evidence.json`, `start-response.json`, `final-run.json`, `trace.json`, `evidence.json`, `database-verification.json`, `verification.json`, `backend.log`, `shutdown.log`, and before/startup/generation/after usage JSON files. `generation.log` also contains old container history; accounting uses the current-startup-only `backend.log` and current Pacific-day ledger snapshots.
 
@@ -302,7 +302,7 @@ Neither backend nor frontend was started by this attempt, and no browser session
 #### Preparation and eligibility
 
 - Docker was now running with the existing application PostgreSQL and Chroma containers. Sandbox access to its named pipe was denied, so the same commands were run with the required host-tool permission; no application repair was made.
-- Application source still matched **`f79e059281ffd302358b18e15e94cbbc864dc330`**: `git diff f79e059 HEAD -- backend frontend docker-compose.yml` was empty. HEAD before this addition was `fb7b0fd`, another document-only commit. The running backend used **`gamemind-revise-tests:local`**, image `sha256:77a2481d5d69bc58d1f4f2fa93a6ff032dbf6a9c653c93ea7545d095d9ba592a`, with **`E:\College\Project\Bot\backend:/app`** source bind-mounted and restart policy **`no`**.
+- Application source still matched **`f79e059281ffd302358b18e15e94cbbc864dc330`**: `git diff f79e059 HEAD -- backend frontend docker-compose.yml` was empty. HEAD before this addition was `fb7b0fd`, another document-only commit. The running backend used **`gamemind-revise-tests:local`**, image `sha256:77a2481d5d69bc58d1f4f2fa93a6ff032dbf6a9c653c93ea7545d095d9ba592a`, with **`<REPO_ROOT>/backend:/app`** source bind-mounted and restart policy **`no`**.
 - Process-only settings: `LLM_PROFILE=dev`, `GEMINI_DEV_MODEL=gemini-3.5-flash-lite`, `GEMINI_TIMEOUT_SECONDS=180`, `DESIGN_AGENT_FALLBACK_TO_MOCK=true`, `PYTHONPATH=/app`. Effective revise fallback exclusion was `['revise']`; schema reduction nodes `['revise']`; literal-preservation threshold **6,000 bytes**; per-run cap **12**; job lease **300 seconds**. No `.env` change.
 - Before starting the backend, `gemini_usage.py` reported Pacific date **2026-10-28**, Flash-Lite **0/500**, **500 remaining**, RPM **5**, not exhausted; Flash **0/20**, RPM **3**. The required remaining budget of 15 passed. The CLI itself did not contact Google.
 - A PostgreSQL **READ ONLY** transaction confirmed the target run was **awaiting_review / human_review, revision 0/2, no review events**, one mutable v1 draft, and existing per-run usage **3/12**. No protected run was resumed, rejected or otherwise modified.
@@ -388,7 +388,7 @@ Stopped here as instructed. No proposals were confirmed; no approval was attempt
 
 #### QA evidence and screenshots
 
-QA directory (outside the repository): **`E:\College\Project\GameMind-QA\correction-same-run-20261028-01`**.
+QA directory (outside the repository): **`<QA_DIR>/correction-same-run-20261028-01`**.
 
 1. `01-before-correction.png` — original draft and review state.
 2. `02-npcs-only-exact-reason.png` — only NPCs selected, supplied reason entered.
@@ -440,12 +440,12 @@ Run C date: **2026-10-28 (Asia/Calcutta)**. **Overall verdict: FAIL under the re
 ### Shared setup, scope and quota
 
 - `git diff f79e059 HEAD -- backend frontend docker-compose.yml` was empty. Running application source matched **`f79e059281ffd302358b18e15e94cbbc864dc330`**; later commits before this task were documentation only. No code or `.env` changes.
-- Used the cached **`gamemind-revise-tests:local`** SDK image, source bind mount **`E:\College\Project\Bot\backend:/app`**, restart policy **`no`**, process-only `LLM_PROFILE=dev`, `GEMINI_TIMEOUT_SECONDS=180`, `DESIGN_AGENT_FALLBACK_TO_MOCK=true`, `PYTHONPATH=/app`. Effective model: **`gemini-3.5-flash-lite`** for all hosted nodes. Revise fallback remained excluded by default; no revise call occurred. Normal retry and per-run cap **12** stayed in place.
+- Used the cached **`gamemind-revise-tests:local`** SDK image, source bind mount **`<REPO_ROOT>/backend:/app`**, restart policy **`no`**, process-only `LLM_PROFILE=dev`, `GEMINI_TIMEOUT_SECONDS=180`, `DESIGN_AGENT_FALLBACK_TO_MOCK=true`, `PYTHONPATH=/app`. Effective model: **`gemini-3.5-flash-lite`** for all hosted nodes. Revise fallback remained excluded by default; no revise call occurred. Normal retry and per-run cap **12** stayed in place.
 - First ran `gemini_usage.py` in a one-off container using those overrides, before backend startup. Pacific date **2026-10-28**: Flash-Lite **2/500**, **498 remaining**, RPM **5**; Flash **0/20**, RPM **3**. The minimum 30-request remaining-budget guard passed. CLI reads made no Google request.
 - Started backend with the stdin-only Compose override and `up -d --no-build --pull never backend`; frontend with `NEXT_PUBLIC_API_URL=http://localhost:8000`, `LLM_PROFILE=dev`, `NEXT_TELEMETRY_DISABLED=1`, `npm run dev`. Health and readiness both returned **200**, effective provider `gemini`, healthy PostgreSQL/Chroma. Known non-fatal Chroma telemetry noise was ignored; no container restart or startup-stopping traceback occurred.
 - Startup model verification consumed **one GET**, HTTP **200**; ledger rose **2→3**. It is counted separately from run inference. The health response still combined `llm_provider=gemini` with `ai_mode=local_demo`; the latter is not proof of offline execution.
 - Drove real Playwright/Chromium **149.0.7827.55**, headless **1440×1000**, against the live frontend/backend. No route interception, fixtures, sign-in, finding adjudication, rejection or revision. Protected B3/B4b/faulted walkthrough/previously rejected run were not opened for mutation or changed. No runtime export/materialization or Unity operation.
-- QA root, outside the repository: **`E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01`**. All screenshot names below are beneath its **`attempt-1`** subdirectory.
+- QA root, outside the repository: **`<QA_DIR>/fresh-run-approval-20261028-01`**. All screenshot names below are beneath its **`attempt-1`** subdirectory.
 
 ### Attempt 1 — approval/export worked; strict content equality failed
 
@@ -523,7 +523,7 @@ Clicked Approve **once**. Browser POST returned **200 in 426 ms**, run **complet
 Clicked **Download technical brief**. The governed run-final-artifact export GET returned **200** and triggered a real browser download, suggested filename `gamemind-agent-brief.md`. Saved **28,336 UTF-8 bytes** to:
 
 ```text
-E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01\attempt-1\technical-brief.md
+<QA_DIR>/fresh-run-approval-20261028-01\attempt-1\technical-brief.md
 ```
 
 Brief structure: approved status/project/run/final version and frozen snapshot; source list; frozen resolved Windows PC decision; Summary/narrative/art/NPCs/memory/levels/systems/quests/runtime; source citations and frozen evidence excerpts. Quest state contracts are labelled **design proposals, not runtime bindings**, and checks are labelled **not executed**. Approved design is still `planning_only`, not a runtime release.
@@ -568,7 +568,7 @@ This is the existing, explicitly documented final-only metadata exception at **`
 
 #### Screenshots and UX findings
 
-All ten screenshots are in **`E:\College\Project\GameMind-QA\fresh-run-approval-20261028-01\attempt-1`**:
+All ten screenshots are in **`<QA_DIR>/fresh-run-approval-20261028-01\attempt-1`**:
 
 1. `01-source-loaded.png`
 2. `02-platform-resolved.png`

@@ -78,11 +78,11 @@ Success must include useful new greeting/progress/completion lines, the full fiv
 
 ## Reproduction
 
-From `E:\College\Project\Bot\backend`:
+From `<REPO_ROOT>/backend`:
 
 ```powershell
-& '.\.venv312\Scripts\python.exe' -B 'E:\College\Project\GameMind-QA\qa-action-contract-local-20261016\offline.py' test_content_revision.py test_content_draft.py test_design_contract_v2.py test_quest_state_contract.py test_design_agent_llm_provider.py test_structured_output_diagnostics.py test_nvidia_design_agent_provider.py
-& '.\.venv312\Scripts\python.exe' -B 'E:\College\Project\GameMind-QA\qa-action-contract-local-20261016\inspect.py'
+& '.\.venv312\Scripts\python.exe' -B '<QA_DIR>/qa-action-contract-local-20261016\offline.py' test_content_revision.py test_content_draft.py test_design_contract_v2.py test_quest_state_contract.py test_design_agent_llm_provider.py test_structured_output_diagnostics.py test_nvidia_design_agent_provider.py
+& '.\.venv312\Scripts\python.exe' -B '<QA_DIR>/qa-action-contract-local-20261016\inspect.py'
 ```
 
 The local inspection scripts/results are outside the application repository. Earlier QA source/results were not rewritten.

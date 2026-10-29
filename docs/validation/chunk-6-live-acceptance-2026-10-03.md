@@ -33,7 +33,7 @@ NVIDIA's public [Super model page](https://build.nvidia.com/nvidia/nemotron-3-su
 - Live Chromium walkthrough: actual backend, QA workspace only, desktop light at 1440 px and mobile dark at 375 px. Failed-run label and HTTP 410 trace visible, approval unavailable, all 17 source chunks reachable, no browser runtime errors, no cross-workspace requests, and no browser writes. These are two targeted live cases, not a full authenticated production walkthrough.
 - Frontend production build had passed immediately before this batch with corrected CSS; this batch adds only the opt-in acceptance runner and documentation, not frontend application code. Lint, TypeScript and runner syntax were rechecked.
 
-Evidence directory: `C:\Users\Abhinav Jain\.codex\visualizations\2026\08\03\019fc9a2-dd63-7f10-904c-149a522ea09b\chunk6-cyberrakshak-2026-10-03`.
+Evidence directory: `<QA_DIR>/chunk6-cyberrakshak-2026-10-03`.
 It retains metadata, source chunks, consent rejection, failed response, run/trace, blocked-export responses, live-browser results and screenshots. The QA workspace and failed run remain available for inspection; they were not deleted.
 
 ## Repeatable harness
@@ -43,7 +43,7 @@ It retains metadata, source chunks, consent rejection, failed response, run/trac
 ```powershell
 # A fresh start sends the bundled GDD to the configured hosted provider.
 # Set a NEW output directory; start refuses to overwrite an existing directory.
-$env:CYBER_ACCEPTANCE_DIR = 'C:\path\to\new-acceptance-evidence'
+$env:CYBER_ACCEPTANCE_DIR = '<QA_DIR>/new-acceptance-evidence'
 $env:CYBER_ACCEPTANCE_HOSTED_CONSENT = 'yes'
 node tests/cyberrakshak-acceptance.mjs start
 

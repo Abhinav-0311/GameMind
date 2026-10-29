@@ -18,7 +18,7 @@ remaps their citation IDs. All seven CyberRakshak excerpts fit 1200 characters;
 the adapter must retain every excerpt unchanged. Authored content, cases, expected
 defects and source hashes are unchanged. No provider budget/configuration changed.
 Version 1 is preserved locally at
-`E:\College\Project\GameMind-QA\critic-control-baseline-20261016\critic_review_controls.v1.json`
+`<QA_DIR>/critic-control-baseline-20261016\critic_review_controls.v1.json`
 (normalized-LF SHA-256
 `4ea692e7f8185c73783071efeb5ec88a2e100e7f185d2682c57deedaa3e151f6`).
 
@@ -81,7 +81,7 @@ the compact critic input; saved artifacts/API note arrays are unchanged.
 Run with the existing guarded offline runner from `backend`:
 
 ```powershell
-.\.venv312\Scripts\python.exe -B E:\College\Project\GameMind-QA\qa-action-contract-local-20261016\offline.py test_critic_controls.py test_independent_critic_boundary.py test_design_prompt_usability.py
+.\.venv312\Scripts\python.exe -B <QA_DIR>/qa-action-contract-local-20261016\offline.py test_critic_controls.py test_independent_critic_boundary.py test_design_prompt_usability.py
 ```
 
 That runner is a machine-local QA helper, not a committed project dependency.

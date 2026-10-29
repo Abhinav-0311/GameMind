@@ -23,7 +23,7 @@ approved or modified. No runtime materialization/export action was performed.
 - Applied only the prepared target, with transactional DDL and bounded waits:
 
   ```powershell
-  cd E:\College\Project\Bot
+  cd <REPO_ROOT>/
   docker compose exec -T -e PYTHONDONTWRITEBYTECODE=1 -e 'PGOPTIONS=-c lock_timeout=5000 -c statement_timeout=60000' backend alembic upgrade d2e4f6a8b901
   ```
 
