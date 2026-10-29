@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ModalDialog from "@/components/ModalDialog";
+import DesignReviewConsent from "@/components/DesignReviewConsent";
 
 import { api, ApiRequestError, requestFailureMessage, type DecisionCoverageResponse, type DesignDecision, type DocumentResponse } from "@/lib/api";
 
@@ -37,6 +38,7 @@ function DecisionsContent() {
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [agentRunId, setAgentRunId] = useState<string | null>(null);
   const [agentConsentOpen, setAgentConsentOpen] = useState(false);
+  const [configuredProvider, setConfiguredProvider] = useState<string | null>(null);
   const [startingAgentReview, setStartingAgentReview] = useState(false);
   const [deferRuntime, setDeferRuntime] = useState(false);
   const [allowUnspecifiedMemory, setAllowUnspecifiedMemory] = useState(false);
@@ -59,13 +61,15 @@ function DecisionsContent() {
   useEffect(() => {
     let active = true;
     Promise.resolve().then(() => {
-      if (!active) return [];
+      if (!active) return null;
       setLoading(true);
       setSourcesError(null);
-      return api.getDocuments();
+      return Promise.all([api.getDocuments(), api.getHealth().catch(() => null)]);
     })
-      .then((loaded) => {
-        if (!active) return;
+      .then((result) => {
+        if (!active || !result) return;
+        const [loaded, health] = result;
+        setConfiguredProvider(health?.llm_provider ?? null);
         setDocuments(loaded);
         setSelectedDocumentId((current) => {
           if (current && loaded.some((document) => document.id === current)) return current;
@@ -408,11 +412,9 @@ function DecisionsContent() {
       {agentConsentOpen && (
         <ModalDialog labelledBy="agent-review-title" returnFocusId="review-source" dismissible={!startingAgentReview} onClose={() => setAgentConsentOpen(false)}>
           <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
-            <p className="page-kicker">Governed AI review</p>
+            <p className="page-kicker">{configuredProvider === "mock" ? "Offline review" : "Governed AI review"}</p>
             <h2 id="agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">Add a cited AI review to this GDD?</h2>
-            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-              GameMind will use the configured AI provider to review selected source evidence, prepare a cited draft, and run an independent critique. Your local source review and decisions stay available either way.
-            </p>
+            <DesignReviewConsent provider={configuredProvider} />
             <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
               <input type="checkbox" checked={deferRuntime} onChange={(event) => setDeferRuntime(event.target.checked)}
                 disabled={startingAgentReview} aria-describedby="defer-runtime-help"
@@ -438,7 +440,7 @@ function DecisionsContent() {
                 Continue with local review
               </button>
               <button type="button" onClick={startAgentReview} disabled={startingAgentReview} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50">
-                {startingAgentReview ? "Starting review" : "Start governed review"}
+                {startingAgentReview ? "Starting review" : configuredProvider === "mock" ? "Start offline review" : "Start governed review"}
               </button>
             </div>
           </section>

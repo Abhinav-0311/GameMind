@@ -6,6 +6,9 @@ import ModalDialog from "@/components/ModalDialog";
 import FieldCorrectionDialog from "@/components/FieldCorrectionDialog";
 import FrozenDesignEvidence from "@/components/FrozenDesignEvidence";
 import DesignFindingReviews from "@/components/DesignFindingReviews";
+import DraftQualityAdvisories from "@/components/DraftQualityAdvisories";
+import DesignReviewConsent from "@/components/DesignReviewConsent";
+import { deriveReviewGate } from "@/lib/design-review-gate";
 import {
   api,
   ApiRequestError,
@@ -342,26 +345,10 @@ export default function DesignAgentPage() {
   const selectedProposals: DesignAgentProposalConfirmation[] = pendingProposals.flatMap((proposal) =>
     proposal.section && proposal.record_id && selectedKeys.includes(proposalKey(proposal))
       ? [{ section: proposal.section, record_id: proposal.record_id, assumption: proposal.assumption }] : []);
-  const rawCritiqueBlocked = activeRun?.critique?.content.verdict === "needs_revision"
-    || critiqueFindings.some((finding) => finding.severity === "high")
-    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (activeRun?.critique?.content.verdict !== "ready_for_review"
-      || activeRun?.critique?.artifact_id !== artifactId || !preApprovalScorecard));
-  const needsRevision = Boolean(activeRun?.critique && !critiqueIsCurrent)
-    || (activeRun?.status === "awaiting_review" && Boolean(activeRun.critique?.id) && !findingReview)
-    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (!preApprovalScorecard || activeRun?.critique?.artifact_id !== artifactId))
-    || (findingReview ? findingReview.critique_blocked : rawCritiqueBlocked);
-  const confirmationReady = Boolean(preApprovalScorecard && !preApprovalScorecard.passed
-    && preApprovalScorecard.blockers.length === 1 && preApprovalScorecard.blockers[0] === "Integration readiness"
-    && ["grounding", "completeness", "consistency"].every((key) => preApprovalScorecard.metrics.some((metric) => metric.key === key && metric.passed))
-    && preApprovalScorecard.metrics.filter((metric) => metric.key !== "integration_readiness").every((metric) => metric.passed)
-    && !preApprovalScorecard.unsupported_sections?.length && !preApprovalScorecard.incomplete_sections?.length
-    && !preApprovalScorecard.quest_integration_gaps?.length
-    && !preApprovalScorecard.recovered_sections?.length && pendingProposals.length > 0
-    && pendingProposals.length <= 64 && selectedProposals.length === pendingProposals.length && !needsRevision);
-  const approvalBlocked = Boolean(activeRun?.approval_blocked_reason)
-    || findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
-    || (activeRun?.degraded === true && !degradedAcknowledged)
-    || Boolean(preApprovalScorecard && !preApprovalScorecard.passed && !confirmationReady);
+  const { needsRevision, confirmationReady, approvalBlocked } = deriveReviewGate({
+    activeRun, artifactId, critiqueIsCurrent, critiqueFindings, findingReview,
+    preApprovalScorecard, selectedProposals, findingBusy, degradedAcknowledged,
+  });
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
@@ -478,12 +465,15 @@ export default function DesignAgentPage() {
   useEffect(() => {
     if (!activeRun || activeRun.status !== "completed") return;
     let mounted = true;
-    api.getDesignAgentEvaluation(activeRun.id)
+    api.getDesignAgentEvaluation(activeRun.id, activeRun.has_evaluation === true)
       .then((loadedEvaluation) => {
         if (mounted) setEvaluation(loadedEvaluation);
       })
-      .catch(() => {
-        if (mounted) setEvaluation(null);
+      .catch((reason) => {
+        if (mounted) {
+          setEvaluation(null);
+          setError(requestFailureMessage(reason, "Human evaluation"));
+        }
       });
     return () => {
       mounted = false;
@@ -867,9 +857,7 @@ export default function DesignAgentPage() {
           <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
             <p className="page-kicker">{offlineConsent ? "Offline review" : "Governed AI review"}</p>
             <h2 id="start-agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{critiqueRetry ? "Retry this draft's critique?" : "Start a cited review?"}</h2>
-            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-              {offlineConsent ? "This run is offline. The mock provider processes source excerpts locally and sends nothing to a hosted provider. It uses deterministic extraction, not newly generated content." : critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured hosted provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm."}
-            </p>
+            <DesignReviewConsent provider={critiqueRetry ? activeRun?.provider_name ?? null : configuredProvider} critiqueOnly={Boolean(critiqueRetry)} />
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button type="button" onClick={() => { setStartConsentOpen(false); setCritiqueRetry(null); }} disabled={action === "start" || action === "critique"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel
@@ -1057,6 +1045,7 @@ export default function DesignAgentPage() {
 
             <aside className="status-strip overflow-hidden rounded-lg">
               <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} status={activeRun.status} revisionBudgetExhausted={revisionBudgetExhausted} proposalsSelected={confirmationReady} approvalBlockedReason={activeRun.approval_blocked_reason} />
+              <DraftQualityAdvisories evaluation={activeRun.draft_evaluation} />
               {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} current={Boolean(systemChecks)} findings={systemChecks?.findings} />}
               {reviewable && pendingProposals.length > 0 && (
                 <fieldset className="border-b border-[var(--border)] p-5" disabled={action !== null} aria-describedby="proposal-choice-help">

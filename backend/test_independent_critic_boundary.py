@@ -25,7 +25,7 @@ from app.design_agent.review_policy import _trusted_model_review
 from app.design_agent.service import DesignAgentService
 from app.design_agent.workflow import DesignAgentWorkflow
 from app.models.blueprint import GameBlueprint
-from app.models.design_agent import DesignAgentArtifact, DesignAgentCritique, DesignAgentNodeExecution, DesignAgentReviewEvent, DesignAgentRun
+from app.models.design_agent import DesignAgentArtifact, DesignAgentCritique, DesignAgentEvaluation, DesignAgentNodeExecution, DesignAgentReviewEvent, DesignAgentRun
 from app.models.design_decision import DesignDecision
 from app.models.document import Document, DocumentChunk
 from test_design_agent_llm_provider import _completion
@@ -167,7 +167,7 @@ def test_revalidating_derived_notes_ignores_declared_ids_but_not_unsupported_qua
 def test_normal_governed_api_flow_requires_consent_confirmation_and_explicit_design_approval(audit_client, monkeypatch, allow_memory):
     client, app, db, _, tables, *_ = audit_client
     metadata = next(iter(tables.values())).metadata
-    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint):
+    for model in (Document, DocumentChunk, DesignDecision, GameBlueprint, DesignAgentEvaluation):
         Table(model.__tablename__, metadata, *[
             Column(c.name, JSON() if isinstance(c.type, JSONB) else c.type, primary_key=c.primary_key,
                    server_default=None if isinstance(c.type, JSONB) else c.server_default)

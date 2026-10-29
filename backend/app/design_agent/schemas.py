@@ -157,6 +157,20 @@ class DesignAgentEvidenceResponse(BaseModel):
     items: list[DesignAgentEvidenceItemResponse]
 
 
+class DraftQualityAdvisory(BaseModel):
+    id: str
+    check: Literal["quest_label_mismatch", "objective_text_copied_as_dialogue", "warning_in_rules"]
+    severity: Literal["low", "medium"]
+    paths: list[str]
+    message: str
+    values: dict[str, Any]
+
+
+class DraftQualityEvaluation(BaseModel):
+    artifact_id: UUID
+    advisories: list[DraftQualityAdvisory] = Field(default_factory=list)
+
+
 class DesignAgentRunResponse(BaseModel):
     id: UUID
     game_project_id: str
@@ -166,6 +180,8 @@ class DesignAgentRunResponse(BaseModel):
     current_node: str | None
     provider_name: str
     degraded: bool = False
+    draft_evaluation: DraftQualityEvaluation | None = None
+    has_evaluation: bool = False
     defer_runtime: bool = False
     allow_unspecified_memory: bool = False
     retrieval_revision: int
