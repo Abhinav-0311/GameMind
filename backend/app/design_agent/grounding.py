@@ -5,6 +5,7 @@ from typing import Any
 from types import SimpleNamespace
 
 from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, BlueprintContent, GovernedBlueprintContent, CritiqueOutput, CritiqueReference, DefectReference, DialogueTriggerMapping, ProposalConfirmation
+from app.design_agent.schemas import DraftQualityAdvisory
 
 
 SECTION_KEYWORDS = (
@@ -930,6 +931,55 @@ def _request_coverage_gaps(
                             "Specify reevaluation on each required action/objective update and review any deliberately ordered design separately. "
                             "This checks the declared event coverage, not executable event wiring.")
     return gaps
+
+
+def assess_draft_advisories(content: dict[str, Any]) -> list[DraftQualityAdvisory]:
+    """Read-only exact recognizers, separate from every finding and approval metric."""
+    from app.design_agent.finding_reviews import content_digest
+    advisories: list[DraftQualityAdvisory] = []
+
+    def add(check, severity, paths, message, values):
+        advisories.append(DraftQualityAdvisory(
+            id=content_digest([check, paths, values]), check=check, severity=severity,
+            paths=paths, message=message, values=values))
+
+    def normalized(text):
+        text = unicodedata.normalize("NFKC", text).lower()
+        return " ".join("".join(c for c in text if not unicodedata.category(c).startswith("P")).split())
+
+    quests = content.get("quest_hooks", {}).get("content", {}).get("quests", [])
+    by_id = {q["id"]: q for q in quests}
+    suffixes = {q["id"]: int(match[1]) for q in quests
+                if (match := re.search(r"(\d+)$", q["id"]))}
+    for i, npc in enumerate(content.get("npc_archetypes", {}).get("content", {}).get("npcs", [])):
+        for j, trigger in enumerate(npc.get("dialogue_triggers", [])):
+            situation = trigger["situation"]
+            labels = set(re.findall(r"\bQuest (\d+)\b", situation))
+            quest_id = (trigger.get("eligibility") or {}).get("quest_id")
+            if len(labels) != 1 or quest_id not in suffixes or sum(q["id"] == quest_id for q in quests) != 1:
+                continue
+            number = int(next(iter(labels)))
+            if number != suffixes[quest_id] or number not in suffixes.values():
+                base = f"/npc_archetypes/content/npcs/{i}/dialogue_triggers/{j}"
+                add("quest_label_mismatch", "medium", [base + "/situation", base + "/eligibility/quest_id"],
+                    "The Quest label and linked quest ID disagree, or the numbered quest is absent. Review both fields; neither is assumed correct.",
+                    {"situation": situation, "quest_id": quest_id, "quest_title": by_id[quest_id].get("title"),
+                     "label_number": number, "linked_quest_number": suffixes[quest_id], "stored_quest_ids": [q["id"] for q in quests]})
+    for i, quest in enumerate(quests):
+        base = f"/quest_hooks/content/quests/{i}"
+        objectives = [(base + "/objective", quest.get("objective", ""))] + [
+            (base + f"/objectives/{j}", objective) for j, objective in enumerate(quest.get("objectives", []))]
+        for j, dialogue in enumerate(quest.get("dialogue_hooks", [])):
+            matches = [(path, text) for path, text in objectives if normalized(text) and normalized(dialogue) == normalized(text)]
+            if matches:
+                add("objective_text_copied_as_dialogue", "medium", [base + f"/dialogue_hooks/{j}", *[p for p, _ in matches]],
+                    "Dialogue exactly repeats an objective after text normalization. Review whether this is useful spoken dialogue.",
+                    {"dialogue": dialogue, "objectives": [{"path": p, "value": text} for p, text in matches]})
+    for i, rule in enumerate(content.get("npc_memory_design", {}).get("content", {}).get("rules", [])):
+        if rule.strip() in {"Unspecified, not assessed.", "Unspecified, not assessed"} or rule.strip().lower().startswith("warning:"):
+            add("warning_in_rules", "low", [f"/npc_memory_design/content/rules/{i}"],
+                "Move this metadata warning to the section's warnings list; do not treat it as a memory rule.", {"rule": rule})
+    return advisories
 
 
 def assess_artifact_quality(

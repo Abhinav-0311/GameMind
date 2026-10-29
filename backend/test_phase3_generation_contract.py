@@ -790,7 +790,7 @@ def test_run_input_is_bounded_and_prompts_request_complete_quest_transitions():
                  evidence_snapshot_id=str(uuid4()))
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
-    db.refresh.side_effect = lambda record: setattr(record, "id", uuid4())
+    db.flush.side_effect = lambda: setattr(db.add.call_args.args[0], "id", uuid4())
     capture = BlueprintCapturingProvider(BlueprintContent.model_validate(artifact()).model_dump())
     workflow.provider = NvidiaDesignAgentProvider(llm_provider=capture)
     workflow._provider_node = lambda state, node, call, persist: persist(db, run, call())

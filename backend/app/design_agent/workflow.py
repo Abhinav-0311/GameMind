@@ -38,6 +38,7 @@ from app.design_agent.llm_provider import NvidiaProviderError, NvidiaStructuredO
 from app.config import settings
 from app.design_agent.finding_reviews import content_digest
 from app.design_agent.review_policy import canonical_review_request, requires_design_quality_review, saved_review_request, validate_persisted_design_approval, require_degraded_acknowledgement
+from app.design_agent.evaluation import save_draft_quality_evaluation
 from app.models.blueprint import GameBlueprint
 from app.models.design_agent import (
     DesignAgentArtifact,
@@ -568,6 +569,8 @@ class DesignAgentWorkflow:
                 content=content,
             )
             db.add(artifact)
+            db.flush()
+            save_draft_quality_evaluation(run, artifact)
             db.commit()
             db.refresh(artifact)
             return {
@@ -805,6 +808,8 @@ class DesignAgentWorkflow:
             run.revision_count += 1
             run.model_config = {**(run.model_config or {}), "consecutive_revision_failures": 0}
             db.add(artifact)
+            db.flush()
+            save_draft_quality_evaluation(run, artifact)
             db.commit()
             db.refresh(artifact)
             return {

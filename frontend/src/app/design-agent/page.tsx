@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ModalDialog from "@/components/ModalDialog";
 import FrozenDesignEvidence from "@/components/FrozenDesignEvidence";
 import DesignFindingReviews from "@/components/DesignFindingReviews";
+import DraftQualityAdvisories from "@/components/DraftQualityAdvisories";
+import { deriveReviewGate } from "@/lib/design-review-gate";
 import {
   api,
   ApiRequestError,
@@ -340,26 +342,10 @@ export default function DesignAgentPage() {
   const selectedProposals: DesignAgentProposalConfirmation[] = pendingProposals.flatMap((proposal) =>
     proposal.section && proposal.record_id && selectedKeys.includes(proposalKey(proposal))
       ? [{ section: proposal.section, record_id: proposal.record_id, assumption: proposal.assumption }] : []);
-  const rawCritiqueBlocked = activeRun?.critique?.content.verdict === "needs_revision"
-    || critiqueFindings.some((finding) => finding.severity === "high")
-    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (activeRun?.critique?.content.verdict !== "ready_for_review"
-      || activeRun?.critique?.artifact_id !== artifactId || !preApprovalScorecard));
-  const needsRevision = Boolean(activeRun?.critique && !critiqueIsCurrent)
-    || (activeRun?.status === "awaiting_review" && Boolean(activeRun.critique?.id) && !findingReview)
-    || (["nvidia", "gemini"].includes(activeRun?.provider_name ?? "") && (!preApprovalScorecard || activeRun?.critique?.artifact_id !== artifactId))
-    || (findingReview ? findingReview.critique_blocked : rawCritiqueBlocked);
-  const confirmationReady = Boolean(preApprovalScorecard && !preApprovalScorecard.passed
-    && preApprovalScorecard.blockers.length === 1 && preApprovalScorecard.blockers[0] === "Integration readiness"
-    && ["grounding", "completeness", "consistency"].every((key) => preApprovalScorecard.metrics.some((metric) => metric.key === key && metric.passed))
-    && preApprovalScorecard.metrics.filter((metric) => metric.key !== "integration_readiness").every((metric) => metric.passed)
-    && !preApprovalScorecard.unsupported_sections?.length && !preApprovalScorecard.incomplete_sections?.length
-    && !preApprovalScorecard.quest_integration_gaps?.length
-    && !preApprovalScorecard.recovered_sections?.length && pendingProposals.length > 0
-    && pendingProposals.length <= 64 && selectedProposals.length === pendingProposals.length && !needsRevision);
-  const approvalBlocked = Boolean(activeRun?.approval_blocked_reason)
-    || findingBusy || needsRevision || (pendingProposals.length > 0 && !confirmationReady)
-    || (activeRun?.degraded === true && !degradedAcknowledged)
-    || Boolean(preApprovalScorecard && !preApprovalScorecard.passed && !confirmationReady);
+  const { needsRevision, confirmationReady, approvalBlocked } = deriveReviewGate({
+    activeRun, artifactId, critiqueIsCurrent, critiqueFindings, findingReview,
+    preApprovalScorecard, selectedProposals, findingBusy, degradedAcknowledged,
+  });
   const currentStatus = activeRun ? statusMeta(activeRun) : null;
   const currentStage = activeRun ? activeStageIndex(activeRun) : 0;
   const reviewable = activeRun?.status === "awaiting_review";
@@ -1050,6 +1036,7 @@ export default function DesignAgentPage() {
 
             <aside className="status-strip overflow-hidden rounded-lg">
               <ApprovalGate scorecard={preApprovalScorecard} needsRevision={needsRevision} status={activeRun.status} revisionBudgetExhausted={revisionBudgetExhausted} proposalsSelected={confirmationReady} approvalBlockedReason={activeRun.approval_blocked_reason} />
+              <DraftQualityAdvisories evaluation={activeRun.draft_evaluation} />
               {preApprovalScorecard && <PreApprovalScorecard scorecard={preApprovalScorecard} current={Boolean(systemChecks)} findings={systemChecks?.findings} />}
               {reviewable && pendingProposals.length > 0 && (
                 <fieldset className="border-b border-[var(--border)] p-5" disabled={action !== null} aria-describedby="proposal-choice-help">

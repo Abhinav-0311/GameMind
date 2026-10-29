@@ -434,6 +434,20 @@ export interface DesignFindingReview {
   resolutions: DesignFindingResolution[];
 }
 
+export interface DraftQualityAdvisory {
+  id: string;
+  check: "quest_label_mismatch" | "objective_text_copied_as_dialogue" | "warning_in_rules";
+  severity: "low" | "medium";
+  paths: string[];
+  message: string;
+  values: Record<string, unknown>;
+}
+
+export interface DraftQualityEvaluation {
+  artifact_id: string;
+  advisories: DraftQualityAdvisory[];
+}
+
 export interface DesignAgentRun {
   id: string;
   game_project_id: string;
@@ -443,6 +457,7 @@ export interface DesignAgentRun {
   current_node?: string | null;
   provider_name: string;
   degraded: boolean;
+  draft_evaluation?: DraftQualityEvaluation | null;
   defer_runtime?: boolean;
   allow_unspecified_memory?: boolean;
   retrieval_revision: number;

@@ -111,6 +111,9 @@ class DesignAgentService:
             current_node=run.current_node,
             provider_name=run.provider_name,
             degraded=degraded_review_required(db, run),
+            draft_evaluation=((run.model_config or {}).get("draft_quality_evaluation")
+                              if reviewed_artifact and str(reviewed_artifact.id) ==
+                              (run.model_config or {}).get("draft_quality_evaluation", {}).get("artifact_id") else None),
             defer_runtime=(run.model_config or {}).get("defer_runtime") is True,
             allow_unspecified_memory=(run.model_config or {}).get("allow_unspecified_memory") is True,
             retrieval_revision=run.retrieval_revision,

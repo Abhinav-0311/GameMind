@@ -2,12 +2,59 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
+import { createRequire } from "node:module";
+import { runInNewContext } from "node:vm";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const source = await readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 },
 });
 const { api, ApiRequestError } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
+
+const gateSource = await readFile(new URL("../src/lib/design-review-gate.ts", import.meta.url), "utf8");
+const gateCode = ts.transpileModule(gateSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { deriveReviewGate } = await import(`data:text/javascript;base64,${Buffer.from(gateCode).toString("base64")}`);
+const advisory = { id: "exact-check", check: "quest_label_mismatch", severity: "medium",
+  paths: ["/npc_archetypes/content/npcs/0/dialogue_triggers/0/situation"],
+  message: "Review both fields; neither is assumed correct.", values: { situation: "Quest 0", quest_id: "quest_1" } };
+
+test("advisories cannot set needsRevision or disable approval, including on blocked runs", () => {
+  const run = { status: "awaiting_review", provider_name: "gemini", degraded: false,
+    current_artifact: { id: "draft" }, critique: { id: "critique", artifact_id: "draft",
+      content: { verdict: "ready_for_review", findings: [] } } };
+  const inputs = { activeRun: run, artifactId: "draft", critiqueIsCurrent: true, critiqueFindings: [],
+    findingReview: { critique_blocked: false }, preApprovalScorecard: { passed: true, unresolved_assumptions: [] },
+    selectedProposals: [], findingBusy: false, degradedAcknowledged: false };
+  assert.deepEqual(deriveReviewGate(inputs), { needsRevision: false, confirmationReady: false, approvalBlocked: false });
+  for (const variant of [run, { ...run, degraded: true }, { ...run, approval_blocked_reason: "Recorded rejection" }]) {
+    const before = deriveReviewGate({ ...inputs, activeRun: variant });
+    const after = deriveReviewGate({ ...inputs, activeRun: { ...variant,
+      draft_evaluation: { artifact_id: "draft", advisories: [advisory] } } });
+    assert.deepEqual(after, before);
+  }
+  assert.equal(deriveReviewGate({ ...inputs, findingReview: { critique_blocked: true } }).needsRevision, true);
+});
+
+test("advisory panel is separate, non-interactive, escaped, and has an honest empty state", async () => {
+  const componentSource = await readFile(new URL("../src/components/DraftQualityAdvisories.tsx", import.meta.url), "utf8");
+  const componentCode = ts.transpileModule(componentSource, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
+  } }).outputText;
+  const compiled = { exports: {} };
+  runInNewContext("(function(require,module,exports){" + componentCode + "})")(
+    createRequire(import.meta.url), compiled, compiled.exports);
+  const Panel = compiled.exports.default;
+  const html = renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: [
+    { ...advisory, message: "<script>not executable</script>" }] } }));
+  assert.match(html, /Advisories \(non-blocking\)/);
+  assert.match(html, /medium/);
+  assert.match(html, /dialogue_triggers\/0\/situation/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.doesNotMatch(html, /<(button|input|form|select|script)\b/);
+  assert.match(renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: [] } })), /not a quality guarantee/);
+  assert.equal(renderToStaticMarkup(Panel({ evaluation: null })), "");
+});
 
 test("review forwards explicit acknowledgement bound to the artifact", async (context) => {
   let sent;
@@ -19,6 +66,17 @@ test("review forwards explicit acknowledgement bound to the artifact", async (co
     decision: "approve", artifact_id: "reviewed-v2", acknowledge_degraded: true,
   });
   assert.deepEqual(sent, { decision: "approve", artifact_id: "reviewed-v2", acknowledge_degraded: true });
+});
+
+test("run API retains advisory paths and exact compared values separately from critique", async (context) => {
+  const evaluation = { artifact_id: "draft", advisories: [advisory] };
+  context.mock.method(globalThis, "fetch", async () => Response.json({
+    id: "run", draft_evaluation: evaluation, critique: { content: { findings: [], verdict: "ready_for_review" } },
+  }));
+  const run = await api.getDesignAgentRun("run");
+  assert.deepEqual(run.draft_evaluation, evaluation);
+  assert.deepEqual(run.critique.content.findings, []);
+  assert.equal(run.critique.content.verdict, "ready_for_review");
 });
 
 for (const status of [502, 503]) {
