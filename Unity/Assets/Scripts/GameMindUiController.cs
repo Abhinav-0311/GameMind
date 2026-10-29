@@ -30,6 +30,7 @@ namespace GameMind
 
         private readonly List<NpcProfileDto> materializedNpcs = new List<NpcProfileDto>();
         private readonly List<QuestDto> materializedQuests = new List<QuestDto>();
+        private readonly List<ApprovedRuntimeNpcArtifactDto> approvedNpcs = new List<ApprovedRuntimeNpcArtifactDto>();
 
         private string activeQuestId = "";
         private int currentHintLevel = 1;
@@ -141,11 +142,16 @@ namespace GameMind
         {
             materializedNpcs.Clear();
             materializedQuests.Clear();
+            approvedNpcs.Clear();
 
             if (bundle != null)
             {
                 if (bundle.npcs != null) materializedNpcs.AddRange(bundle.npcs);
                 if (bundle.quests != null) materializedQuests.AddRange(bundle.quests);
+                if (bundle.approved_design != null && bundle.approved_design.npcs != null)
+                {
+                    approvedNpcs.AddRange(bundle.approved_design.npcs);
+                }
             }
 
             if (materializedNpcs.Count == 0 && materializedQuests.Count == 0)
@@ -153,7 +159,7 @@ namespace GameMind
                 SetStatus("No runtime data", Warning);
                 ShowEmptyState(
                     "No materialized blueprint found",
-                    "In the dashboard: open Sources, load the Frostpeak demo, open Blueprints, generate, approve, and materialize. Then press R here to reload the latest runtime bundle."
+                    "In the dashboard: review a GDD, generate a blueprint, approve it, and materialize explicit runtime records. Then press R here to reload the latest runtime bundle."
                 );
                 interactButton.gameObject.SetActive(false);
                 questPanel.SetActive(false);
@@ -238,48 +244,30 @@ namespace GameMind
                 return;
             }
 
-            string npcSlug = materializedNpcs[0].slug;
-            string npcName = string.IsNullOrEmpty(materializedNpcs[0].name) ? "Eldrin" : materializedNpcs[0].name;
+            NpcProfileDto selectedNpc = materializedNpcs[0];
+            string npcName = string.IsNullOrEmpty(selectedNpc.name) ? "NPC" : selectedNpc.name;
             foreach (NpcProfileDto npc in materializedNpcs)
             {
                 if (!string.IsNullOrEmpty(npc.slug) && npc.slug.ToLower().Contains("eldrin"))
                 {
-                    npcSlug = npc.slug;
+                    selectedNpc = npc;
                     npcName = string.IsNullOrEmpty(npc.name) ? "Eldrin" : npc.name;
                     break;
                 }
             }
 
-            SetStatus($"Asking {npcName}", Warning);
-            interactButton.interactable = false;
-            interactButtonText.text = "Listening...";
+            ApprovedRuntimeNpcArtifactDto approvedNpc = FindApprovedNpc(selectedNpc.slug);
+            SetStatus("Approved dialogue", Success);
+            dialogueSpeakerText.text = npcName;
+            dialogueText.text = BuildApprovedDialogue(approvedNpc, selectedNpc);
+            dialoguePanel.SetActive(true);
 
-            StartCoroutine(GameMindApiClient.Instance.SendChatDialogue(
-                npcSlug,
-                "Who is King Arven?",
-                null,
-                response =>
-                {
-                    SetStatus("Runtime ready", Success);
-                    interactButton.interactable = true;
-                    interactButtonText.text = $"Talk to {npcName}  T";
-
-                    dialogueSpeakerText.text = npcName;
-                    dialogueText.text = FormatDialogueText(response.response_text, npcName);
-                    dialoguePanel.SetActive(true);
-
-                    if (eldrinController != null)
-                    {
-                        eldrinController.HandleDialogueResponse(response);
-                    }
-                },
-                error =>
-                {
-                    interactButton.interactable = true;
-                    interactButtonText.text = $"Talk to {npcName}  T";
-                    OnRuntimeActionError("Dialogue", error);
-                }
-            ));
+            // Presentation stays client-owned; the proof scene requests no fresh LLM
+            // output, so every displayed claim originates in the runtime bundle.
+            if (eldrinController != null)
+            {
+                eldrinController.TriggerAnimation("talk");
+            }
         }
 
         private void AcceptQuest()
@@ -301,7 +289,7 @@ namespace GameMind
                     SetStatus("Quest accepted", Success);
                     acceptQuestButton.gameObject.SetActive(false);
                     hintPanel.SetActive(true);
-                    hintText.text = "Quest accepted. Ask for progressive guidance when the player needs help.";
+                    hintText.text = "Quest accepted. Reveal the next approved objective clue when the player needs help.";
                 },
                 error =>
                 {
@@ -310,7 +298,7 @@ namespace GameMind
                         SetStatus("Quest already active", Success);
                         acceptQuestButton.gameObject.SetActive(false);
                         hintPanel.SetActive(true);
-                        hintText.text = "Quest is already active for this player. You can request the next progressive hint.";
+                        hintText.text = "Quest is already active for this player. You can reveal the next approved objective clue.";
                         return;
                     }
 
@@ -329,40 +317,16 @@ namespace GameMind
                 return;
             }
 
-            SetStatus($"Hint level {currentHintLevel}", Warning);
-            requestHintButton.interactable = false;
-            requestHintButtonText.text = "Loading...";
-
-            StartCoroutine(GameMindApiClient.Instance.GenerateHint(
-                activeQuestId,
-                currentHintLevel,
-                response =>
-                {
-                    SetStatus("Runtime ready", Success);
-                    hintText.text = $"Level {response.hint_level}: {response.hint}";
-                    currentHintLevel = currentHintLevel >= 3 ? 1 : currentHintLevel + 1;
-                    StartCoroutine(HintCooldownTimer(5));
-                },
-                error =>
-                {
-                    requestHintButton.interactable = true;
-                    requestHintButtonText.text = "Request hint";
-                    OnRuntimeActionError("Hint", error);
-                    hintText.text = GetErrorMessage(error, "Hint could not be generated. Try again after reloading the runtime.");
-                }
-            ));
-        }
-
-        private IEnumerator HintCooldownTimer(int seconds)
-        {
-            for (int i = seconds; i > 0; i--)
+            QuestDto quest = materializedQuests.Find(item => item.id == activeQuestId);
+            if (quest == null)
             {
-                requestHintButtonText.text = $"Cooldown {i}s";
-                yield return new WaitForSeconds(1f);
+                SetStatus("Quest data unavailable", Warning);
+                return;
             }
 
-            requestHintButton.interactable = true;
-            requestHintButtonText.text = "Request hint  H";
+            SetStatus($"Objective clue {currentHintLevel}", Success);
+            hintText.text = BuildApprovedHint(quest, currentHintLevel);
+            currentHintLevel = currentHintLevel >= 3 ? 1 : currentHintLevel + 1;
         }
 
         private void CloseDialogue()
@@ -382,6 +346,42 @@ namespace GameMind
             }
 
             return cleaned;
+        }
+
+        private ApprovedRuntimeNpcArtifactDto FindApprovedNpc(string slug)
+        {
+            return approvedNpcs.Find(npc => npc != null && npc.slug == slug);
+        }
+
+        private string BuildApprovedDialogue(ApprovedRuntimeNpcArtifactDto approvedNpc, NpcProfileDto runtimeNpc)
+        {
+            if (approvedNpc != null && approvedNpc.dialogue_hooks != null && approvedNpc.dialogue_hooks.Count > 0)
+            {
+                return approvedNpc.dialogue_hooks[0];
+            }
+
+            string style = approvedNpc != null ? approvedNpc.dialogue_style : runtimeNpc.dialogue_style;
+            string archetype = approvedNpc != null ? approvedNpc.archetype : runtimeNpc.personality_summary;
+            return $"Approved NPC profile\n\nRole: {archetype}\nDialogue direction: {style}\n\nNo approved dialogue hook is available for this character. Add one in the reviewed blueprint before using generated dialogue in a client.";
+        }
+
+        private string BuildApprovedHint(QuestDto quest, int level)
+        {
+            if (quest.objectives == null || quest.objectives.Count == 0)
+            {
+                return "This approved quest has no explicit objective binding. Return to the dashboard and complete its runtime data.";
+            }
+
+            QuestObjectiveDto objective = quest.objectives[0];
+            if (level == 1)
+            {
+                return $"Objective: {objective.description}";
+            }
+            if (level == 2)
+            {
+                return $"Target: {objective.target_type} — {objective.target_id}";
+            }
+            return $"Completion requirement: {objective.quantity_required}. This clue is read directly from the approved runtime objective.";
         }
 
         private string GetPreferredNpcName()
@@ -577,7 +577,7 @@ namespace GameMind
             hintRect.offsetMin = new Vector2(24f, 64f);
             hintRect.offsetMax = new Vector2(-24f, -58f);
 
-            requestHintButton = CreateButton("RequestHintButton", hintPanel.transform, "Request hint  H", Accent, new Color(0.03f, 0.06f, 0.08f, 1f), out requestHintButtonText);
+            requestHintButton = CreateButton("RequestHintButton", hintPanel.transform, "Show objective clue  H", Accent, new Color(0.03f, 0.06f, 0.08f, 1f), out requestHintButtonText);
             RectTransform buttonRect = requestHintButton.GetComponent<RectTransform>();
             buttonRect.anchorMin = new Vector2(0f, 0f);
             buttonRect.anchorMax = new Vector2(1f, 0f);

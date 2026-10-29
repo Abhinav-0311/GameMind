@@ -36,6 +36,11 @@ def get_current_user(
         if not settings.AUTH_REQUIRED:
             return None
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Your session is invalid or expired.")
+    if settings.require_email_verification and not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Verify your email before accessing this workspace.",
+        )
     return user
 
 

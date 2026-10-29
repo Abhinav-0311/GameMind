@@ -40,6 +40,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.database import get_db
 from app.config import settings
+from app.models.design_agent import DesignAgentJob
 from main import app
 
 # Verify that Pydantic resolved the same safe database after application import.
@@ -94,3 +95,13 @@ def db_session():
     
     session.close()
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture(autouse=True)
+def clean_job_queue(db_session):
+    """Workers must not claim a job left by another test."""
+    db_session.query(DesignAgentJob).delete()
+    db_session.commit()
+    yield
+    db_session.query(DesignAgentJob).delete()
+    db_session.commit()

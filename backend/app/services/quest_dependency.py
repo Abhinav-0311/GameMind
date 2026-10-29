@@ -168,6 +168,7 @@ class QuestDependencyAnalyzer:
         # Query all active prerequisite relationships pointing to this quest slug
         prereqs = db.query(WorldRelationship).filter(
             WorldRelationship.rel_type == "prerequisite",
+            WorldRelationship.game_project_id == game_project_id,
             WorldRelationship.valid_to.is_(None)
         ).all()
 

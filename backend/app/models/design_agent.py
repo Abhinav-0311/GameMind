@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -91,6 +92,7 @@ class DesignAgentRun(Base, ProjectScopedMixin):
     model_config = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     retrieval_revision = Column(Integer, nullable=False, default=0, server_default="0")
     revision_count = Column(Integer, nullable=False, default=0, server_default="0")
+    gemini_request_count = Column(Integer, nullable=False, default=0, server_default="0")
     max_revisions = Column(Integer, nullable=False, default=2, server_default="2")
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -155,6 +157,7 @@ class DesignAgentArtifact(Base, ProjectScopedMixin):
     __tablename__ = "design_agent_artifacts"
     __table_args__ = (
         UniqueConstraint("run_id", "version", name="uq_design_agent_artifact_run_version"),
+        UniqueConstraint("game_project_id", "run_id", "id", name="uq_design_agent_artifact_scope"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -185,6 +188,9 @@ class DesignAgentArtifact(Base, ProjectScopedMixin):
 
 class DesignAgentCritique(Base, ProjectScopedMixin):
     __tablename__ = "design_agent_critiques"
+    __table_args__ = (
+        UniqueConstraint("game_project_id", "run_id", "artifact_id", "id", name="uq_design_agent_critique_scope"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id = Column(
@@ -202,6 +208,49 @@ class DesignAgentCritique(Base, ProjectScopedMixin):
     content = Column(JSONB, nullable=False)
     provider_name = Column(String(64), nullable=False)
     model_name = Column(String(128), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class DesignAgentFindingResolution(Base, ProjectScopedMixin):
+    """Append-only API audit of a human dispute; NOT an approval override."""
+
+    __tablename__ = "design_agent_finding_resolutions"
+    __table_args__ = (
+        UniqueConstraint("critique_id", "finding_id", name="uq_design_finding_resolution"),
+        CheckConstraint("disposition = 'not_a_defect'", name="ck_design_finding_disposition"),
+        ForeignKeyConstraint(
+            ["game_project_id", "run_id", "artifact_id"],
+            ["design_agent_artifacts.game_project_id", "design_agent_artifacts.run_id", "design_agent_artifacts.id"],
+            name="fk_design_finding_artifact_scope", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["game_project_id", "run_id", "artifact_id", "critique_id"],
+            ["design_agent_critiques.game_project_id", "design_agent_critiques.run_id",
+             "design_agent_critiques.artifact_id", "design_agent_critiques.id"],
+            name="fk_design_finding_critique_scope", ondelete="CASCADE",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    artifact_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    artifact_version = Column(Integer, nullable=False)
+    critique_id = Column(UUID(as_uuid=True), nullable=False)
+    evidence_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("design_agent_evidence_snapshots.id", ondelete="RESTRICT"), nullable=False)
+    artifact_sha256 = Column(String(64), nullable=False)
+    critique_sha256 = Column(String(64), nullable=False)
+    evidence_sha256 = Column(String(64), nullable=False)
+    finding_id = Column(String(64), nullable=False)
+    finding_index = Column(Integer, nullable=False)
+    finding_content = Column(JSONB, nullable=False)
+    disposition = Column(String(16), nullable=False, default="not_a_defect")
+    reason = Column(Text, nullable=False)
+    artifact_path = Column(String(500), nullable=False)
+    artifact_value = Column(JSONB, nullable=False)
+    evidence_chunk_id = Column(String(100), nullable=False)
+    evidence_quote = Column(Text, nullable=False)
+    reviewer_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewer_label = Column(String(320), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -233,6 +282,7 @@ class DesignAgentReviewEvent(Base, ProjectScopedMixin):
     reviewer_label = Column(String(160), nullable=False, default="local_developer", server_default="local_developer")
     decision = Column(String(16), nullable=False)
     reason = Column(Text, nullable=True)
+    details = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

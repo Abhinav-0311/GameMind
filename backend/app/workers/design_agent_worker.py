@@ -9,6 +9,7 @@ import time
 from app.config import settings
 from app.database import SessionLocal
 from app.design_agent.jobs import DesignAgentJobService
+from app.design_agent.provider_factory import validate_llm_startup
 
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,7 @@ def _request_stop(_signum, _frame) -> None:
 
 
 def main() -> int:
+    validate_llm_startup()
     signal.signal(signal.SIGTERM, _request_stop)
     signal.signal(signal.SIGINT, _request_stop)
     worker_id = f"{socket.gethostname()}:{os.getpid()}"

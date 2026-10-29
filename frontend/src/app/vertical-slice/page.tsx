@@ -2,9 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getActiveProjectId } from "@/lib/api";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { ApiRequestError, api, getActiveProjectId } from "@/lib/api";
 
 interface DocumentItem {
   id: string;
@@ -23,16 +21,10 @@ interface Citation {
   document_id: string;
   chunk_id: string;
   title: string;
-  similarity: number;
+  similarity: number | null;
 }
 
-interface Emotions {
-  trust: number;
-  fear: number;
-  anger: number;
-  curiosity: number;
-  loyalty: number;
-}
+type Emotions = Record<string, number>;
 
 interface ChatMessage {
   sender: "player" | "npc";
@@ -66,11 +58,34 @@ interface Quest {
   objectives: QuestObjective[];
 }
 
+interface RuntimeBundleSetup {
+  blueprint_id: string;
+  npcs: Array<{ slug: string }>;
+}
+
+function runtimeReleaseMessage(detail: unknown) {
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
+    return detail.message;
+  }
+  return "No eligible runtime release is available for this project.";
+}
+
+function requestErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 401) return "Your session has ended. Sign in to continue this runtime test.";
+    if (error.status === 403) return "You do not have access to this workspace or permission for this action.";
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function VerticalSliceSimulator() {
   const [projectId, setProjectId] = useState(getActiveProjectId);
   const [playerId, setPlayerId] = useState("default_player");
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [npcs, setNpcs] = useState<NpcItem[]>([]);
+  const [runtimeBundle, setRuntimeBundle] = useState<RuntimeBundleSetup | null>(null);
+  const [runtimeReleaseError, setRuntimeReleaseError] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState("");
   const [selectedNpcSlug, setSelectedNpcSlug] = useState("");
   const [isLoadingSetup, setIsLoadingSetup] = useState(true);
@@ -87,7 +102,8 @@ export default function VerticalSliceSimulator() {
   const [hintText, setHintText] = useState<string | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [currentHintLevel, setCurrentHintLevel] = useState(0);
-  const [rawPayload, setRawPayload] = useState<Record<string, unknown> | null>(null);
+  const [rawPayload, setRawPayload] = useState<unknown | null>(null);
+  const [requiresSignIn, setRequiresSignIn] = useState(false);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -95,30 +111,41 @@ export default function VerticalSliceSimulator() {
     const fetchOptions = async () => {
       setIsLoadingSetup(true);
       setError(null);
+      setRequiresSignIn(false);
+      setRuntimeBundle(null);
+      setRuntimeReleaseError(null);
 
       try {
-        const headers = { "X-Game-Project-ID": projectId };
-        const [docsRes, npcsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/documents`, { headers, signal: abortController.signal }),
-          fetch(`${API_BASE_URL}/api/v1/npcs`, { headers, signal: abortController.signal }),
+        const [docsData, npcsData, bundleResult] = await Promise.all([
+          api.getRuntimeDocuments(projectId, abortController.signal),
+          api.getRuntimeNpcs(projectId, abortController.signal),
+          api.getLatestRuntimeBundle(projectId, abortController.signal)
+            .then((bundle) => ({ bundle, releaseError: null }))
+            .catch((error: unknown) => {
+              if (error instanceof ApiRequestError && error.status === 401) throw error;
+              return { bundle: null, releaseError: runtimeReleaseMessage(error instanceof Error ? error.message : error) };
+            }),
         ]);
 
-        if (!docsRes.ok) throw new Error("Documents could not be loaded for this project.");
-        if (!npcsRes.ok) throw new Error("NPCs could not be loaded for this project.");
-
-        const docsData: DocumentItem[] = await docsRes.json();
-        const npcsData: NpcItem[] = await npcsRes.json();
+        const bundleData: RuntimeBundleSetup | null = bundleResult.bundle;
+        const releaseError = bundleResult.releaseError;
+        const runtimeNpcSlugs = new Set(bundleData?.npcs.map((npc) => npc.slug) ?? []);
+        const runtimeNpcs = npcsData.filter((npc) => runtimeNpcSlugs.has(npc.slug));
 
         if (!abortController.signal.aborted) {
           setDocuments(docsData);
-          setNpcs(npcsData);
+          setNpcs(runtimeNpcs);
+          setRuntimeBundle(bundleData);
+          setRuntimeReleaseError(releaseError);
           setSelectedDocId((current) => current || docsData[0]?.id || "");
-          setSelectedNpcSlug((current) => current || npcsData[0]?.slug || "");
+          setSelectedNpcSlug((current) => current || runtimeNpcs[0]?.slug || "");
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
-        const message = err instanceof Error ? err.message : "Runtime setup could not be loaded.";
-        if (!abortController.signal.aborted) setError(message);
+        if (!abortController.signal.aborted) {
+          setRequiresSignIn(err instanceof ApiRequestError && err.status === 401);
+          setError(requestErrorMessage(err, "Runtime setup could not be loaded."));
+        }
       } finally {
         if (!abortController.signal.aborted) setIsLoadingSetup(false);
       }
@@ -149,7 +176,7 @@ export default function VerticalSliceSimulator() {
     [npcs, selectedNpcSlug]
   );
 
-  const setupReady = Boolean(selectedDocument && selectedNpc);
+  const setupReady = Boolean(selectedDocument && selectedNpc && runtimeBundle);
   const hasDialogue = chatHistory.some((message) => message.sender === "npc");
   const runState = acceptedQuestId ? "Quest active" : generatedQuest ? "Quest generated" : hasDialogue ? "Dialogue ready" : "Setup";
   const playtestSteps = [
@@ -173,7 +200,7 @@ export default function VerticalSliceSimulator() {
 
   const sendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!messageInput.trim() || !selectedNpcSlug) return;
+    if (!messageInput.trim() || !selectedNpcSlug || !setupReady) return;
 
     const playerMessage = messageInput.trim();
     const nextHistory: ChatMessage[] = [
@@ -191,28 +218,14 @@ export default function VerticalSliceSimulator() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/dialogue/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Game-Project-ID": projectId,
-          "X-Player-ID": playerId,
-        },
-        body: JSON.stringify({
-          npc_slug: selectedNpcSlug,
-          player_message: playerMessage,
-          player_id: playerId,
-          conversation_id: conversationId || undefined,
-          prompt_version: "v1",
-        }),
+      const data = await api.sendRuntimeDialogue(projectId, playerId, {
+        npc_slug: selectedNpcSlug,
+        player_message: playerMessage,
+        player_id: playerId,
+        conversation_id: conversationId || undefined,
+        prompt_version: "v1",
+        source_document_id: selectedDocId || undefined,
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Dialogue request failed.");
-      }
-
-      const data = await res.json();
       setRawPayload(data);
       if (data.conversation_id) setConversationId(data.conversation_id);
 
@@ -228,46 +241,31 @@ export default function VerticalSliceSimulator() {
         },
       ]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "NPC dialogue could not be generated.";
-      setError(message);
+      setRequiresSignIn(err instanceof ApiRequestError && err.status === 401);
+      setError(requestErrorMessage(err, "NPC dialogue could not be generated."));
     } finally {
       setIsSending(false);
     }
   };
 
   const generateQuest = async () => {
-    if (!selectedNpcSlug) return;
+    if (!selectedNpcSlug || !setupReady) return;
     setQuestLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/quests/generate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Game-Project-ID": projectId,
-          "X-Player-ID": playerId,
-        },
-        body: JSON.stringify({
-          npc_slug: selectedNpcSlug,
-          player_id: playerId,
-          player_level: 5,
-        }),
+      const data = await api.generateRuntimeQuest(projectId, playerId, {
+        npc_slug: selectedNpcSlug,
+        player_id: playerId,
+        player_level: 5,
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Quest generation failed.");
-      }
-
-      const data = await res.json();
       setGeneratedQuest(data);
       setAcceptedQuestId(null);
       setHintText(null);
       setRawPayload(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Quest narrative could not be generated.";
-      setError(message);
+      setRequiresSignIn(err instanceof ApiRequestError && err.status === 401);
+      setError(requestErrorMessage(err, "Quest narrative could not be generated."));
     } finally {
       setQuestLoading(false);
     }
@@ -279,59 +277,30 @@ export default function VerticalSliceSimulator() {
     setError(null);
 
     try {
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Game-Project-ID": projectId,
-        "X-Player-ID": playerId,
-      };
-
-      const res = await fetch(`${API_BASE_URL}/api/v1/quests`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          npc_slug: generatedQuest.npc_slug,
-          title: generatedQuest.title,
-          description: generatedQuest.description,
-          difficulty: generatedQuest.difficulty,
-          gold_reward: generatedQuest.rewards.gold,
-          xp_reward: generatedQuest.rewards.xp,
-          item_rewards: generatedQuest.rewards.items,
-          objectives: generatedQuest.objectives.map((objective) => ({
-            objective_index: objective.objective_index,
-            description: objective.description,
-            target_type: objective.target_type,
-            target_id: objective.target_id,
-            quantity_required: objective.quantity_required,
-          })),
-        }),
+      const createdQuest = await api.createRuntimeQuest(projectId, playerId, {
+        npc_slug: generatedQuest.npc_slug,
+        title: generatedQuest.title,
+        description: generatedQuest.description,
+        difficulty: generatedQuest.difficulty,
+        gold_reward: generatedQuest.rewards.gold,
+        xp_reward: generatedQuest.rewards.xp,
+        item_rewards: generatedQuest.rewards.items,
+        objectives: generatedQuest.objectives.map((objective) => ({
+          objective_index: objective.objective_index,
+          description: objective.description,
+          target_type: objective.target_type,
+          target_id: objective.target_id,
+          quantity_required: objective.quantity_required,
+        })),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Generated quest could not be registered.");
-      }
-
-      const createdQuest = await res.json();
-
-      const acceptRes = await fetch(`${API_BASE_URL}/api/v1/quests/progress`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          quest_id: createdQuest.id,
-          player_id: playerId,
-        }),
-      });
-
-      if (!acceptRes.ok) {
-        const errData = await acceptRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Quest progress could not be started.");
-      }
+      await api.startRuntimeQuest(projectId, playerId, createdQuest.id);
 
       setAcceptedQuestId(createdQuest.id);
       setRawPayload(createdQuest);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Quest could not be accepted.";
-      setError(message);
+      setRequiresSignIn(err instanceof ApiRequestError && err.status === 401);
+      setError(requestErrorMessage(err, "Quest could not be accepted."));
     } finally {
       setQuestLoading(false);
     }
@@ -343,44 +312,24 @@ export default function VerticalSliceSimulator() {
     setError(null);
 
     try {
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Game-Project-ID": projectId,
-        "X-Player-ID": playerId,
-      };
-
-      const res = await fetch(`${API_BASE_URL}/api/v1/hints/generate`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          quest_id: acceptedQuestId,
-          player_id: playerId,
-          hint_level: hintLevel,
-        }),
+      const data = await api.generateRuntimeHint(projectId, playerId, {
+        quest_id: acceptedQuestId,
+        player_id: playerId,
+        hint_level: hintLevel,
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || "Hint could not be generated.");
-      }
-
-      const data = await res.json();
       setHintText(data.hint);
       setRawPayload(data);
 
-      const statusRes = await fetch(
-        `${API_BASE_URL}/api/v1/hints/status?quest_id=${acceptedQuestId}&player_id=${playerId}`,
-        { headers }
-      );
-
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
+      try {
+        const statusData = await api.getRuntimeHintStatus(projectId, playerId, acceptedQuestId);
         setCooldownRemaining(statusData.cooldown_remaining_seconds);
         setCurrentHintLevel(statusData.current_level);
+      } catch {
+        // The generated hint remains useful even if the nonessential status refresh fails.
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Hint request failed.";
-      setError(message);
+      setRequiresSignIn(err instanceof ApiRequestError && err.status === 401);
+      setError(requestErrorMessage(err, "Hint request failed."));
     } finally {
       setHintLoading(false);
     }
@@ -401,7 +350,10 @@ export default function VerticalSliceSimulator() {
         </div>
 
         <div className="flex items-center gap-3">
-          <StatusPill ready={setupReady && !isLoadingSetup} label={isLoadingSetup ? "Loading" : setupReady ? "Run ready" : "Needs setup"} />
+          <StatusPill
+            ready={setupReady && !isLoadingSetup}
+            label={isLoadingSetup ? "Loading" : runtimeReleaseError ? "Release blocked" : setupReady ? "Run ready" : "Needs setup"}
+          />
           <button type="button" onClick={resetSession} className="btn-secondary">
             Reset run
           </button>
@@ -411,13 +363,23 @@ export default function VerticalSliceSimulator() {
       {error && (
         <div role="alert" className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-800">
           <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            className="rounded px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
-          >
-            Dismiss
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {requiresSignIn ? (
+              <Link
+                href="/login?continue=%2Fvertical-slice"
+                className="rounded px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+              >
+                Sign in
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="rounded px-2 py-1 text-xs font-semibold text-rose-800 transition hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -427,11 +389,13 @@ export default function VerticalSliceSimulator() {
             <p className="mono-label text-[var(--text-tertiary)]">01 / Configure</p>
             <h2 className="mt-1 text-lg font-semibold tracking-normal text-[var(--foreground)]">Choose the run context</h2>
           </div>
-          <p className="text-sm text-[var(--text-secondary)]">Source: {selectedDocument?.title ?? "Not selected"} · NPC: {selectedNpc?.name ?? "Not selected"}</p>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Dialogue source: {selectedDocument?.title ?? "Not selected"} · NPC: {selectedNpc?.name ?? "Not selected"} · Release: {runtimeBundle ? "approved" : "not available"}
+          </p>
         </div>
         <div className="grid gap-0 lg:grid-cols-2">
           <SetupSelect
-            label="Lore source"
+            label="Dialogue lore source"
             value={selectedDocId}
             onChange={setSelectedDocId}
             emptyText="Upload a document before running dialogue."
@@ -447,9 +411,9 @@ export default function VerticalSliceSimulator() {
             label="NPC"
             value={selectedNpcSlug}
             onChange={setSelectedNpcSlug}
-            emptyText="Create or materialize an NPC before playtesting."
-            emptyHref="/npcs"
-            emptyAction="Open NPC Studio"
+            emptyText={runtimeReleaseError ? "Repair the blocked runtime release before playtesting." : "Materialize an approved runtime NPC before playtesting."}
+            emptyHref="/blueprints"
+            emptyAction="Open Blueprints"
             disabled={isLoadingSetup}
             options={npcs.map((npc) => ({
               value: npc.slug,
@@ -457,6 +421,9 @@ export default function VerticalSliceSimulator() {
             }))}
           />
         </div>
+        <p className="border-t border-[var(--border)] px-5 py-3 text-xs leading-5 text-[var(--text-secondary)]">
+          Dialogue retrieval is limited to this source. Quest generation uses approved runtime data instead.
+        </p>
         <details className="border-t border-[var(--border)] px-5 py-4">
           <summary className="cursor-pointer text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--foreground)]">
             Project and player scope
@@ -467,6 +434,12 @@ export default function VerticalSliceSimulator() {
           </div>
         </details>
       </section>
+
+      {runtimeReleaseError && (
+        <section className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-[var(--foreground)]" role="status">
+          <span className="font-semibold">Runtime release blocked.</span> {runtimeReleaseError} Repair the blueprint in Blueprints, then return to this test.
+        </section>
+      )}
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="panel flex min-h-[30rem] flex-col overflow-hidden rounded-2xl">
@@ -550,7 +523,7 @@ export default function VerticalSliceSimulator() {
             quest={generatedQuest}
             acceptedQuestId={acceptedQuestId}
             loading={questLoading}
-            disabled={!selectedNpcSlug}
+            disabled={!setupReady}
             onGenerate={generateQuest}
             onAccept={acceptQuest}
           />
@@ -700,7 +673,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                     <div key={citation.chunk_id} className="panel-muted rounded-xl p-3">
                       <div className="flex justify-between gap-3 text-xs">
                         <span className="font-semibold text-[var(--foreground)]">{citation.title}</span>
-                        <span className="text-[var(--accent)]">{Math.round(citation.similarity * 100)}%</span>
+                        <span className="text-[var(--accent)]">{citation.similarity === null ? "Unknown" : `${Math.round(citation.similarity * 100)}%`}</span>
                       </div>
                       <p className="mt-2 break-all text-[10px] leading-4 text-[var(--text-secondary)]">Chunk: {citation.chunk_id}</p>
                     </div>

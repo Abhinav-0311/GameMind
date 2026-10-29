@@ -1,6 +1,8 @@
 # GameMind Design Agent MVP Contract
 
-Status: Flagship MVP Phases 1-4 and production-hardening Phases 5-8 implemented
+Status: Historical implementation contract, not current product acceptance.
+Use [MVP.md](../../MVP.md) for the authoritative Phase 0–6 checklist and readiness.
+The Phase 1–8 labels below describe the older implementation roadmap only.
 Case study: CyberRakshak
 Last reviewed: 2026-07-29
 

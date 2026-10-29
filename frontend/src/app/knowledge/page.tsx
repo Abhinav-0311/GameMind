@@ -2,10 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { api, DocumentDetailResponse, DocumentResponse } from "@/lib/api";
+import { api, DocumentDetailResponse, DocumentResponse, requestFailureMessage } from "@/lib/api";
 import { asSourceKind, sourceKindMeta, sourceKinds } from "@/lib/sourceKinds";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const CHUNKS_PER_PAGE = 6;
 
 interface SourceGroup {
   key: string;
@@ -71,42 +72,53 @@ export default function KnowledgeBasePage() {
   const [dragOver, setDragOver] = useState(false);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [savingSourceKind, setSavingSourceKind] = useState(false);
   const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
   const [uploadSourceKind, setUploadSourceKind] = useState("gdd");
   const [reviewReadyId, setReviewReadyId] = useState<string | null>(null);
   const handledTrace = useRef<string | null>(null);
+  const detailRequest = useRef(0);
+  const [chunkPage, setChunkPage] = useState(0);
 
   const sourceGroups = useMemo(() => groupSources(documents), [documents]);
   const totalChunks = useMemo(() => documents.reduce((sum, doc) => sum + doc.chunks_count, 0), [documents]);
-  const visibleChunks = useMemo(() => {
-    if (!selectedDoc) return [];
-    const initialChunks = selectedDoc.chunks.slice(0, 6);
-    const targetChunk = highlightedChunkId ? selectedDoc.chunks.find((chunk) => chunk.id === highlightedChunkId) : undefined;
-    if (!targetChunk || initialChunks.some((chunk) => chunk.id === targetChunk.id)) return initialChunks;
-    return [targetChunk, ...initialChunks].slice(0, 6);
-  }, [highlightedChunkId, selectedDoc]);
+  const chunkCount = selectedDoc?.chunks.length ?? 0;
+  const pageCount = Math.ceil(chunkCount / CHUNKS_PER_PAGE);
+  const currentChunkPage = Math.min(chunkPage, Math.max(0, pageCount - 1));
+  const chunkStart = currentChunkPage * CHUNKS_PER_PAGE;
+  const visibleChunks = selectedDoc?.chunks.slice(chunkStart, chunkStart + CHUNKS_PER_PAGE) ?? [];
 
-  const handleViewDetails = useCallback(async (id: string) => {
+  const handleViewDetails = useCallback(async (id: string, focusChunkId?: string | null) => {
+    const requestId = ++detailRequest.current;
     setLoadingDetail(true);
-    setError(null);
+    setDetailError(null);
+    setDetailId(id);
 
     try {
       const detail = await api.getDocument(id);
+      if (requestId !== detailRequest.current) return;
+      const targetIndex = detail.chunks.findIndex((chunk) => chunk.id === focusChunkId);
+      setChunkPage(targetIndex >= 0 ? Math.floor(targetIndex / CHUNKS_PER_PAGE) : 0);
+      setHighlightedChunkId(targetIndex >= 0 ? focusChunkId ?? null : null);
       setSelectedDoc(detail);
     } catch (err) {
+      if (requestId !== detailRequest.current) return;
       if (process.env.NODE_ENV === "development") {
         console.warn("Could not load selected source:", err);
       }
-      setError("Could not load the selected source.");
+      setDetailError(requestFailureMessage(err, "Selected source"));
     } finally {
-      setLoadingDetail(false);
+      if (requestId === detailRequest.current) setLoadingDetail(false);
     }
   }, []);
 
   const fetchDocuments = useCallback(async () => {
     setLoadingList(true);
+    setListError(null);
 
     try {
       const docs = await api.getDocuments();
@@ -125,7 +137,7 @@ export default function KnowledgeBasePage() {
       if (process.env.NODE_ENV === "development") {
         console.warn("Could not load source library:", err);
       }
-      setError("Could not load sources. Start Docker and refresh this page.");
+      setListError(requestFailureMessage(err, "Source library"));
     } finally {
       setLoadingList(false);
     }
@@ -152,15 +164,16 @@ export default function KnowledgeBasePage() {
     handledTrace.current = traceKey;
 
     Promise.resolve().then(async () => {
-      setHighlightedChunkId(chunkId);
-      await handleViewDetails(documentId);
+      await handleViewDetails(documentId, chunkId);
     });
   }, [documents, handleViewDetails]);
 
   useEffect(() => {
     if (!highlightedChunkId || selectedDoc?.id === undefined) return;
-    document.getElementById(`source-chunk-${highlightedChunkId}`)?.scrollIntoView({ block: "nearest" });
-  }, [highlightedChunkId, selectedDoc?.id]);
+    const target = document.getElementById(`source-chunk-${highlightedChunkId}`);
+    target?.scrollIntoView({ block: "nearest" });
+    target?.focus({ preventScroll: true });
+  }, [highlightedChunkId, selectedDoc?.id, currentChunkPage, loadingDetail]);
 
   const handleFileUpload = async (file: File) => {
     setError(null);
@@ -296,8 +309,8 @@ export default function KnowledgeBasePage() {
         <div className="panel-muted rounded-3xl p-5">
           <p className="page-kicker">Library</p>
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <Fact label="Sources" value={loadingList ? "--" : String(sourceGroups.length)} />
-            <Fact label="Chunks" value={loadingList ? "--" : String(totalChunks)} />
+            <Fact label="Sources" value={loadingList ? "--" : listError ? "Unavailable" : String(sourceGroups.length)} />
+            <Fact label="Chunks" value={loadingList ? "--" : listError ? "Unavailable" : String(totalChunks)} />
           </div>
         </div>
       </section>
@@ -415,7 +428,7 @@ export default function KnowledgeBasePage() {
                 Repeated uploads are grouped by title. Select one to inspect its indexed chunks.
               </p>
             </div>
-            <button type="button" onClick={fetchDocuments} className="btn-secondary shrink-0">
+            <button type="button" onClick={fetchDocuments} disabled={loadingList} className="btn-secondary shrink-0">
               Refresh
             </button>
           </div>
@@ -425,6 +438,12 @@ export default function KnowledgeBasePage() {
               {[1, 2, 3].map((item) => (
                 <div key={item} className="h-20 animate-pulse rounded-2xl bg-[var(--card-muted)]" />
               ))}
+            </div>
+          ) : listError ? (
+            <div role="alert" className="px-6 py-10">
+              <h3 className="text-xl font-semibold text-[var(--foreground)]">Source library unavailable</h3>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{listError}</p>
+              <button className="btn-secondary mt-5" onClick={fetchDocuments}>Retry sources</button>
             </div>
           ) : sourceGroups.length === 0 ? (
             <div className="px-6 py-16 text-center">
@@ -503,11 +522,18 @@ export default function KnowledgeBasePage() {
           </div>
 
           <div className="max-h-[40rem] overflow-y-auto p-5">
-            {loadingDetail ? (
+            {listError ? (
+              <p className="text-sm text-[var(--text-secondary)]">Reload the source library before inspecting a source.</p>
+            ) : loadingDetail ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
                   <div key={item} className="h-24 animate-pulse rounded-2xl bg-[var(--card-muted)]" />
                 ))}
+              </div>
+            ) : detailError ? (
+              <div role="alert">
+                <p className="text-sm leading-6 text-[var(--text-secondary)]">{detailError}</p>
+                {detailId && <button className="btn-secondary mt-4" onClick={() => handleViewDetails(detailId)}>Retry selected source</button>}
               </div>
             ) : selectedDoc ? (
               <div className="space-y-5">
@@ -533,21 +559,36 @@ export default function KnowledgeBasePage() {
 
                 <div className="space-y-3">
                   {visibleChunks.map((chunk) => (
-                    <div
+                    <article
                       id={`source-chunk-${chunk.id}`}
                       key={chunk.id}
+                      tabIndex={-1}
+                      aria-label={`Chunk ${chunk.chunk_index + 1}`}
                       className={`rounded-2xl p-4 ${chunk.id === highlightedChunkId ? "border border-[var(--accent)] bg-[var(--accent-soft)]" : "panel-muted"}`}
                     >
                       <div className="mb-3 flex items-center justify-between gap-4">
                         <p className="page-kicker">Chunk {chunk.chunk_index + 1}</p>
                         <span className="text-xs text-[var(--text-secondary)]">{chunk.content.length} chars</span>
                       </div>
-                      <p className="line-clamp-6 text-sm leading-6 text-[var(--text-secondary)]">{chunk.content}</p>
-                    </div>
+                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--text-secondary)]">{chunk.content.slice(0, 280)}{chunk.content.length > 280 ? "…" : ""}</p>
+                      {chunk.content.length > 280 && (
+                        <details className="mt-3" open={chunk.id === highlightedChunkId}>
+                          <summary className="cursor-pointer rounded text-sm font-semibold text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">Read full chunk</summary>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--foreground)]">{chunk.content}</p>
+                        </details>
+                      )}
+                    </article>
                   ))}
                 </div>
+                <nav aria-label="Source chunk pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+                  <p role="status" className="text-xs text-[var(--text-secondary)]">{chunkCount ? `Chunks ${chunkStart + 1}–${Math.min(chunkStart + CHUNKS_PER_PAGE, chunkCount)} of ${chunkCount}` : "No indexed chunks in this source."}</p>
+                  {pageCount > 1 && <div className="flex gap-2">
+                    <button type="button" className="btn-secondary" disabled={currentChunkPage === 0} onClick={() => setChunkPage(currentChunkPage - 1)}>Previous chunks</button>
+                    <button type="button" className="btn-secondary" disabled={currentChunkPage + 1 >= pageCount} onClick={() => setChunkPage(currentChunkPage + 1)}>Next chunks</button>
+                  </div>}
+                </nav>
 
-                <Link href="/blueprints" className="btn-primary w-full">
+                <Link href={`/blueprints?document=${encodeURIComponent(selectedDoc.id)}`} className="btn-primary w-full">
                   Generate blueprint
                 </Link>
                 <label className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl border border-[var(--border)] px-4 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--card)] ${

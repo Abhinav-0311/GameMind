@@ -1,0 +1,913 @@
+{
+  "version": 2,
+  "provenance": "Manually authored, source-backed fixed QA controls reconstructed from observed defect classes. These are not fresh NVIDIA output, exact historical request replays, approved artifacts, or a full normal-flow acceptance dataset. Version 2 changes only contiguous CyberRakshak level evidence grouping and matching citation IDs to fit the existing 10-item/1200-character backend budget; case expectations and authored artifacts are unchanged.",
+  "baselines": {
+    "frostpeak": {
+      "source_path": "docs/demo/sample_gdd_frostpeak.md",
+      "source_sha256": "a2166bf8aab314c738aa15605f20662df82b7c21a6621dd71c9dabba941300e6",
+      "source_kind": "bundled synthetic sample",
+      "review_request": {
+        "objective": "Review the Frostpeak GDD and create a useful cited design draft, preserving its two source quests and rewards. For each source NPC, propose three fresh spoken lines covering greeting, active incomplete quest progress and completion, with explicit eligibility. Associate speakers/quests only as labelled proposals. Give observable objective events, combined success, a concrete proposed failure cause and an explicit player-confirmed restart. Preserve source facts across summary, lore, art, levels and gameplay. Missing source areas must remain explicitly unknown. Runtime integration is deferred.",
+        "design_contract_version": 2,
+        "fresh_dialogue": true,
+        "defer_runtime": true
+      },
+      "artifact": {
+        "summary": {
+          "content": {
+            "description": "Frostpeak is a tactical RPG set in a frozen Northern kingdom. A legendary pathfinder aids the Frostpeak Resistance in reclaiming their home and restoring King Arven's lineage from the Cinder Vanguard."
+          },
+          "citations": [
+            "frost-3"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "quest_hooks": {
+          "content": {
+            "quests": [
+              {
+                "id": "quest_1",
+                "title": "Reclaim the Ash Pass border post",
+                "reward": "100 gold and 250 XP",
+                "runtime": null,
+                "objective": "clear guards and raise the Northern flag",
+                "objectives": [
+                  "clear guards",
+                  "raise the Northern flag"
+                ],
+                "assumptions": [
+                  "Failure on confirmed abandonment and explicit player-confirmed restart are unverified design proposals, not GDD facts.",
+                  "Engine-neutral event wiring and any flagpole interaction are implementation proposals; no runtime bindings are approved."
+                ],
+                "dependencies": [],
+                "dialogue_hooks": [],
+                "failure_states": [
+                  "Player explicitly confirms abandoning the active quest attempt."
+                ],
+                "state_contract": {
+                  "failure": {
+                    "events": [
+                      "q1_abandon"
+                    ],
+                    "lifecycle": "failed"
+                  },
+                  "restart": {
+                    "event": "q1_restart",
+                    "lifecycle": "active",
+                    "clear_flags": [
+                      "q1_objective_1",
+                      "q1_objective_2"
+                    ]
+                  },
+                  "version": "1",
+                  "completion": {
+                    "mode": "all",
+                    "lifecycle": "completed",
+                    "reevaluate_on": "each_objective_update",
+                    "required_flags": [
+                      "q1_objective_1",
+                      "q1_objective_2"
+                    ]
+                  },
+                  "objectives": [
+                    {
+                      "flag": "q1_objective_1",
+                      "event": "q1_objective_1_completed",
+                      "objective": "clear guards"
+                    },
+                    {
+                      "flag": "q1_objective_2",
+                      "event": "q1_objective_2_completed",
+                      "objective": "raise the Northern flag"
+                    }
+                  ],
+                  "event_actions": {
+                    "q1_objective_1_completed": "defeat all enemy guards at the Ash Pass border post",
+                    "q1_objective_2_completed": "interact with the flagpole at the Ash Pass border post to raise the Northern flag",
+                    "q1_abandon": "Player explicitly confirms abandoning the active quest attempt.",
+                    "q1_restart": "Player explicitly confirms starting a new attempt after failure."
+                  }
+                },
+                "source_chunk_ids": [
+                  "frost-0"
+                ],
+                "implementation_notes": [
+                  "Proposed setup: wire guard clearing and flag raising to separate persistent objective flags; infer no action order or reward-dispatch binding."
+                ]
+              },
+              {
+                "id": "quest_2",
+                "title": "Mine 5 chunks of raw sky-iron ore from the cliffside veins",
+                "reward": "150 gold and sky-iron gear",
+                "runtime": null,
+                "objective": "mine 5 chunks of raw sky-iron ore from the cliffside veins",
+                "objectives": [
+                  "Mine 5 chunks of raw sky-iron ore from the cliffside veins"
+                ],
+                "assumptions": [
+                  "Failure on confirmed abandonment and explicit player-confirmed restart are unverified design proposals, not GDD facts.",
+                  "Engine-neutral event wiring and any flagpole interaction are implementation proposals; no runtime bindings are approved."
+                ],
+                "dependencies": [],
+                "dialogue_hooks": [],
+                "failure_states": [
+                  "Player explicitly confirms abandoning the active quest attempt."
+                ],
+                "state_contract": {
+                  "failure": {
+                    "events": [
+                      "q2_abandon"
+                    ],
+                    "lifecycle": "failed"
+                  },
+                  "restart": {
+                    "event": "q2_restart",
+                    "lifecycle": "active",
+                    "clear_flags": [
+                      "ore_total_five"
+                    ]
+                  },
+                  "version": "1",
+                  "completion": {
+                    "mode": "all",
+                    "lifecycle": "completed",
+                    "reevaluate_on": "each_objective_update",
+                    "required_flags": [
+                      "ore_total_five"
+                    ]
+                  },
+                  "objectives": [
+                    {
+                      "objective": "Mine 5 chunks of raw sky-iron ore from the cliffside veins",
+                      "flag": "ore_total_five",
+                      "event": "ore_total_five_reached"
+                    }
+                  ],
+                  "event_actions": {
+                    "ore_total_five_reached": "Player mines a total of 5 raw sky-iron chunks from the cliffside veins during the active attempt.",
+                    "q2_abandon": "Player explicitly confirms abandoning the active quest attempt.",
+                    "q2_restart": "Player explicitly confirms starting a new attempt after failure."
+                  }
+                },
+                "source_chunk_ids": [
+                  "frost-0"
+                ],
+                "implementation_notes": [
+                  "Proposed setup: track the full mined total; emit the completion event only at 5 chunks, not once per chunk. Reward dispatch remains unbound."
+                ]
+              }
+            ]
+          },
+          "warnings": [],
+          "citations": [
+            "frost-0"
+          ],
+          "confidence": "Low"
+        },
+        "npc_archetypes": {
+          "content": {
+            "npcs": [
+              {
+                "name": "Eldrin",
+                "archetype": "Archmage of the Watchtower",
+                "assumptions": [
+                  "New spoken wording and the speaker/quest association are unapproved narrative proposals, not source-defined quest givers.",
+                  "Repeat/reset behavior and eligibility are unverified implementation proposals, not engine bindings."
+                ],
+                "dialogue_style": "formal, slow manner and references ancient lore history to guide the player",
+                "fresh_dialogue": true,
+                "source_chunk_ids": [
+                  "frost-1"
+                ],
+                "dialogue_triggers": [
+                  {
+                    "trigger": "eldrin_greeting",
+                    "situation": "Initial independent greeting",
+                    "text": "Welcome, pathfinder. Let us consider the lessons of older days.",
+                    "repeat_policy": "Once per playthrough; no reset.",
+                    "eligibility": {
+                      "stage": "greeting",
+                      "quest_id": null,
+                      "lifecycle": null,
+                      "progress": "any"
+                    }
+                  },
+                  {
+                    "trigger": "eldrin_progress",
+                    "situation": "During the associated active incomplete quest, including zero and either partial objective state",
+                    "text": "Your charge at the Ash Pass is not yet fulfilled. Return when its guards are cleared and the Northern flag is raised.",
+                    "repeat_policy": "Once per eligible stage per attempt; reset only on explicit player-confirmed restart.",
+                    "eligibility": {
+                      "stage": "progress",
+                      "quest_id": "quest_1",
+                      "lifecycle": "active",
+                      "progress": "incomplete"
+                    }
+                  },
+                  {
+                    "trigger": "eldrin_completion",
+                    "situation": "After all objectives of the associated quest complete",
+                    "text": "The guards are cleared, and the Northern flag flies over the border post. Let the archives record this hour.",
+                    "repeat_policy": "Once per eligible stage per attempt; reset only on explicit player-confirmed restart.",
+                    "eligibility": {
+                      "stage": "completion",
+                      "quest_id": "quest_1",
+                      "lifecycle": "completed",
+                      "progress": "complete"
+                    }
+                  }
+                ],
+                "relationship_notes": [],
+                "implementation_notes": [
+                  "Proposed interaction wiring: check the declared eligibility before playback; keep repetition state separate from quest progress and verify it after explicit restart."
+                ]
+              },
+              {
+                "name": "Kaelen",
+                "archetype": "Commander of the Cinder Vanguard garrison",
+                "assumptions": [
+                  "New spoken wording and the speaker/quest association are unapproved narrative proposals, not source-defined quest givers.",
+                  "Repeat/reset behavior and eligibility are unverified implementation proposals, not engine bindings."
+                ],
+                "dialogue_style": "pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all",
+                "fresh_dialogue": true,
+                "source_chunk_ids": [
+                  "frost-1"
+                ],
+                "dialogue_triggers": [
+                  {
+                    "trigger": "kaelen_greeting",
+                    "situation": "Initial independent greeting",
+                    "text": "Speak plainly. The Vanguard judges deeds, not boasts.",
+                    "repeat_policy": "Once per playthrough; no reset.",
+                    "eligibility": {
+                      "stage": "greeting",
+                      "quest_id": null,
+                      "lifecycle": null,
+                      "progress": "any"
+                    }
+                  },
+                  {
+                    "trigger": "kaelen_progress",
+                    "situation": "During the associated active incomplete quest, including zero and either partial objective state",
+                    "text": "Mine 5 raw sky-iron chunks from the cliffside veins to finish the task.",
+                    "repeat_policy": "Once per eligible stage per attempt; reset only on explicit player-confirmed restart.",
+                    "eligibility": {
+                      "stage": "progress",
+                      "quest_id": "quest_2",
+                      "lifecycle": "active",
+                      "progress": "incomplete"
+                    }
+                  },
+                  {
+                    "trigger": "kaelen_completion",
+                    "situation": "After all objectives of the associated quest complete",
+                    "text": "Five chunks from the cliffside veins. A finished task earns respect.",
+                    "repeat_policy": "Once per eligible stage per attempt; reset only on explicit player-confirmed restart.",
+                    "eligibility": {
+                      "stage": "completion",
+                      "quest_id": "quest_2",
+                      "lifecycle": "completed",
+                      "progress": "complete"
+                    }
+                  }
+                ],
+                "relationship_notes": [],
+                "implementation_notes": [
+                  "Proposed interaction wiring: check the declared eligibility before playback; keep repetition state separate from quest progress and verify it after explicit restart."
+                ]
+              }
+            ]
+          },
+          "warnings": [],
+          "citations": [
+            "frost-1"
+          ],
+          "confidence": "Low"
+        },
+        "gameplay_systems": {
+          "content": {
+            "systems": [
+              {
+                "name": "Faction choice",
+                "description": "Faction choice affects gameplay and world state flags."
+              },
+              {
+                "name": "Quest actions",
+                "description": "Clear guards and raise the Northern flag; mine 5 raw sky-iron chunks from cliffside veins."
+              }
+            ]
+          },
+          "citations": [
+            "frost-3",
+            "frost-0"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "npc_memory_design": {
+          "content": {
+            "rules": []
+          },
+          "citations": [],
+          "confidence": "Low",
+          "warnings": [
+            "NPC memory rules are not specified in the frozen source."
+          ]
+        },
+        "art_style_direction": {
+          "content": {
+            "visual_theme": "Stylized Dark Fantasy",
+            "visual_notes": [
+              "Warm oranges and elemental reds contrast with deep icy blues and granite grays.",
+              "Sharp, hand-painted character textures."
+            ]
+          },
+          "citations": [
+            "frost-1"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "narrative_direction": {
+          "content": {
+            "lore_background": "After the Ember Siege of 842, Vulcana's Warlord Ignis occupies Frostpeak to seize geothermal energy and sky-iron. Vanguard guards the mines; rangers fight from Ash Pass.",
+            "themes": [
+              "Resistance and occupation",
+              "Faction choices affect world state"
+            ]
+          },
+          "citations": [
+            "frost-3"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "unity_runtime_preview": {
+          "content": {},
+          "citations": [],
+          "confidence": "Low",
+          "warnings": [
+            "Runtime explicitly deferred; no executable bindings."
+          ]
+        },
+        "level_design_suggestions": {
+          "content": {
+            "levels": [
+              {
+                "title": "Geothermal Vents",
+                "focus": "Vertical cliffside path with volcanic vents, sky-iron veins and steam checkpoints, culminating at the barricaded East Gate."
+              }
+            ]
+          },
+          "citations": [
+            "frost-0"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        }
+      },
+      "evidence": [
+        {
+          "chunk_id": "frost-0",
+          "title": "Bundled synthetic Frostpeak GDD",
+          "content": "der of the Cinder Vanguard garrison. Kaelen is a pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all.\n\n## Section 5: Level Design Suggestions\nThe starting layout centers on the Geothermal Vents zone. Players navigate a vertical cliffside path interspersed with active volcanic vents, sky-iron ore veins, and steam checkpoints. The level culminates at the monumental East Gate, which remains barricaded by Cinder Vanguard defenses.\n\n## Section 6: Quest Hooks\nThe golden path includes the following quest lines:\n- **Quest Hook 1**: Objective: Reclaim the Ash Pass border post. Players must clear guards and raise the Northern flag. Reward: 100 gold and 250 XP.\n- **Quest Hook 2**: Objective: Mine 5 chunks of raw sky-iron ore from the cliffside veins. Reward: 150 gold and sky-iron gear.",
+          "matched_sections": [
+            "narrative_direction",
+            "art_style_direction",
+            "npc_archetypes",
+            "npc_memory_design",
+            "level_design_suggestions",
+            "quest_hooks",
+            "unity_runtime_preview",
+            "summary",
+            "gameplay_systems"
+          ]
+        },
+        {
+          "chunk_id": "frost-1",
+          "title": "Bundled synthetic Frostpeak GDD",
+          "content": "the frozen city. Faction choice holds high consequences for gameplay and world state flags.\n\n## Section 3: Art Style Direction\nThe visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy theme. We utilize a high-contrast color palette, pairing warm oranges and elemental reds from the Cinder Vanguard's fire engines against deep icy blues and granite grays of the frozen Northern citadel ruins. Characters have sharp, hand-painted textures that highlight the gritty, cold environment.\n\n## Section 4: NPC Archetypes\nThe game features two key starting NPCs:\n- **NPC Eldrin**: Archmage of the Watchtower. Eldrin serves as a high-trust scholar and dialogue advisor. He speaks in a formal, slow manner and references ancient lore history to guide the player.\n- **NPC Kaelen**: Commander of the Cinder Vanguard garrison. Kaelen is a pragmatic, cautious warrior. He offers high-risk quests and values faction standing and strength above all.\n\n## Section 5: Level Design Suggestions\nThe",
+          "matched_sections": [
+            "summary",
+            "art_style_direction",
+            "npc_archetypes",
+            "npc_memory_design",
+            "level_design_suggestions",
+            "gameplay_systems",
+            "narrative_direction"
+          ]
+        },
+        {
+          "chunk_id": "frost-2",
+          "title": "Bundled synthetic Frostpeak GDD",
+          "content": "t clear guards and raise the Northern flag. Reward: 100 gold and 250 XP.\n- **Quest Hook 2**: Objective: Mine 5 chunks of raw sky-iron ore from the cliffside veins. Reward: 150 gold and sky-iron gear.",
+          "matched_sections": [
+            "summary",
+            "narrative_direction",
+            "gameplay_systems",
+            "quest_hooks",
+            "unity_runtime_preview",
+            "art_style_direction",
+            "npc_archetypes"
+          ]
+        },
+        {
+          "chunk_id": "frost-3",
+          "title": "Bundled synthetic Frostpeak GDD",
+          "content": "# Project Frostpeak Game Design Document\n**Version 1.0**\n\n## Section 1: Game Summary & Overview\nProject Frostpeak is an immersive tactical role-playing game set in the frozen ruins of the Northern kingdom of Frostpeak. The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance in reclaiming their home and restoring the lineage of King Arven from the occupying forces of the Cinder Vanguard.\n\n## Section 2: Narrative Direction & Lore\nThe story centers around the aftermath of the Ember Siege of 842. The volcanic nation of Vulcana, led by Warlord Ignis, launched an elemental assault to seize control of Frostpeak's geothermal energy and rich sky-iron deposits. Today, the Cinder Vanguard guards the mines, while rangers launch guerrilla attacks from the Ash Pass to free the frozen city. Faction choice holds high consequences for gameplay and world state flags.\n\n## Section 3: Art Style Direction\nThe visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy",
+          "matched_sections": [
+            "summary",
+            "narrative_direction",
+            "art_style_direction",
+            "npc_archetypes",
+            "npc_memory_design",
+            "level_design_suggestions",
+            "gameplay_systems",
+            "quest_hooks",
+            "unity_runtime_preview"
+          ]
+        }
+      ],
+      "must_not_flag": [
+        "Labelled proposed Eldrin/quest-1 and Kaelen/quest-2 speaker associations are not active source-defined quest-giver bindings.",
+        "Empty memory rules are explicitly unknown, not an instruction to invent them.",
+        "Independent quest objectives need no fixed action order."
+      ]
+    },
+    "cyberrakshak": {
+      "source_path": "docs/demo/cyberrakshak_gdd.md",
+      "source_sha256": "01549a536189b89e8e88e4fda3545225d0abe4a653b4c0fa97d40b45c0ffcbc6",
+      "source_kind": "bundled project GDD; not claimed to be a separately recovered original document",
+      "review_request": {
+        "objective": "Review the supplied CyberRakshak design slice. Preserve PATCH's funny, helpful warning voice and match the quoted link, file and firewall warnings to their situations. Preserve Firewall Fortress's two independent actions, opening safe routes and blocking malicious paths; no reward, terminating failure or restart rule is specified. Existing dialogue reuse is allowed. Treat event/eligibility/repeat and quest-packaging choices as labelled unapproved proposals. Keep all ten source levels in order; runtime is deferred.",
+        "design_contract_version": 2,
+        "fresh_dialogue": false,
+        "defer_runtime": true
+      },
+      "artifact": {
+        "summary": {
+          "content": {
+            "description": "Adi, a first-time cybersecurity intern at Rakshak Labs, enters digital sandbox missions guided by Jay in a story-driven 3D platformer."
+          },
+          "citations": [
+            "cyber-overview"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "quest_hooks": {
+          "content": {
+            "quests": [
+              {
+                "id": "firewall-routes",
+                "title": "Firewall Fortress: safe access",
+                "objective": "Open safe routes and block malicious paths",
+                "source_chunk_ids": [
+                  "cyber-levels-4-7"
+                ],
+                "reward": null,
+                "objectives": [
+                  "Open safe routes",
+                  "Block malicious paths"
+                ],
+                "failure_states": [],
+                "dependencies": [],
+                "dialogue_hooks": [],
+                "implementation_notes": [
+                  "Unverified proposal: use separate objective events for safe-route opening and malicious-path blocking; do not substitute either action for the other."
+                ],
+                "assumptions": [
+                  "Quest packaging, boolean event wiring and mission activation are unverified implementation proposals; the GDD supplies the two actions, not executable bindings.",
+                  "Reward, terminating failure cause and restart behavior are unspecified; no new rule is inferred."
+                ],
+                "runtime": null,
+                "state_contract": {
+                  "version": "1",
+                  "objectives": [
+                    {
+                      "objective": "Open safe routes",
+                      "flag": "safe_routes_open",
+                      "event": "safe_routes_opened"
+                    },
+                    {
+                      "objective": "Block malicious paths",
+                      "flag": "malicious_paths_blocked",
+                      "event": "malicious_paths_blocked_event"
+                    }
+                  ],
+                  "completion": {
+                    "required_flags": [
+                      "safe_routes_open",
+                      "malicious_paths_blocked"
+                    ],
+                    "mode": "all",
+                    "reevaluate_on": "each_objective_update",
+                    "lifecycle": "completed"
+                  },
+                  "failure": null,
+                  "restart": null,
+                  "event_actions": {
+                    "safe_routes_opened": "Player opens the designated safe routes during the active attempt.",
+                    "malicious_paths_blocked_event": "Player blocks the designated malicious paths during the active attempt."
+                  }
+                }
+              }
+            ]
+          },
+          "citations": [
+            "cyber-levels-4-7"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "npc_archetypes": {
+          "content": {
+            "npcs": [
+              {
+                "name": "PATCH",
+                "archetype": "Adi's AI support tool",
+                "dialogue_style": "Funny, helpful, warning-based rather than teacher-like",
+                "source_chunk_ids": [
+                  "cyber-patch",
+                  "cyber-warnings"
+                ],
+                "fresh_dialogue": false,
+                "relationship_notes": [
+                  "Trusted guide after Jay's betrayal."
+                ],
+                "implementation_notes": [
+                  "Unverified proposal: bind each warning to its corresponding object/barrier interaction and enforce the human-directed repeat/reset policy; do not claim engine execution."
+                ],
+                "assumptions": [
+                  "Object/barrier warning triggers and repeat/reset behavior are unverified implementation proposals, not source-defined engine bindings."
+                ],
+                "dialogue_triggers": [
+                  {
+                    "trigger": "suspicious_link",
+                    "situation": "Before trusting a suspicious link",
+                    "text": "That link is trying too hard. Check the URL before you trust it.",
+                    "repeat_policy": "Once per object per mission attempt; reset only on mission restart. No scanner-bypass reset.",
+                    "eligibility": {
+                      "stage": "other",
+                      "quest_id": null,
+                      "lifecycle": null,
+                      "progress": "any"
+                    }
+                  },
+                  {
+                    "trigger": "suspicious_file",
+                    "situation": "Before opening a suspicious file",
+                    "text": "A file called homework_final_REAL_REAL.exe is already confessing.",
+                    "repeat_policy": "Once per object per mission attempt; reset only on mission restart. No scanner-bypass reset.",
+                    "eligibility": {
+                      "stage": "other",
+                      "quest_id": null,
+                      "lifecycle": null,
+                      "progress": "any"
+                    }
+                  },
+                  {
+                    "trigger": "firewall_barrier",
+                    "situation": "When approaching a firewall barrier",
+                    "text": "Firewall ahead. Literal this time. Someone had fun with the simulation.",
+                    "repeat_policy": "Once per barrier per mission attempt; reset only on mission restart. No scanner-bypass reset.",
+                    "eligibility": {
+                      "stage": "other",
+                      "quest_id": null,
+                      "lifecycle": null,
+                      "progress": "any"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "citations": [
+            "cyber-patch",
+            "cyber-warnings"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "gameplay_systems": {
+          "content": {
+            "systems": [
+              {
+                "name": "Firewall access control",
+                "description": "Literal walls of fire; the player opens safe routes and blocks malicious paths."
+              }
+            ]
+          },
+          "citations": [
+            "cyber-levels-4-7"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "npc_memory_design": {
+          "content": {
+            "rules": []
+          },
+          "citations": [],
+          "confidence": "Low",
+          "warnings": [
+            "Persistent NPC memory rules are not specified in the selected frozen evidence."
+          ]
+        },
+        "art_style_direction": {
+          "content": {
+            "visual_theme": "Low-poly 3D cyber-infiltration",
+            "visual_notes": []
+          },
+          "citations": [
+            "cyber-style"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "narrative_direction": {
+          "content": {
+            "lore_background": "Jay secretly uses Adi to enter real systems. After the reveal, Adi works with cyber police to track Jay and prove his innocence.",
+            "themes": [
+              "Trust and betrayal",
+              "Ethical hacking boundaries"
+            ]
+          },
+          "citations": [
+            "cyber-overview"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        },
+        "unity_runtime_preview": {
+          "content": {},
+          "citations": [],
+          "confidence": "Low",
+          "warnings": [
+            "Runtime explicitly deferred; no executable bindings."
+          ]
+        },
+        "level_design_suggestions": {
+          "content": {
+            "levels": [
+              {
+                "title": "Level 1: Training Sandbox",
+                "focus": "Focus: basic movement, traversal, loadout, combat, and mission structure. PATCH teaches core mechanics. Jay appears supportive and professional."
+              },
+              {
+                "title": "Level 2: Password Vault",
+                "focus": "Focus: passwords and authentication. Weak-password gates break easily. Strong gates require correct password-token combinations."
+              },
+              {
+                "title": "Level 3: Phishing Office",
+                "focus": "Focus: phishing and fake websites. Fake routes, fake login doors, suspicious signs, and urgency traps mislead the player."
+              },
+              {
+                "title": "Level 4: Malware Warehouse",
+                "focus": "Focus: malware and suspicious downloads. Trojan crates, infected files, and malware enemies corrupt platforms."
+              },
+              {
+                "title": "Level 5: Firewall Fortress",
+                "focus": "Focus: firewalls and access control. Firewalls are literal walls of fire. The player opens safe routes and blocks malicious paths."
+              },
+              {
+                "title": "Level 6: QR Market",
+                "focus": "Focus: QR scams and digital-payment fraud. Some QR portals are safe while others redirect the player into traps."
+              },
+              {
+                "title": "Level 7: Social Engineering Plaza",
+                "focus": "Focus: manipulation, impersonation, and trust. NPCs pretend to be admins, friends, or support agents to trick the player."
+              },
+              {
+                "title": "Level 8: Ransomware Ruins",
+                "focus": "Focus: ransomware, backups, and locked data. Ransom locks freeze gates and platforms; backup keys restore access."
+              },
+              {
+                "title": "Level 9: The Reveal",
+                "focus": "Focus: ethical boundaries. Adi learns that Jay used him to enter real systems. Cyber police catch Adi and Jay disappears."
+              },
+              {
+                "title": "Level 10: Hunt Jay",
+                "focus": "Focus: combined threats and incident response. Adi works with cyber police to track Jay, face combined cyber threats, and expose him."
+              }
+            ]
+          },
+          "citations": [
+            "cyber-levels-1-3",
+            "cyber-levels-4-7",
+            "cyber-levels-8-10"
+          ],
+          "confidence": "Medium",
+          "warnings": []
+        }
+      },
+      "evidence": [
+        {
+          "chunk_id": "cyber-overview",
+          "content": "## 1. High concept\n\nCyberRakshak is a story-driven 3D platformer where the player controls Adi, a first-time cybersecurity intern at Rakshak Labs. Adi is guided by his supervisor Jay through digital sandbox missions. Each mission represents a cybersecurity problem such as weak passwords, phishing, malware, firewalls, QR scams, social engineering, and ransomware.\n\nThe player can approach missions through stealth, bold action, puzzle-solving, or speed. Cybersecurity concepts become mechanics instead of lectures: firewalls are literal walls of fire, malware becomes enemies, phishing becomes fake routes, and data is an objective to retrieve safely.\n\nJay is secretly using Adi to break into real systems. After the reveal, Adi works with cyber police to track Jay down and prove his innocence.",
+          "matched_sections": [
+            "summary",
+            "narrative_direction",
+            "gameplay_systems"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-style",
+          "content": "| Genre | Low-poly 3D cyber-infiltration platformer with AR awareness tasks and optional VR challenge levels |",
+          "matched_sections": [
+            "art_style_direction"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-patch",
+          "content": "### PATCH\n\nPATCH is Adi's AI support tool. PATCH provides hints, warnings, mission reactions, and short cybersecurity explanations. PATCH must be funny, helpful, and warning-based rather than teacher-like. After Jay's betrayal, PATCH becomes Adi's trusted guide while he works with cyber police.",
+          "matched_sections": [
+            "npc_archetypes"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-warnings",
+          "content": "## 10. PATCH companion system\n\nPATCH has two roles:\n\n1. Narrative role: reacts to Jay, story events, and Adi's choices.\n2. Gameplay role: provides hints, scans, warnings, and feedback.\n\nExample PATCH lines:\n\n- \"That link is trying too hard. Check the URL before you trust it.\"\n- \"A file called homework_final_REAL_REAL.exe is already confessing.\"\n- \"Firewall ahead. Literal this time. Someone had fun with the simulation.\"\n- \"Adi, Jay said this was a demo server. These records look real.\"\n- \"Verify, block, backup, quarantine. You know the pattern now.\"",
+          "matched_sections": [
+            "npc_archetypes"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-levels-1-3",
+          "content": "### Level 1: Training Sandbox\n\nFocus: basic movement, traversal, loadout, combat, and mission structure. PATCH teaches core mechanics. Jay appears supportive and professional.\n\n### Level 2: Password Vault\n\nFocus: passwords and authentication. Weak-password gates break easily. Strong gates require correct password-token combinations.\n\n### Level 3: Phishing Office\n\nFocus: phishing and fake websites. Fake routes, fake login doors, suspicious signs, and urgency traps mislead the player.",
+          "matched_sections": [
+            "level_design_suggestions"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-levels-4-7",
+          "content": "### Level 4: Malware Warehouse\n\nFocus: malware and suspicious downloads. Trojan crates, infected files, and malware enemies corrupt platforms.\n\n### Level 5: Firewall Fortress\n\nFocus: firewalls and access control. Firewalls are literal walls of fire. The player opens safe routes and blocks malicious paths.\n\n### Level 6: QR Market\n\nFocus: QR scams and digital-payment fraud. Some QR portals are safe while others redirect the player into traps.\n\n### Level 7: Social Engineering Plaza\n\nFocus: manipulation, impersonation, and trust. NPCs pretend to be admins, friends, or support agents to trick the player.",
+          "matched_sections": [
+            "level_design_suggestions",
+            "gameplay_systems",
+            "quest_hooks"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        },
+        {
+          "chunk_id": "cyber-levels-8-10",
+          "content": "### Level 8: Ransomware Ruins\n\nFocus: ransomware, backups, and locked data. Ransom locks freeze gates and platforms; backup keys restore access.\n\n### Level 9: The Reveal\n\nFocus: ethical boundaries. Adi learns that Jay used him to enter real systems. Cyber police catch Adi and Jay disappears.\n\n### Level 10: Hunt Jay\n\nFocus: combined threats and incident response. Adi works with cyber police to track Jay, face combined cyber threats, and expose him.",
+          "matched_sections": [
+            "level_design_suggestions"
+          ],
+          "title": "Bundled CyberRakshak GDD"
+        }
+      ],
+      "must_not_flag": [
+        "Verbatim example warnings are allowed: fresh dialogue is false.",
+        "The two-action quest is explicitly proposed packaging of source gameplay, not a claimed source-defined quest-giver.",
+        "Reward, terminating failure and restart are explicitly unspecified; their absence is not an invented requirement."
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "frost-valid",
+      "baseline": "frostpeak",
+      "patch": [],
+      "expected_defects": []
+    },
+    {
+      "id": "frost-progress-state",
+      "baseline": "frostpeak",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/npc_archetypes/content/npcs/0/dialogue_triggers/1/text",
+          "value": "Guards defeated, but the flag still lies lowered at the Ash Pass border post."
+        }
+      ],
+      "expected_defects": [
+        {
+          "id": "progress_state",
+          "artifact_paths": [
+            "/npc_archetypes/content/npcs/0/dialogue_triggers/1/text"
+          ],
+          "reason": "A shared active/incomplete line makes fixed guard/flag assertions that are false in allowed states.",
+          "counterexample": "Active with neither action done: guards are not defeated. Active with the flag raised first: the flag is not lowered.",
+          "evidence_chunk_id": null,
+          "evidence_quote": null
+        }
+      ]
+    },
+    {
+      "id": "frost-ore-quantity",
+      "baseline": "frostpeak",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/quest_hooks/content/quests/1/objectives/0",
+          "value": "Mine 4 chunks of raw sky-iron ore from the cliffside veins"
+        },
+        {
+          "op": "replace",
+          "path": "/quest_hooks/content/quests/1/state_contract/objectives/0/objective",
+          "value": "Mine 4 chunks of raw sky-iron ore from the cliffside veins"
+        },
+        {
+          "op": "replace",
+          "path": "/quest_hooks/content/quests/1/state_contract/event_actions/ore_total_five_reached",
+          "value": "Player mines a total of 4 raw sky-iron chunks from the cliffside veins during the active attempt."
+        }
+      ],
+      "expected_defects": [
+        {
+          "id": "source_quantity",
+          "artifact_paths": [
+            "/quest_hooks/content/quests/1/state_contract/event_actions/ore_total_five_reached",
+            "/quest_hooks/content/quests/1/objectives/0"
+          ],
+          "reason": "The event/objective allows completion at 4; the source requires 5.",
+          "counterexample": "Active with 4 chunks mined: source quest is incomplete, but the declared event can set the only required flag.",
+          "evidence_chunk_id": "frost-0",
+          "evidence_quote": "Objective: Mine 5 chunks of raw sky-iron ore from the cliffside veins. Reward: 150 gold and sky-iron gear."
+        }
+      ]
+    },
+    {
+      "id": "frost-source-omissions",
+      "baseline": "frostpeak",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/summary/content/description",
+          "value": null
+        },
+        {
+          "op": "replace",
+          "path": "/art_style_direction/content/visual_theme",
+          "value": null
+        },
+        {
+          "op": "replace",
+          "path": "/art_style_direction/content/visual_notes",
+          "value": []
+        }
+      ],
+      "expected_defects": [
+        {
+          "id": "missing_premise",
+          "artifact_paths": [
+            "/summary/content/description"
+          ],
+          "reason": "The source provides a premise, but the current draft description is empty.",
+          "counterexample": "An empty description cannot preserve the pathfinder/Resistance premise despite valid citations.",
+          "evidence_chunk_id": "frost-3",
+          "evidence_quote": "The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance"
+        },
+        {
+          "id": "missing_visual_direction",
+          "artifact_paths": [
+            "/art_style_direction/content/visual_theme",
+            "/art_style_direction/content/visual_notes"
+          ],
+          "reason": "The source defines visual style/palette/textures, but both draft visual fields are empty.",
+          "counterexample": "The reader gets no art direction even though the supplied excerpt defines it.",
+          "evidence_chunk_id": "frost-1",
+          "evidence_quote": "The visual identity of Project Frostpeak utilizes a Stylized Dark Fantasy theme."
+        }
+      ]
+    },
+    {
+      "id": "cyber-valid",
+      "baseline": "cyberrakshak",
+      "patch": [],
+      "expected_defects": []
+    },
+    {
+      "id": "cyber-file-link-mismatch",
+      "baseline": "cyberrakshak",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/npc_archetypes/content/npcs/0/dialogue_triggers/1/text",
+          "value": "That link is trying too hard. Check the URL before you trust it."
+        }
+      ],
+      "expected_defects": [
+        {
+          "id": "warning_situation_mismatch",
+          "artifact_paths": [
+            "/npc_archetypes/content/npcs/0/dialogue_triggers/1/text"
+          ],
+          "reason": "The suspicious-file interaction is mapped to a link/URL warning.",
+          "counterexample": "Before opening the suspicious executable, PATCH talks about checking a URL instead of the file.",
+          "evidence_chunk_id": "cyber-warnings",
+          "evidence_quote": "A file called homework_final_REAL_REAL.exe is already confessing."
+        }
+      ]
+    }
+  ]
+}

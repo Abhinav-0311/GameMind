@@ -12,7 +12,9 @@ logger = logging.getLogger("gamemind.event_scheduler")
 
 class WorldEventScheduler:
     @staticmethod
-    def evaluate_triggers(db: Session, current_time: datetime) -> List[Dict[str, Any]]:
+    def evaluate_triggers(
+        db: Session, current_time: datetime, game_project_id: str = "default_project"
+    ) -> List[Dict[str, Any]]:
         """
         Evaluates active event templates and returns events whose trigger conditions are met.
         Deterministic execution only (no background threads).
@@ -22,7 +24,8 @@ class WorldEventScheduler:
 
         # Fetch all active event templates from the graph database
         templates = db.query(WorldEntity).filter(
-            WorldEntity.entity_type == "event_template"
+            WorldEntity.entity_type == "event_template",
+            WorldEntity.game_project_id == game_project_id,
         ).all()
 
         for temp in templates:
@@ -63,7 +66,7 @@ class WorldEventScheduler:
                 source = standing_below.get("source")
                 target = standing_below.get("target")
                 val = standing_below.get("value")
-                rel = graph_repo.get_active_relationship(db, source, target, "standing")
+                rel = graph_repo.get_active_relationship(db, source, target, "standing", game_project_id=game_project_id)
                 weight = rel.weight if rel else 50.0
                 if weight >= val:
                     met = False
@@ -73,7 +76,7 @@ class WorldEventScheduler:
                 source = standing_above.get("source")
                 target = standing_above.get("target")
                 val = standing_above.get("value")
-                rel = graph_repo.get_active_relationship(db, source, target, "standing")
+                rel = graph_repo.get_active_relationship(db, source, target, "standing", game_project_id=game_project_id)
                 weight = rel.weight if rel else 50.0
                 if weight <= val:
                     met = False
@@ -89,7 +92,8 @@ class WorldEventScheduler:
             if quest_completed and met:
                 progress = db.query(QuestProgress).filter(
                     QuestProgress.quest_id == quest_completed,
-                    QuestProgress.status == "completed"
+                    QuestProgress.status == "completed",
+                    QuestProgress.game_project_id == game_project_id,
                 ).first()
                 if not progress:
                     met = False

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { api, BlueprintResponse, DocumentResponse, HealthResponse } from "@/lib/api";
+import { api, BlueprintReadinessResponse, BlueprintResponse, DocumentResponse, HealthResponse, requestFailureMessage } from "@/lib/api";
 
 interface ProductMode {
   eyebrow: string;
@@ -22,52 +22,74 @@ interface NextAction {
   action: string;
 }
 
+function hasMaterializedRuntimeRecords(blueprint: BlueprintResponse) {
+  const manifest = blueprint.materialization_manifest;
+  if (!manifest) return false;
+  return ["npcs", "quest_ids", "memory_ids", "flag_keys"].some((key) => {
+    const value = manifest[key];
+    return Array.isArray(value) && value.length > 0;
+  });
+}
+
 export default function WorkspaceOverview() {
   const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [blueprints, setBlueprints] = useState<BlueprintResponse[]>([]);
+  const [readinessByBlueprint, setReadinessByBlueprint] = useState<Record<string, BlueprintReadinessResponse>>({});
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [available, setAvailable] = useState({ documents: false, blueprints: false, readiness: false });
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const fetchWorkspace = async () => {
+      if (cancelled) return;
       setIsLoading(true);
       setError(null);
 
-      try {
-        const [docs, healthData, blueprintData] = await Promise.all([
-          api.getDocuments(),
-          api.getHealth(),
-          api.getBlueprints(),
-        ]);
+      const [docs, healthData, blueprintData] = await Promise.allSettled([
+        api.getDocuments(),
+        api.getHealth(),
+        api.getBlueprints(),
+      ]);
+      const readinessResults = await Promise.all(
+        (blueprintData.status === "fulfilled" ? blueprintData.value : [])
+          .filter(hasMaterializedRuntimeRecords)
+          .map(async (blueprint) => {
+            try {
+              return [blueprint.id, await api.getBlueprintReadiness(blueprint.id)] as const;
+            } catch {
+              return null;
+            }
+          })
+      );
+      const nextReadiness = Object.fromEntries(
+        readinessResults.filter((result): result is readonly [string, BlueprintReadinessResponse] => result !== null)
+      );
 
-        if (!cancelled) {
-          setDocuments(docs);
-          setHealth(healthData);
-          setBlueprints(blueprintData);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn("Workspace overview is unavailable:", err);
-          }
-          setError("Start Docker, wait for the backend health check, then refresh this page.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+      if (!cancelled) {
+        setDocuments(docs.status === "fulfilled" ? docs.value : []);
+        setHealth(healthData.status === "fulfilled" ? healthData.value : null);
+        setBlueprints(blueprintData.status === "fulfilled" ? blueprintData.value : []);
+        setReadinessByBlueprint(nextReadiness);
+        const readinessAvailable = blueprintData.status === "fulfilled" && readinessResults.every((result) => result !== null);
+        setAvailable({ documents: docs.status === "fulfilled", blueprints: blueprintData.status === "fulfilled", readiness: readinessAvailable });
+        const failure = [docs, healthData, blueprintData].find((result) => result.status === "rejected");
+        setError(failure?.status === "rejected"
+          ? requestFailureMessage(failure.reason, "Some workspace data")
+          : !readinessAvailable ? "Runtime readiness unavailable. Retry before choosing a runtime action." : null);
+        setIsLoading(false);
       }
     };
 
-    fetchWorkspace();
+    void Promise.resolve().then(fetchWorkspace);
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retry]);
 
   const totalChunks = useMemo(
     () => documents.reduce((sum, doc) => sum + (doc.chunks_count || 0), 0),
@@ -76,11 +98,23 @@ export default function WorkspaceOverview() {
 
   const hasDocuments = documents.length > 0;
   const hasBlueprints = blueprints.length > 0;
-  const runtimeReadyCount = blueprints.filter((blueprint) => blueprint.materialization_manifest).length;
+  const approvedBlueprints = blueprints.filter((blueprint) => blueprint.status === "approved");
+  const runtimeReadyCount = blueprints.filter((blueprint) => readinessByBlueprint[blueprint.id]?.can_serve_runtime).length;
   const hasRuntimeData = runtimeReadyCount > 0;
+  const hasBlockedRuntimeRelease = blueprints.some(
+    (blueprint) => hasMaterializedRuntimeRecords(blueprint) && readinessByBlueprint[blueprint.id] && !readinessByBlueprint[blueprint.id].can_serve_runtime
+  );
   const isLocalMode = health?.ai_mode === "local_demo";
 
   const nextAction: NextAction = useMemo(() => {
+    if (isLoading || !available.documents || !available.blueprints || !available.readiness) {
+      return {
+        label: isLoading ? "Checking workspace" : "Workspace status unavailable",
+        description: "Load the source library and release status before choosing the next design or runtime step.",
+        href: "/workspace",
+        action: "Check workspace",
+      };
+    }
     if (!hasDocuments) {
       return {
         label: "Add your first source document",
@@ -92,19 +126,30 @@ export default function WorkspaceOverview() {
 
     if (!hasBlueprints) {
       return {
-        label: "Generate a blueprint",
-        description: "Convert one source document into narrative, NPC, quest, memory, level, and runtime sections.",
+        label: "Start a reviewed design run",
+        description: "Use your indexed GDD as fixed evidence, then inspect the draft and independent critique before approval.",
+        href: "/design-agent",
+        action: "Open review",
+      };
+    }
+
+    if (hasBlockedRuntimeRelease) {
+      return {
+        label: "Repair the runtime release",
+        description: "A materialized blueprint has current quality blockers. Resolve them before using it in a game client.",
         href: "/blueprints",
-        action: "Open blueprints",
+        action: "Review blockers",
       };
     }
 
     if (!hasRuntimeData) {
       return {
-        label: "Approve runtime data",
-        description: "Materialize the approved blueprint so the simulator or a game client can consume stable records.",
+        label: approvedBlueprints.length > 0 ? "Materialize reviewed runtime data" : "Review a blueprint before runtime",
+        description: approvedBlueprints.length > 0
+          ? "Materialize only explicit runtime bindings so the simulator or a game client can consume stable records."
+          : "Inspect the source evidence and blueprint sections, then approve only the design you are ready to make runtime data.",
         href: "/blueprints",
-        action: "Materialize",
+        action: approvedBlueprints.length > 0 ? "Open materialization" : "Open blueprints",
       };
     }
 
@@ -114,7 +159,7 @@ export default function WorkspaceOverview() {
       href: "/vertical-slice",
       action: "Open runtime test",
     };
-  }, [hasBlueprints, hasDocuments, hasRuntimeData]);
+  }, [approvedBlueprints.length, hasBlueprints, hasBlockedRuntimeRelease, hasDocuments, hasRuntimeData, isLoading, available]);
 
   const productModes: ProductMode[] = [
     {
@@ -142,15 +187,16 @@ export default function WorkspaceOverview() {
 
   return (
     <main className="page-shell">
-      <section className="grid items-center gap-10 py-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:py-10">
+      <section className="grid items-start gap-8 py-5 lg:grid-cols-[minmax(0,1fr)_23rem] lg:py-10">
         <div className="max-w-3xl">
           <p className="page-kicker">Local-first AI game builder</p>
-          <h1 className="display-title mt-5 max-w-3xl text-[2.35rem] leading-[1.05] sm:text-[3.45rem]">
-            Design the game first. Integrate the runtime when it matters.
+          <h1 className="display-title mt-4 max-w-3xl text-[2.35rem] leading-[1.05] sm:text-[3.2rem]">
+            Keep every game decision connected to its evidence.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
             GameMind helps new game developers convert GDDs, lore, NPC notes, quest ideas, and level concepts into
-            grounded blueprints and engine-ready runtime data without requiring paid model APIs.
+            grounded blueprints and engine-ready runtime data. Local evidence checks run first; NVIDIA review is an
+            explicit, governed choice.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -163,7 +209,7 @@ export default function WorkspaceOverview() {
           </div>
         </div>
 
-        <aside className="panel overflow-hidden rounded-3xl" aria-label="Recommended next action">
+        <aside className="status-strip overflow-hidden rounded-2xl" aria-label="Recommended next action">
           <Image
             src="/brand/game-builder-workbench.svg"
             alt="GameMind workflow from source document to blueprint and runtime systems"
@@ -172,33 +218,34 @@ export default function WorkspaceOverview() {
             priority
             className="h-auto w-full border-b border-[var(--border)] bg-[var(--card-muted)]"
           />
-          <div className="p-6">
+          <div className="p-5">
             <p className="page-kicker">Next best step</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--foreground)]">{nextAction.label}</h2>
+            <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[var(--foreground)]">{nextAction.label}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{nextAction.description}</p>
           </div>
         </aside>
       </section>
 
       {error && (
-        <section className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
-          {error}
+        <section role="alert" className="mb-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--foreground)]">
+          <p>{error}</p>
+          <button className="btn-secondary mt-3" disabled={isLoading} onClick={() => setRetry((value) => value + 1)}>Retry workspace</button>
         </section>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" aria-label="Workspace status">
-        <StatusTile label="Documents" value={isLoading ? "--" : String(documents.length)} />
-        <StatusTile label="Chunks" value={isLoading ? "--" : String(totalChunks)} />
-        <StatusTile label="Blueprints" value={isLoading ? "--" : String(blueprints.length)} />
-        <StatusTile label="Runtime ready" value={isLoading ? "--" : String(runtimeReadyCount)} />
-        <StatusTile label="AI cost" value="$0" accent />
+      <section className="grid gap-px overflow-hidden border border-[var(--border)] bg-[var(--border)] sm:grid-cols-2 lg:grid-cols-5" aria-label="Workspace status">
+        <StatusTile label="Documents" value={isLoading ? "--" : available.documents ? String(documents.length) : "Unavailable"} />
+        <StatusTile label="Chunks" value={isLoading ? "--" : available.documents ? String(totalChunks) : "Unavailable"} />
+        <StatusTile label="Blueprints" value={isLoading ? "--" : available.blueprints ? String(blueprints.length) : "Unavailable"} />
+        <StatusTile label="Runtime ready" value={isLoading ? "--" : available.readiness ? String(runtimeReadyCount) : "Unavailable"} />
+        <StatusTile label="AI review" value="opt-in" accent />
       </section>
 
-      <section id="product-modes" className="mt-12">
+      <section id="product-modes" className="mt-14">
         <div className="max-w-2xl">
           <p className="page-kicker">Choose the path</p>
           <h2 className="display-title mt-4 text-3xl leading-tight sm:text-[2.35rem]">
-            GameMind works in two useful ways.
+            One design desk. Two outcomes.
           </h2>
           <p className="mt-4 text-base leading-7 text-[var(--text-secondary)]">
             You do not need a Unity project to get value. Use the dashboard to organize a game, then connect a runtime
@@ -208,7 +255,7 @@ export default function WorkspaceOverview() {
 
         <div className="mt-7 grid gap-5 lg:grid-cols-2">
           {productModes.map((mode) => (
-            <article key={mode.title} className="panel rounded-3xl p-6">
+            <article key={mode.title} className="status-strip rounded-2xl p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="page-kicker">{mode.eyebrow}</p>
@@ -241,7 +288,7 @@ export default function WorkspaceOverview() {
       </section>
 
       <section className="mt-12 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="panel rounded-3xl p-6">
+        <div className="status-strip rounded-2xl p-6">
           <p className="page-kicker">Workflow</p>
           <h2 className="display-title mt-4 text-3xl leading-tight">From document to game systems.</h2>
           <div className="mt-7 grid gap-4 md:grid-cols-4">
@@ -252,16 +299,16 @@ export default function WorkspaceOverview() {
           </div>
         </div>
 
-        <aside className="panel-muted rounded-3xl p-6">
+        <aside className="panel-muted rounded-2xl p-6">
           <p className="page-kicker">Readiness</p>
           <h2 className="mt-4 text-2xl font-semibold tracking-normal text-[var(--foreground)]">
-            {isLoading ? "Checking workspace" : health?.status === "healthy" ? "Workspace is connected" : "Needs attention"}
+            {isLoading ? "Checking workspace" : !error && health?.status === "healthy" ? "Workspace is connected" : "Needs attention"}
           </h2>
           <div className="mt-5 space-y-3">
-            <ReadinessRow label="Backend" value={health?.status ?? "checking"} good={health?.status === "healthy"} loading={isLoading} />
-            <ReadinessRow label="Database" value={health?.database ?? "checking"} good={health?.database === "healthy"} loading={isLoading} />
-            <ReadinessRow label="Vector index" value={health?.chromadb ?? "checking"} good={health?.chromadb === "healthy"} loading={isLoading} />
-            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "checking"} good={Boolean(health?.ai_mode)} loading={isLoading} />
+            <ReadinessRow label="Backend" value={health?.status ?? "unavailable"} good={health?.status === "healthy"} loading={isLoading} />
+            <ReadinessRow label="Database" value={health?.database ?? "unavailable"} good={health?.database === "healthy"} loading={isLoading} />
+            <ReadinessRow label="Vector index" value={health?.chromadb ?? "unavailable"} good={health?.chromadb === "healthy"} loading={isLoading} />
+            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "unavailable"} good={Boolean(health?.ai_mode)} loading={isLoading} />
           </div>
         </aside>
       </section>
@@ -283,18 +330,18 @@ function FirstRunWorkspace() {
     },
     {
       number: "03",
-      title: "Build from evidence",
-      body: "Generate a blueprint only after the source is searchable, then inspect the citations behind each section.",
+      title: "Review before runtime",
+      body: "Generate from indexed evidence, inspect citations and critique, then approve and materialize only explicit runtime data.",
     },
   ];
 
   return (
     <main className="page-shell">
-      <section className="grid min-h-[calc(100dvh-9rem)] items-center gap-12 py-10 lg:grid-cols-[minmax(0,1fr)_21rem] lg:py-16">
+      <section className="grid min-h-[calc(100dvh-11rem)] items-center gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:py-12">
         <div className="max-w-3xl">
           <p className="page-kicker">New workspace</p>
-          <h1 className="display-title mt-5 max-w-2xl text-[2.5rem] leading-[1.04] sm:text-[3.6rem]">
-            Start with the game you want to build.
+          <h1 className="display-title mt-4 max-w-2xl text-[2.45rem] leading-[1.04] sm:text-[3.35rem]">
+            Begin with a document you can defend.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
             Add one design document first. GameMind will keep the source, the design decisions, and the resulting blueprint connected as your game develops.
@@ -305,7 +352,7 @@ function FirstRunWorkspace() {
               Open sources
             </Link>
             <Link href="/blueprints" className="btn-secondary">
-              See blueprint workflow
+              Preview blueprint workflow
             </Link>
           </div>
 
@@ -314,12 +361,12 @@ function FirstRunWorkspace() {
           </p>
         </div>
 
-        <aside className="border-l border-[var(--border)] pl-0 lg:pl-8" aria-label="First workspace steps">
+        <aside className="status-strip rounded-2xl p-6" aria-label="First workspace steps">
           <p className="page-kicker">Your path</p>
-          <ol className="mt-5 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+          <ol className="mt-6 space-y-6">
             {steps.map((step) => (
-              <li key={step.number} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-4 py-5">
-                <span className="font-mono text-xs font-semibold text-[var(--accent)]">{step.number}</span>
+              <li key={step.number} className="onboarding-step">
+                <span className="onboarding-step__number">{step.number}</span>
                 <div>
                   <h2 className="text-base font-semibold text-[var(--foreground)]">{step.title}</h2>
                   <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{step.body}</p>
@@ -335,7 +382,7 @@ function FirstRunWorkspace() {
 
 function StatusTile({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="panel-muted rounded-2xl p-4">
+    <div className="metric-tile">
       <p className="page-kicker">{label}</p>
       <p className={`mt-3 text-2xl font-semibold tracking-normal ${accent ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
         {value}
@@ -348,7 +395,7 @@ function FlowStep({ index, title, body, href }: { index: string; title: string; 
   return (
     <Link
       href={href}
-      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--foreground)] hover:bg-[var(--accent-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
     >
       <p className="page-kicker">{index}</p>
       <h3 className="mt-4 text-base font-semibold text-[var(--foreground)]">{title}</h3>

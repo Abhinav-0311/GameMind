@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.design_agent.schemas import (
     DesignAgentEvaluationCreate,
-    DesignAgentEvaluationMetric,
     DesignAgentEvaluationResponse,
 )
 from app.models.design_agent import (
@@ -145,20 +144,7 @@ class DesignAgentEvaluationService:
 
     @staticmethod
     def _response(evaluation: DesignAgentEvaluation) -> DesignAgentEvaluationResponse:
-        return DesignAgentEvaluationResponse(
-            id=evaluation.id,
-            run_id=evaluation.run_id,
-            game_project_id=evaluation.game_project_id,
-            rubric_version=evaluation.rubric_version,
-            evaluator_label=evaluation.evaluator_label,
-            metrics=[
-                DesignAgentEvaluationMetric.model_validate(metric)
-                for metric in evaluation.metrics
-            ],
-            overall_score=float(evaluation.overall_score),
-            passed=evaluation.passed,
-            created_at=evaluation.created_at,
-        )
+        return DesignAgentEvaluationResponse.model_validate(evaluation, from_attributes=True)
 
     def get(
         self,

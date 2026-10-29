@@ -1,8 +1,10 @@
 import copy
+import json
+from pathlib import Path
 
 import pytest
 
-from app.design_agent.contracts import BlueprintContent
+from app.design_agent.contracts import BLUEPRINT_SECTION_KEYS, BlueprintContent, SECTION_RETRIEVAL_FOCUS, build_section_queries
 from app.design_agent.grounding import (
     assess_artifact_quality,
     ground_blueprint_citations,
@@ -91,6 +93,38 @@ def _cyber_evidence():
     ]
 
 
+def _frostpeak_evidence():
+    source = (
+        Path(__file__).resolve().parent
+        / "docs"
+        / "demo"
+        / "sample_gdd_frostpeak.md"
+    ).read_text(encoding="utf-8")
+    section_names = [
+        "summary",
+        "narrative_direction",
+        "art_style_direction",
+        "npc_archetypes",
+        "npc_memory_design",
+        "level_design_suggestions",
+        "gameplay_systems",
+        "quest_hooks",
+        "unity_runtime_preview",
+    ]
+    return [{
+        "chunk_id": "33333333-3333-3333-3333-333333333333",
+        "content": source,
+        "document_id": "44444444-4444-4444-4444-444444444444",
+        "title": "sample_gdd_frostpeak.md",
+        "chunk_index": 0,
+        "game_project_id": "frostpeak",
+        "similarity": 0.95,
+        "confidence": "High",
+        "matched_sections": section_names,
+        "section_similarities": {section_name: 0.95 for section_name in section_names},
+    }]
+
+
 def test_mock_generation_extracts_all_ten_cyberrakshak_levels():
     provider = MockDesignAgentProvider()
     result = provider.generate({"objective": "Build CyberRakshak"}, _cyber_evidence())
@@ -107,6 +141,35 @@ def test_mock_generation_extracts_all_ten_cyberrakshak_levels():
     assert content["level_design_suggestions"]["citations"] == [
         "11111111-1111-1111-1111-111111111111"
     ]
+
+
+def test_frostpeak_fixture_keeps_artifacts_source_isolated_from_cyberrakshak():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Create a cited Frostpeak design artifact."},
+        _frostpeak_evidence(),
+    ).content
+    validated = validate_generated_blueprint(content, _frostpeak_evidence())
+    serialized = json.dumps(validated)
+
+    assert "Frostpeak" in serialized
+    assert "Eldrin" in serialized
+    assert "Kaelen" in serialized
+    assert "Ash Pass" in serialized
+    assert "CyberRakshak" not in serialized
+
+
+def test_section_queries_are_game_neutral_for_sparse_sections():
+    queries = build_section_queries("", "")
+
+    assert set(queries) == set(BLUEPRINT_SECTION_KEYS)
+    assert "art style" in queries["art_style_direction"]
+    assert "player behaviour" in queries["npc_memory_design"]
+    assert "level" in queries["level_design_suggestions"]
+    assert "gameplay" in queries["gameplay_systems"]
+    assert "runtime integration" in queries["unity_runtime_preview"]
+    serialized = " ".join(queries.values()).lower()
+    for game_specific_term in ("patch", "training sandbox", "password vault", "powerrush", "6000.2.7f2", "cyber-infiltration"):
+        assert game_specific_term not in serialized
 
 
 def test_blueprint_contract_keeps_phase_two_design_details_traceable():
@@ -242,7 +305,92 @@ def test_quality_scorecard_makes_unresolved_assumptions_visible():
     scorecard = assess_artifact_quality(validated)
 
     assert scorecard["overall_score"] > 0
+    integration = next(
+        metric for metric in scorecard["metrics"]
+        if metric["key"] == "integration_readiness"
+    )
+    assert integration["value"] == 0.0
+    assert scorecard["overall_score"] < 1.0
     assert scorecard["unresolved_assumptions"]
+    assert "Integration readiness" in scorecard["blockers"]
+
+
+def test_generated_dialogue_is_explicitly_marked_for_narrative_review():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    npc = content["npc_archetypes"]["content"]["npcs"][0]
+    npc["dialogue_hooks"] = ["A creative line not present in the GDD."]
+
+    validated = validate_generated_blueprint(content, _cyber_evidence())
+
+    assert (
+        "Generated dialogue hooks are creative drafts and require narrative approval before runtime use."
+        in validated["npc_archetypes"]["content"]["npcs"][0]["assumptions"]
+    )
+
+
+def test_generated_quest_details_are_explicitly_marked_for_design_review():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    quest = content["quest_hooks"]["content"]["quests"][0]
+    quest.update({
+        "objective": "A generated quest objective.",
+        "objectives": ["A generated ordered objective."],
+        "failure_states": ["A generated failure state."],
+        "dialogue_hooks": ["A generated quest dialogue hook."],
+    })
+
+    validated = validate_generated_blueprint(content, _cyber_evidence())
+
+    assumptions = validated["quest_hooks"]["content"]["quests"][0]["assumptions"]
+    assert any(
+        assumption.startswith("Generated quest objective, objectives, failure states, dialogue hooks")
+        for assumption in assumptions
+    )
+
+
+def test_quality_scorecard_allows_quests_without_unsupported_dependencies():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    # This case isolates record requirements, not a sparse GDD's section gaps.
+    for section in BLUEPRINT_SECTION_KEYS:
+        if section not in {"npc_archetypes", "quest_hooks"}:
+            content[section]["content"] = {"description": "Explicit design content for this quality fixture."}
+    for npc in content["npc_archetypes"]["content"]["npcs"]:
+        npc["dialogue_hooks"] = ["Check the route before you trust it."]
+    for quest in content["quest_hooks"]["content"]["quests"]:
+        quest.update({
+            "objectives": ["Enter the Training Sandbox."],
+            "failure_states": ["Leave before completing the training."],
+            "dependencies": [],
+        })
+
+    scorecard = assess_artifact_quality(
+        validate_generated_blueprint(content, _cyber_evidence())
+    )
+
+    completeness = next(
+        metric for metric in scorecard["metrics"] if metric["key"] == "completeness"
+    )
+    assert completeness["passed"] is True
+
+
+def test_quality_scorecard_blocks_unsupported_blueprint_sections():
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, _cyber_evidence()
+    ).content
+    content["art_style_direction"]["citations"] = []
+
+    scorecard = assess_artifact_quality(content)
+
+    assert "art_style_direction" in scorecard["unsupported_sections"]
+    grounding = next(
+        metric for metric in scorecard["metrics"] if metric["key"] == "grounding"
+    )
+    assert grounding["passed"] is False
     assert "Integration readiness" in scorecard["blockers"]
 
 def test_grounding_filters_cross_section_citations():
@@ -261,6 +409,41 @@ def test_grounding_filters_cross_section_citations():
         "not retrieved for this section" in warning
         for warning in grounded["art_style_direction"]["warnings"]
     )
+
+
+def test_nested_records_without_section_matched_evidence_become_visible_blockers():
+    evidence = _cyber_evidence()
+    evidence[0]["matched_sections"] = ["npc_archetypes"]
+    content = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, evidence
+    ).content
+    content["quest_hooks"]["content"]["quests"] = [{
+        "id": "unsupported_quest",
+        "title": "Unsupported Quest",
+        "objective": "Do not retain this without quest evidence.",
+        "source_chunk_ids": [evidence[0]["chunk_id"]],
+        "objectives": ["Start the unsupported quest."],
+        "failure_states": [],
+        "dependencies": [],
+        "dialogue_hooks": [],
+        "implementation_notes": [],
+        "assumptions": [],
+    }]
+
+    validated = validate_generated_blueprint(content, evidence)
+
+    assert validated["quest_hooks"]["content"]["quests"] == []
+    assert any(
+        "Blocked 1 quests without section-matched frozen evidence" in warning
+        for warning in validated["quest_hooks"]["warnings"]
+    )
+    with pytest.raises(ValueError, match="No quest has section-matched frozen evidence"):
+        validate_generated_blueprint(
+            content,
+            evidence,
+            require_actionable=True,
+            actionable_sections={"quest_hooks"},
+        )
 
 
 def test_revision_contract_rejects_no_op_and_unrelated_drift():
@@ -297,6 +480,29 @@ def test_revision_contract_rejects_no_op_and_unrelated_drift():
         )
 
 
+def test_revision_contract_allows_multiple_explicitly_targeted_sections():
+    evidence = _cyber_evidence()
+    before = MockDesignAgentProvider().generate(
+        {"objective": "Build CyberRakshak"}, evidence
+    ).content
+    revision = copy.deepcopy(before)
+    revision["summary"]["content"]["overview"] = "A source-grounded summary."
+    revision["quest_hooks"]["content"]["quests"] = []
+    revision["level_design_suggestions"]["content"]["levels"] = []
+
+    changed = validate_structured_revision(
+        before,
+        revision,
+        "Correct the summary and remove unsupported quest and level design details.",
+    )
+
+    assert set(changed.split(",")) == {
+        "level_design_suggestions",
+        "quest_hooks",
+        "summary",
+    }
+
+
 class _BatchCollection:
     def __init__(self):
         self.calls = 0
@@ -306,7 +512,9 @@ class _BatchCollection:
 
     def query(self, *, query_texts, n_results, where, **_kwargs):
         self.calls += 1
-        assert query_texts == ["story evidence", "level evidence"]
+        assert query_texts == ["story evidence", "level evidence",
+                               SECTION_RETRIEVAL_FOCUS["narrative_direction"],
+                               SECTION_RETRIEVAL_FOCUS["level_design_suggestions"]]
         assert n_results == 2
         assert where == {
             "$and": [
@@ -315,9 +523,9 @@ class _BatchCollection:
             ]
         }
         return {
-            "ids": [["shared", "story"], ["shared", "levels"]],
-            "distances": [[0.2, 0.3], [0.1, 0.25]],
-            "documents": [["Shared", "Story"], ["Shared", "Levels"]],
+            "ids": [["shared", "story"], ["shared", "levels"], ["shared"], ["shared"]],
+            "distances": [[0.2, 0.3], [0.1, 0.25], [0.6], [0.7]],
+            "documents": [["Shared", "Story"], ["Shared", "Levels"], ["Shared"], ["Shared"]],
             "metadatas": [
                 [
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 0},
@@ -327,6 +535,8 @@ class _BatchCollection:
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 0},
                     {"document_id": "doc-1", "title": "GDD", "chunk_index": 2},
                 ],
+                [{"document_id": "doc-1", "title": "GDD", "chunk_index": 0}],
+                [{"document_id": "doc-1", "title": "GDD", "chunk_index": 0}],
             ],
         }
 

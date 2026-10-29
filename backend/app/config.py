@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+from typing import Literal
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Locate the project root (.env directory) relative to this file
@@ -38,11 +40,28 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "mock"
     LOCAL_MODEL_NAME: str = "local-rule-engine"
     DESIGN_AGENT_PROVIDER: str | None = None
+    # Unset preserves explicit legacy NVIDIA selection; otherwise local/mock is the default.
+    LLM_PROFILE: Literal["test", "dev", "showcase"] | None = None
+    GEMINI_API_KEY: str | None = None
+    GEMINI_DEV_MODEL: str = ""
+    GEMINI_SHOWCASE_MODEL: str = ""
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_SCHEMA_REDUCTION_NODES: frozenset[Literal["plan", "generate_blueprint", "critique", "revise"]] = frozenset({"revise"})
+    GEMINI_REVISE_KEEP_LITERALS_MAX_BYTES: int = Field(6000, ge=0)
+    GEMINI_DEV_RPM: int = Field(5, gt=0)
+    GEMINI_DEV_RPD: int = Field(500, gt=0)
+    GEMINI_SHOWCASE_RPM: int = Field(3, gt=0)
+    GEMINI_SHOWCASE_RPD: int = Field(20, gt=0)
+    GEMINI_MAX_REQUESTS_PER_RUN: int = Field(12, gt=0)
+    GEMINI_RUN_BUDGET_ESTIMATE: int = Field(8, gt=0)
+    GEMINI_RPM_MAX_WAIT_SECONDS: float = Field(60, ge=0)
     DESIGN_AGENT_FALLBACK_TO_MOCK: bool = True
+    DESIGN_AGENT_FALLBACK_DISABLED_NODES: frozenset[Literal["plan", "generate_blueprint", "critique", "revise"]] = frozenset({"revise"})
     DESIGN_AGENT_EXECUTION_MODE: str = "inline"
     DESIGN_AGENT_JOB_POLL_SECONDS: float = 1.0
     DESIGN_AGENT_JOB_LEASE_SECONDS: int = 300
     DESIGN_AGENT_JOB_MAX_ATTEMPTS: int = 3
+    DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES: int = Field(3, gt=0)
     NVIDIA_NANO_API_KEY: str | None = None
     NVIDIA_SUPER_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"

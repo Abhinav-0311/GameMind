@@ -48,7 +48,9 @@ namespace GameMind
 
         public static GameMindApiClient Instance { get; private set; }
 
-        [SerializeField] private string defaultProjectId = "default_project";
+        // The committed vertical slice is exercised against the approved
+        // CyberRakshak workspace. Override this per scene for another project.
+        [SerializeField] private string defaultProjectId = "cyberrakshak";
         [SerializeField] private string defaultPlayerId = "default_player";
 
         private void Awake()

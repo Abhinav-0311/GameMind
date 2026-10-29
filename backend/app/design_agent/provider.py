@@ -10,7 +10,7 @@ from app.design_agent.contracts import (
     ResearchPlan,
     build_section_queries,
 )
-from app.design_agent.grounding import review_target
+from app.design_agent.grounding import review_targets, memory_is_unspecified
 from app.services.blueprint_service import BlueprintService
 
 
@@ -55,6 +55,7 @@ class DesignAgentProvider(Protocol):
         self,
         artifact: dict[str, Any],
         evidence: list[dict[str, Any]],
+        *, review_request: dict[str, Any] | None = None,
     ) -> ProviderResult: ...
 
     def revise(
@@ -62,6 +63,8 @@ class DesignAgentProvider(Protocol):
         artifact: dict[str, Any],
         evidence: list[dict[str, Any]],
         rejection_reason: str,
+        target_sections: list[str] | None = None,
+        *, review_request: dict[str, Any] | None = None,
     ) -> ProviderResult: ...
 
 
@@ -108,6 +111,13 @@ class MockDesignAgentProvider:
         evidence: list[dict[str, Any]],
     ) -> ProviderResult:
         blueprint = self._extract_blueprint(evidence)
+        if plan.get("defer_runtime") is True:
+            blueprint.unity_runtime_preview.content = {}
+            blueprint.unity_runtime_preview.citations = []
+            blueprint.unity_runtime_preview.confidence = "Low"
+            blueprint.unity_runtime_preview.warnings = ["Runtime integration explicitly deferred for design-only review."]
+            for quest in blueprint.quest_hooks.content.quests:
+                quest.runtime = None
         return ProviderResult(
             content=blueprint.model_dump(),
             model_name=self.model_name,
@@ -117,6 +127,10 @@ class MockDesignAgentProvider:
 
     @staticmethod
     def _extract_blueprint(evidence: list[dict[str, Any]]) -> BlueprintContent:
+        documents = {document: index for index, document in enumerate(dict.fromkeys(
+            item.get("document_id") for item in evidence))}
+        evidence = sorted(evidence, key=lambda item: (
+            documents[item.get("document_id")], int(item.get("chunk_index") or 0)))
         chunks = [
             _EvidenceChunk(
                 id=str(item["chunk_id"]),
@@ -160,10 +174,16 @@ class MockDesignAgentProvider:
         self,
         artifact: dict[str, Any],
         evidence: list[dict[str, Any]],
+        *, review_request: dict[str, Any] | None = None,
     ) -> ProviderResult:
         findings = []
         for section_name in BLUEPRINT_SECTION_KEYS:
             section = artifact.get(section_name, {})
+            if section_name == "npc_memory_design" and memory_is_unspecified(artifact, review_request):
+                continue
+            if (section_name == "unity_runtime_preview" and (review_request or {}).get("defer_runtime") is True
+                    and not section.get("content") and not section.get("citations")):
+                continue  # Explicit deferred scope, never model-origin exemption.
             for warning in section.get("warnings", []):
                 findings.append(
                     {
@@ -203,11 +223,20 @@ class MockDesignAgentProvider:
         artifact: dict[str, Any],
         evidence: list[dict[str, Any]],
         rejection_reason: str,
+        target_sections: list[str] | None = None,
+        *, review_request: dict[str, Any] | None = None,
     ) -> ProviderResult:
         revised = copy.deepcopy(artifact)
-        target = review_target(rejection_reason)
+        targets = review_targets(rejection_reason, target_sections)
+        target = targets[0]
         extracted = self._extract_blueprint(evidence).model_dump()
-        revised[target] = extracted[target]
+        if (review_request or {}).get("defer_runtime") is True:
+            extracted["unity_runtime_preview"] = {"content": {}, "citations": [], "confidence": "Low",
+                                                   "warnings": ["Runtime integration explicitly deferred for design-only review."]}
+            for quest in extracted["quest_hooks"]["content"]["quests"]:
+                quest["runtime"] = None
+        for selected in targets:
+            revised[selected] = extracted[selected]
         if target == "level_design_suggestions":
             level_match = re.search(
                 r"\bLevel\s+(\d+)\s*:\s*([^.;]+)",
@@ -239,7 +268,12 @@ class MockDesignAgentProvider:
                     levels.sort(key=lambda level: int(level.get("number", 0)))
                 else:
                     levels[existing_index] = replacement
-        revised[target]["content"]["review_adjustments"] = [rejection_reason]
+        # Typed NPC/quest content forbids arbitrary bookkeeping fields.
+        # Preserve legacy generic-section output without making it a success claim.
+        if target not in {"npc_archetypes", "quest_hooks"} and not (
+            target == "unity_runtime_preview" and (review_request or {}).get("defer_runtime") is True
+        ):
+            revised[target]["content"]["review_adjustments"] = [rejection_reason]
         revised[target]["warnings"] = list(
             dict.fromkeys(revised[target].get("warnings", []))
         )
@@ -249,4 +283,5 @@ class MockDesignAgentProvider:
             model_name=self.model_name,
             usage=self._usage(artifact, evidence, rejection_reason),
             provider_name=self.name,
+            metadata={"revision_targets": targets, "review_directive": rejection_reason},
         )

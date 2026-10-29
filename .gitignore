@@ -5,6 +5,8 @@
 !.env.*.example
 
 # Python caches and local databases
+.venv*/
+venv/
 __pycache__/
 .pytest_cache/
 *.pyc
@@ -18,6 +20,7 @@ out/
 build/
 .npm-cache/
 .qa-screenshots/
+frontend/debug.log
 
 # Unity ignored folders
 Unity/Library/

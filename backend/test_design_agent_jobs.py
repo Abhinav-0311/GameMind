@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
@@ -17,15 +16,6 @@ from test_design_agent_workflow import CountingRAG, create_source
 
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def clean_job_queue(db_session):
-    db_session.query(DesignAgentJob).delete()
-    db_session.commit()
-    yield
-    db_session.query(DesignAgentJob).delete()
-    db_session.commit()
 
 
 class SuccessfulWorkflow:
@@ -156,6 +146,23 @@ def test_stale_lease_is_reclaimed(db_session):
     assert persisted.locked_by == "replacement-worker"
     assert persisted.attempts == 1
 
+    # Paid manual recovery is never replayed automatically after an uncertain outcome.
+    paid_run = _run(db_session, "paid_lease_project")
+    paid_run.status, paid_run.current_node = "review_queued", "critique"
+    paid = DesignAgentJob(run_id=paid_run.id, game_project_id=paid_run.game_project_id,
+        operation="retry_critique", idempotency_key=f"paid:{paid_run.id}", status="running", attempts=1,
+        max_attempts=1, locked_by="paused-owner", locked_at=datetime.now(timezone.utc) - timedelta(
+            seconds=settings.DESIGN_AGENT_JOB_LEASE_SECONDS + 1))
+    db_session.add(paid)
+    db_session.commit()
+    service = DesignAgentJobService(_factory(db_session))
+    assert service.claim_next("must-not-replay") is None
+    service.execute(paid.id)
+    db_session.expire_all()
+    assert db_session.get(DesignAgentJob, paid.id).status == "failed"
+    assert db_session.get(DesignAgentJob, paid.id).attempts == 1
+    assert db_session.get(DesignAgentRun, paid_run.id).status == "failed"
+
 
 def test_only_one_pending_job_is_claimed(db_session):
     first = _run(db_session, "isolation_a")
@@ -214,6 +221,15 @@ def test_terminal_failure_is_bounded_and_visible(db_session, monkeypatch):
 
 
 def test_real_graph_rejection_cycle_runs_through_queue_and_reuses_evidence(db_session):
+    from app.design_agent.provider import ProviderResult
+    class RejectFirstCorrection(MockDesignAgentProvider):
+        calls = 0
+        def revise(self, artifact, evidence, reason, target_sections=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return ProviderResult(content=artifact, provider_name=self.name, model_name=self.model_name)
+            return super().revise(artifact, evidence, reason, target_sections, **kwargs)
+    provider = RejectFirstCorrection()
     project_id = f"queued_graph_{uuid.uuid4().hex[:8]}"
     document, chunks = create_source(db_session, project_id)
     rag = CountingRAG(chunks)
@@ -223,7 +239,7 @@ def test_real_graph_rejection_cycle_runs_through_queue_and_reuses_evidence(db_se
         workflow_factory=lambda session_factory: DesignAgentWorkflow(
             database_url=settings.DATABASE_URL,
             session_factory=session_factory,
-            provider=MockDesignAgentProvider(),
+            provider=provider,
             rag_service=rag,
         ),
     )
@@ -249,19 +265,32 @@ def test_real_graph_rejection_cycle_runs_through_queue_and_reuses_evidence(db_se
     artifact = db_session.query(DesignAgentArtifact).filter_by(run_id=run.id).order_by(
         DesignAgentArtifact.version.desc()
     ).first()
+    bad = DesignAgentJobService.enqueue_resume(db_session, run,
+        ResumeDecision(decision="reject", reason="Improve levels.", target_sections=["level_design_suggestions"]), artifact.id)
+    db_session.commit()
+    assert service.process_one("graph-worker") is True
+    db_session.expire_all()
+    assert db_session.get(DesignAgentJob, bad.id).status == "failed"
+    assert db_session.get(DesignAgentRun, run.id).status == "awaiting_review"
+    assert service.process_one("graph-worker") is False  # Never retry rejected creative content automatically.
+    assert provider.calls == 1 and rag.calls == 1
     DesignAgentJobService.enqueue_resume(
         db_session,
         run,
-        ResumeDecision(decision="reject", reason="Add Level 10: Incident Response."),
+        ResumeDecision(decision="reject", reason="Add Level 10: Incident Response. Do not change NPC or quest details.",
+                       target_sections=["level_design_suggestions"]),
         artifact.id,
     )
     db_session.commit()
+    queued = db_session.query(DesignAgentJob).filter_by(run_id=run.id, operation="resume", status="pending").one()
+    assert queued.payload["target_sections"] == ["level_design_suggestions"]
     assert service.process_one("graph-worker") is True
 
     db_session.expire_all()
     run = db_session.get(DesignAgentRun, run.id)
     assert run.status == "awaiting_review"
     assert run.revision_count == 1
+    assert run.model_config['consecutive_revision_failures'] == 0
     assert rag.calls == 1
 
     artifact = db_session.query(DesignAgentArtifact).filter_by(run_id=run.id).order_by(

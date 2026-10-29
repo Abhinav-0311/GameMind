@@ -14,7 +14,9 @@ class NarrativeOrchestrator:
     MAX_EVENTS_PER_TICK = 10
 
     @classmethod
-    def execute_tick(cls, db: Session, current_time: datetime) -> Dict[str, Any]:
+    def execute_tick(
+        cls, db: Session, current_time: datetime, game_project_id: str = "default_project"
+    ) -> Dict[str, Any]:
         """
         Executes a narrative evolution tick.
         Evaluates triggers, filters/resolves conflicts, runs effects, and propagates updates within limits.
@@ -22,7 +24,9 @@ class NarrativeOrchestrator:
         start_time = time.time()
         
         # 1. Evaluate triggers
-        triggered_templates = WorldEventScheduler.evaluate_triggers(db, current_time)
+        triggered_templates = WorldEventScheduler.evaluate_triggers(
+            db, current_time, game_project_id=game_project_id
+        )
         
         # 2. Resolve conflicts among triggered templates
         resolved_templates = cls.resolve_conflicts(triggered_templates)
@@ -67,7 +71,7 @@ class NarrativeOrchestrator:
                 continue
 
             # Execute event effects
-            cls._execute_effects(db, temp.get("properties", {}).get("effects", {}))
+            cls._execute_effects(db, temp.get("properties", {}).get("effects", {}), game_project_id=game_project_id)
             executed_events.append(temp["slug"])
             total_triggered += 1
 
@@ -86,7 +90,8 @@ class NarrativeOrchestrator:
                 from app.models.graph import WorldEntity, WorldEntityVersion
                 child_templates = db.query(WorldEntity).filter(
                     WorldEntity.entity_type == "event_template",
-                    WorldEntity.slug.in_(child_slugs)
+                    WorldEntity.slug.in_(child_slugs),
+                    WorldEntity.game_project_id == game_project_id,
                 ).all()
 
                 for ct in child_templates:
@@ -152,7 +157,9 @@ class NarrativeOrchestrator:
         return resolved
 
     @staticmethod
-    def _execute_effects(db: Session, effects: Dict[str, Any]) -> None:
+    def _execute_effects(
+        db: Session, effects: Dict[str, Any], game_project_id: str = "default_project"
+    ) -> None:
         """Helper to run standing_shift or reputation_shift effects."""
         if not effects:
             return
@@ -164,7 +171,9 @@ class NarrativeOrchestrator:
             target = standing_shift.get("target")
             delta = standing_shift.get("delta")
             if source and target and delta is not None:
-                FactionDynamicsEngine.shift_standing(db, source, target, delta)
+                FactionDynamicsEngine.shift_standing(
+                    db, source, target, delta, game_project_id=game_project_id
+                )
 
         # 2. Reputation shifts
         reputation_shift = effects.get("reputation_shift")
@@ -173,4 +182,6 @@ class NarrativeOrchestrator:
             entity = reputation_shift.get("entity")
             delta = reputation_shift.get("delta")
             if faction and entity and delta is not None:
-                FactionDynamicsEngine.propagate_reputation(db, faction, entity, delta)
+                FactionDynamicsEngine.propagate_reputation(
+                    db, faction, entity, delta, game_project_id=game_project_id
+                )

@@ -12,7 +12,9 @@ class NarrativeForecaster:
     MAX_FORECAST_DEPTH = 5
 
     @classmethod
-    def forecast_trends(cls, db: Session, steps: int) -> List[Dict[str, Any]]:
+    def forecast_trends(
+        cls, db: Session, steps: int, game_project_id: str = "default_project"
+    ) -> List[Dict[str, Any]]:
         """
         Projects likely future world state updates up to steps (MAX_FORECAST_DEPTH = 5).
         Returns a list of trend dicts containing a confidence score [0.0 - 1.0].
@@ -42,7 +44,8 @@ class NarrativeForecaster:
         # their conditions to forecast which ones are likely to trigger in subsequent steps.
         # To simulate progression, we estimate standing drifts.
         templates = db.query(WorldEntity).filter(
-            WorldEntity.entity_type == "event_template"
+            WorldEntity.entity_type == "event_template",
+            WorldEntity.game_project_id == game_project_id,
         ).all()
 
         for temp in templates:
@@ -70,7 +73,9 @@ class NarrativeForecaster:
                 
                 # Fetch active relationship
                 from app.repositories.graph_repository import graph_repo
-                rel = graph_repo.get_active_relationship(db, source, target, "standing")
+                rel = graph_repo.get_active_relationship(
+                    db, source, target, "standing", game_project_id=game_project_id
+                )
                 weight = rel.weight if rel else 50.0
                 
                 # If weight is close to val, confidence is higher that it will trigger soon

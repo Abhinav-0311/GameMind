@@ -63,7 +63,7 @@ class RuntimePresentationService:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             title = doc.title if doc else "Lore Document"
             
-            sim = similarity_map.get(chunk_id, 0.95)
+            sim = similarity_map.get(chunk_id)
             
             citations.append({
                 "document_id": doc_id,

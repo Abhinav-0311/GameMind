@@ -21,6 +21,7 @@ from app.api.v1.decisions import router as decisions_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.design_agent import router as design_agent_router
 from app.config import settings, validate_production_settings
+from app.design_agent.provider_factory import validate_llm_startup, effective_provider_name
 from app.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.operational import database_capacity_response, get_database_pool_status
 import logging
@@ -36,6 +37,7 @@ from app.workers.cleanup_worker import cleanup_worker_loop
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_production_settings()
+    validate_llm_startup()
     # Startup logic: Start cleanup worker loop in the background
     logger.info("Starting background cleanup worker task inside lifespan context...")
     stop_event = asyncio.Event()
@@ -158,7 +160,7 @@ def health_check():
         "database_pool": pool_status,
         "chromadb": chroma_status,
         "ai_mode": "local_demo",
-        "llm_provider": settings.LLM_PROVIDER,
+        "llm_provider": effective_provider_name(),
         "embedding_provider": "local_lexical",
         "vector_collection": "lore_chunks_local_lexical_v1",
         "vector_dimension": 384

@@ -105,7 +105,9 @@ class GraphTraversalService:
                     continue
 
                 # Query adjacent edges
-                rels = graph_repo.get_adjacent_relationships(db, node_id, direction=direction, as_of=as_of)
+                rels = graph_repo.get_adjacent_relationships(
+                    db, node_id, direction=direction, as_of=as_of, game_project_id=game_project_id
+                )
                 
                 for rel in rels:
                     # Enforce max edges limit
@@ -123,7 +125,10 @@ class GraphTraversalService:
                             continue
                         
                         # Load neighbor entity
-                        neighbor_ent = db.query(WorldEntity).filter(WorldEntity.id == neighbor_id).first()
+                        neighbor_ent = db.query(WorldEntity).filter(
+                            WorldEntity.id == neighbor_id,
+                            WorldEntity.game_project_id == game_project_id,
+                        ).first()
                         if neighbor_ent:
                             nodes_map[str(neighbor_ent.id)] = neighbor_ent
                             next_level_nodes.add(neighbor_id)
@@ -166,10 +171,16 @@ class GraphTraversalService:
             # If the neighbor node was excluded due to node limit, the slug might be missing in id_to_slug.
             # In that case, look it up in DB to be safe
             if not src_slug:
-                src_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
+                src_ent = db.query(WorldEntity).filter(
+                    WorldEntity.id == rel.source_id,
+                    WorldEntity.game_project_id == game_project_id,
+                ).first()
                 src_slug = src_ent.slug if src_ent else str(rel.source_id)
             if not tgt_slug:
-                tgt_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+                tgt_ent = db.query(WorldEntity).filter(
+                    WorldEntity.id == rel.target_id,
+                    WorldEntity.game_project_id == game_project_id,
+                ).first()
                 tgt_slug = tgt_ent.slug if tgt_ent else str(rel.target_id)
 
             edges_out.append({
@@ -284,10 +295,16 @@ class GraphTraversalService:
                         tgt_slug = source if rel.target_id == source_ent.id else (target if rel.target_id == target_ent.id else "")
                         # Fallback to DB query if needed to resolve slugs
                         if not src_slug:
-                            se = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
+                            se = db.query(WorldEntity).filter(
+                                WorldEntity.id == rel.source_id,
+                                WorldEntity.game_project_id == game_project_id,
+                            ).first()
                             src_slug = se.slug if se else str(rel.source_id)
                         if not tgt_slug:
-                            te = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+                            te = db.query(WorldEntity).filter(
+                                WorldEntity.id == rel.target_id,
+                                WorldEntity.game_project_id == game_project_id,
+                            ).first()
                             tgt_slug = te.slug if te else str(rel.target_id)
                         
                         involved_relationships.add((src_slug, tgt_slug, rel.rel_type))
@@ -300,12 +317,17 @@ class GraphTraversalService:
                     continue
 
                 # Query active outgoing relationships
-                rels = graph_repo.get_adjacent_relationships(db, curr_id, direction="out", as_of=as_of)
+                rels = graph_repo.get_adjacent_relationships(
+                    db, curr_id, direction="out", as_of=as_of, game_project_id=game_project_id
+                )
                 
                 # Pre-fetch neighbor entity details to build slug map
                 neighbor_ids = [rel.target_id for rel in rels if rel.target_id not in visited]
                 if neighbor_ids:
-                    neighbors = db.query(WorldEntity).filter(WorldEntity.id.in_(neighbor_ids)).all()
+                    neighbors = db.query(WorldEntity).filter(
+                        WorldEntity.id.in_(neighbor_ids),
+                        WorldEntity.game_project_id == game_project_id,
+                    ).all()
                     id_to_slug = {str(n.id): n.slug for n in neighbors}
                     id_to_ent = {n.id: n for n in neighbors}
                 else:
@@ -360,8 +382,14 @@ class GraphTraversalService:
                         # Resolve slugs
                         src_slug = path_nodes[path_nodes.index(curr_slug) - 1] # rough approximation or lookup
                         # Fetch correct slugs from DB to prevent any ordering mismatch
-                        src_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.source_id).first()
-                        tgt_ent = db.query(WorldEntity).filter(WorldEntity.id == rel.target_id).first()
+                        src_ent = db.query(WorldEntity).filter(
+                            WorldEntity.id == rel.source_id,
+                            WorldEntity.game_project_id == game_project_id,
+                        ).first()
+                        tgt_ent = db.query(WorldEntity).filter(
+                            WorldEntity.id == rel.target_id,
+                            WorldEntity.game_project_id == game_project_id,
+                        ).first()
                         s_slug = src_ent.slug if src_ent else str(rel.source_id)
                         t_slug = tgt_ent.slug if tgt_ent else str(rel.target_id)
                         
@@ -389,14 +417,19 @@ class GraphTraversalService:
                     return
 
                 # Fetch adjacent outgoing relationships
-                rels = graph_repo.get_adjacent_relationships(db, curr_id, direction="out", as_of=as_of)
+                rels = graph_repo.get_adjacent_relationships(
+                    db, curr_id, direction="out", as_of=as_of, game_project_id=game_project_id
+                )
                 for rel in rels:
                     if len(paths) >= max_paths:
                         break
                     
                     neighbor_id = rel.target_id
                     if neighbor_id not in visited:
-                        neighbor_ent = db.query(WorldEntity).filter(WorldEntity.id == neighbor_id).first()
+                        neighbor_ent = db.query(WorldEntity).filter(
+                            WorldEntity.id == neighbor_id,
+                            WorldEntity.game_project_id == game_project_id,
+                        ).first()
                         if not neighbor_ent:
                             continue
                         

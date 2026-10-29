@@ -13,6 +13,7 @@ from app.services.runtime_presentation_service import RuntimePresentationService
 from app.schemas import DialogueChatResponse, QuestGeneratedResponse, ErrorEnvelope
 from app.api.v1.dialogue import _should_auto_retrieve_lore
 from app.services.dialogue_service import should_retrieve_dynamic_memories
+from unittest.mock import MagicMock
 
 client = TestClient(app)
 
@@ -145,6 +146,31 @@ def test_gate_c_citation_generation(db):
     assert citation["chunk_id"] == chunk_id
     assert "frostpeak.txt" in citation["title"]
     assert citation["similarity"] >= 0.0
+
+
+def test_citation_similarity_is_unknown_unless_measured(db):
+    from app.schemas import DialogueCitation
+
+    document = Document(title="Citation evidence", content_type="text/plain")
+    db.add(document)
+    db.flush()
+    chunk = DocumentChunk(document_id=document.id, chunk_index=0, content="A documented fact.")
+    db.add(chunk)
+    db.commit()
+    rag = MagicMock()
+
+    for result, expected in [([], None), (RuntimeError("Retrieval unavailable"), None),
+                             ([{"chunk_id": str(chunk.id), "similarity": 0.0}], 0.0),
+                             ([{"chunk_id": str(chunk.id), "similarity": 0.72}], 0.72)]:
+        rag.query_lore.side_effect = result if isinstance(result, Exception) else None
+        rag.query_lore.return_value = result
+        citations = RuntimePresentationService.resolve_citations(
+            [chunk], "What happened?", rag, document.game_project_id, db,
+        )
+        citation = DialogueCitation.model_validate(citations[0]).model_dump(mode="json")
+        assert citation["similarity"] == expected
+        assert citation["chunk_id"] == str(chunk.id)
+        assert citation["title"] == "Citation evidence"
 
 
 def test_dialogue_chat_auto_retrieves_lore_context(db):

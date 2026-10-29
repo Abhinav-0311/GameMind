@@ -13,6 +13,7 @@ from app.models.quest import Quest, QuestObjective
 from app.models.memory import NPCMemory
 from app.models.world_state import WorldStateFlag
 from app.models.graph import WorldEntity, WorldEntityVersion
+from app.services.blueprint_readiness import BlueprintReadinessService
 from app.services.graph_cache import graph_cache
 
 logger = logging.getLogger(__name__)
@@ -69,32 +70,12 @@ class BlueprintMaterializerService:
         return slug[:100]
 
     def _derive_world_state_flag(self, element: Any) -> Optional[tuple[str, str]]:
-        """Convert explicit stateful level elements into runtime flags.
-
-        Level interaction data also contains neutral objects such as checkpoints and
-        terminals. Those belong in level presentation, not mutable world state.
-        """
-        raw_value = self._clean_runtime_text(element)
-        if not raw_value:
+        """Accept only an explicit runtime state binding, never infer one from prose."""
+        if not isinstance(element, dict):
             return None
-
-        lowered = raw_value.lower()
-        state_map = (
-            ("unlocked", "unlocked"),
-            ("locked", "locked"),
-            ("enabled", "enabled"),
-            ("disabled", "disabled"),
-            ("activated", "activated"),
-            ("deactivated", "deactivated"),
-            ("opened", "opened"),
-            ("closed", "closed"),
-            ("completed", "completed"),
-        )
-        for marker, value in state_map:
-            if marker in lowered:
-                key = self._slugify_runtime_id(re.sub(rf"(?:^|[-\\s]){marker}(?:$|[-\\s])", " ", raw_value, flags=re.IGNORECASE))
-                return (key or self._slugify_runtime_id(raw_value), value)
-        return None
+        key = self._slugify_runtime_id(self._clean_runtime_text(element.get("flag_key")))
+        value = self._clean_runtime_text(element.get("flag_value"))
+        return (key, value) if key and value else None
 
     def _ensure_npc_graph_entity(
         self,
@@ -129,90 +110,6 @@ class BlueprintMaterializerService:
         ))
         graph_cache.increment_entity_stamp(npc.slug)
 
-    def _resolve_fallback_runtime_records(
-        self,
-        db: Session,
-        blueprint: GameBlueprint,
-        game_project_id: str
-    ) -> Dict[str, List[Any]]:
-        """Resolve project-scoped records that match a materialized blueprint's source content.
-
-        This is intentionally narrower than returning all project records. It exists for demo
-        databases where records were created by an earlier blueprint run, causing a later
-        materialization to skip duplicates and leave an empty manifest.
-        """
-        npc_slugs = []
-        for npc in blueprint.npc_archetypes.get("content", {}).get("npcs", []):
-            name = self._normalize_npc_name(npc.get("name", ""))
-            if not name:
-                continue
-            slug = self._slugify_runtime_id(name)
-            if slug:
-                npc_slugs.append(slug)
-
-        quest_titles = [
-            self._clean_runtime_text(quest.get("title"), "Unnamed Quest")
-            for quest in blueprint.quest_hooks.get("content", {}).get("quests", [])
-        ]
-        quest_titles = [title for title in quest_titles if title]
-
-        memory_subjects = [
-            self._clean_runtime_text(memory.get("subject"), "")
-            for memory in blueprint.npc_memory_design.get("content", {}).get("memory_nodes", [])
-        ]
-        memory_subjects = [subject for subject in memory_subjects if subject]
-
-        flag_keys = [
-            state_flag[0]
-            for element in blueprint.level_design_suggestions.get("content", {}).get("interactive_elements", [])
-            if (state_flag := self._derive_world_state_flag(element))
-        ]
-
-        npcs = []
-        if npc_slugs:
-            npcs = db.query(NPCProfile).filter(
-                NPCProfile.slug.in_(npc_slugs),
-                NPCProfile.game_project_id == game_project_id
-            ).all()
-
-        quests = []
-        if quest_titles:
-            quests = db.query(Quest).filter(
-                Quest.title.in_(quest_titles),
-                Quest.game_project_id == game_project_id
-            ).all()
-            if quests:
-                objectives = db.query(QuestObjective).filter(
-                    QuestObjective.quest_id.in_([quest.id for quest in quests])
-                ).order_by(QuestObjective.objective_index).all()
-                objectives_by_quest = {}
-                for objective in objectives:
-                    objectives_by_quest.setdefault(objective.quest_id, []).append(objective)
-                for quest in quests:
-                    quest.objectives = objectives_by_quest.get(quest.id, [])
-
-        memories = []
-        if memory_subjects and npcs:
-            memories = db.query(NPCMemory).filter(
-                NPCMemory.npc_id.in_([npc.id for npc in npcs]),
-                NPCMemory.memory_text.in_(memory_subjects),
-                NPCMemory.game_project_id == game_project_id
-            ).all()
-
-        world_flags = []
-        if flag_keys:
-            world_flags = db.query(WorldStateFlag).filter(
-                WorldStateFlag.flag_key.in_(flag_keys),
-                WorldStateFlag.game_project_id == game_project_id
-            ).all()
-
-        return {
-            "npcs": npcs,
-            "quests": quests,
-            "memories": memories,
-            "world_flags": world_flags
-        }
-
     def materialize_blueprint(self, db: Session, blueprint_id: UUID, game_project_id: str) -> Dict[str, Any]:
         # 1. Fetch blueprint scoped by project
         blueprint = db.query(GameBlueprint).filter(
@@ -226,6 +123,8 @@ class BlueprintMaterializerService:
             )
 
         # Only approved blueprints can be materialized
+        if (getattr(blueprint, "unity_runtime_preview", None) or {}).get("runtime_deferred") is True:
+            raise HTTPException(status_code=409, detail="Runtime integration explicitly deferred. This blueprint cannot be materialized.")
         if blueprint.status != "approved":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -273,8 +172,14 @@ class BlueprintMaterializerService:
                 report["npcs"]["skipped"].append(self._clean_runtime_text(raw_name, "unknown")[:80])
                 continue
 
-            archetype = self._clean_runtime_text(npc.get("archetype"), "Character profile")
-            dialogue_style = self._clean_runtime_text(npc.get("dialogue_style"), "Normal speech.")
+            archetype = self._clean_runtime_text(npc.get("archetype"))
+            if not archetype:
+                warn_msg = f"Skipped NPC '{name}' because its approved archetype is missing."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["npcs"]["skipped"].append(name)
+                continue
+            dialogue_style = self._clean_runtime_text(npc.get("dialogue_style")) or None
             
             # Generate stable slug
             slug = self._slugify_runtime_id(name)
@@ -329,31 +234,61 @@ class BlueprintMaterializerService:
                 self._ensure_npc_graph_entity(db, profile, game_project_id)
         db.flush()
 
-        # 4. Materialize Quests
+        # 4. Materialize Quests only when the approved blueprint carries a complete,
+        # explicit engine binding. The GDD-facing objective text alone must never be
+        # converted into a guessed giver, target type, target id, reward, or difficulty.
         quest_data = blueprint.quest_hooks.get("content", {}).get("quests", [])
-        # Determine a default quest giver NPC
-        default_npc_slug = "narrator"
-        if materialized_npc_slugs:
-            default_npc_slug = materialized_npc_slugs[0]
-        else:
-            # check active project npcs
-            any_npc = db.query(NPCProfile).filter(NPCProfile.game_project_id == game_project_id).first()
-            if any_npc:
-                default_npc_slug = any_npc.slug
-            else:
-                default_npc_slug = ""
-
         for q in quest_data:
-            if not default_npc_slug:
-                warn_msg = "Quest materialization skipped because no valid NPC quest giver exists."
+            title = self._clean_runtime_text(q.get("title"))
+            runtime = q.get("runtime") if isinstance(q.get("runtime"), dict) else None
+            if not title or not runtime:
+                warn_msg = f"Quest '{title or 'Unnamed Quest'}' was preserved as approved design only because it has no explicit runtime binding."
                 report["warnings"].append(warn_msg)
                 manifest_warnings.append(warn_msg)
-                for skipped_quest in quest_data:
-                    report["quests"]["skipped"].append(self._clean_runtime_text(skipped_quest.get("title"), "Unnamed Quest"))
-                break
-
-            title = self._clean_runtime_text(q.get("title"), "Unnamed Quest")
-            objective = self._clean_runtime_text(q.get("objective"), "Complete objective.")
+                report["quests"]["skipped"].append(title or "Unnamed Quest")
+                continue
+            npc_slug = self._slugify_runtime_id(self._clean_runtime_text(runtime.get("npc_slug")))
+            difficulty = self._clean_runtime_text(runtime.get("difficulty"))
+            objectives = runtime.get("objectives")
+            if (
+                not npc_slug
+                or not difficulty
+                or not isinstance(runtime.get("gold_reward"), int)
+                or not isinstance(runtime.get("xp_reward"), int)
+                or not isinstance(objectives, list)
+                or not objectives
+                or any(
+                    not isinstance(item, dict)
+                    or not self._clean_runtime_text(item.get("description"))
+                    or not self._clean_runtime_text(item.get("target_type"))
+                    or not self._clean_runtime_text(item.get("target_id"))
+                    or not isinstance(item.get("quantity_required"), int)
+                    or item["quantity_required"] < 1
+                    for item in objectives
+                )
+            ):
+                warn_msg = f"Quest '{title}' was skipped because its runtime binding is incomplete."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["quests"]["skipped"].append(title)
+                continue
+            quest_giver = db.query(NPCProfile).filter(
+                NPCProfile.slug == npc_slug,
+                NPCProfile.game_project_id == game_project_id,
+            ).first()
+            if not quest_giver or npc_slug not in manifest["npcs"]:
+                warn_msg = f"Quest '{title}' was skipped because its explicit quest giver '{npc_slug}' is not owned by this blueprint."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["quests"]["skipped"].append(title)
+                continue
+            objective = self._clean_runtime_text(q.get("objective"))
+            if not objective:
+                warn_msg = f"Quest '{title}' was skipped because its approved objective is missing."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["quests"]["skipped"].append(title)
+                continue
             
             # Title match (service-level uniqueness check)
             existing_quest = db.query(Quest).filter(
@@ -372,20 +307,23 @@ class BlueprintMaterializerService:
                 else:
                     # Update quest details
                     existing_quest.description = objective
-                    existing_quest.npc_slug = default_npc_slug
+                    existing_quest.npc_slug = npc_slug
+                    existing_quest.difficulty = difficulty
+                    existing_quest.gold_reward = runtime["gold_reward"]
+                    existing_quest.xp_reward = runtime["xp_reward"]
                     
                     # Delete and rewrite objectives since we own the quest
                     db.query(QuestObjective).filter(QuestObjective.quest_id == existing_quest.id).delete()
-                    new_obj = QuestObjective(
-                        id=uuid.uuid4(),
-                        quest_id=existing_quest.id,
-                        objective_index=0,
-                        description=objective,
-                        target_type="speak" if "speak" in objective.lower() else "retrieve",
-                        target_id=default_npc_slug,
-                        quantity_required=1
-                    )
-                    db.add(new_obj)
+                    for index, item in enumerate(objectives):
+                        db.add(QuestObjective(
+                            id=uuid.uuid4(),
+                            quest_id=existing_quest.id,
+                            objective_index=index,
+                            description=self._clean_runtime_text(item["description"]),
+                            target_type=self._clean_runtime_text(item["target_type"]),
+                            target_id=self._clean_runtime_text(item["target_id"]),
+                            quantity_required=item["quantity_required"],
+                        ))
                     report["quests"]["updated"].append(title)
             else:
                 # Create Quest
@@ -394,25 +332,24 @@ class BlueprintMaterializerService:
                     id=new_q_id,
                     title=title,
                     description=objective,
-                    npc_slug=default_npc_slug,
-                    difficulty="Medium",
-                    gold_reward=100,
-                    xp_reward=200,
+                    npc_slug=npc_slug,
+                    difficulty=difficulty,
+                    gold_reward=runtime["gold_reward"],
+                    xp_reward=runtime["xp_reward"],
                     game_project_id=game_project_id
                 )
                 db.add(new_quest)
                 
-                # Add objective
-                new_obj = QuestObjective(
-                    id=uuid.uuid4(),
-                    quest_id=new_q_id,
-                    objective_index=0,
-                    description=objective,
-                    target_type="retrieve",
-                    target_id="sky-iron" if "iron" in objective.lower() else "key",
-                    quantity_required=1
-                )
-                db.add(new_obj)
+                for index, item in enumerate(objectives):
+                    db.add(QuestObjective(
+                        id=uuid.uuid4(),
+                        quest_id=new_q_id,
+                        objective_index=index,
+                        description=self._clean_runtime_text(item["description"]),
+                        target_type=self._clean_runtime_text(item["target_type"]),
+                        target_id=self._clean_runtime_text(item["target_id"]),
+                        quantity_required=item["quantity_required"],
+                    ))
                 
                 manifest["quest_ids"].append(str(new_q_id))
                 report["quests"]["created"].append(title)
@@ -420,61 +357,65 @@ class BlueprintMaterializerService:
         # 5. Materialize NPC Memories
         memory_data = blueprint.npc_memory_design.get("content", {}).get("memory_nodes", [])
         
-        # Link memory to the first NPC profile we created/own
-        target_npc = None
-        if materialized_npc_slugs:
+        for mem in memory_data:
+            subject = self._clean_runtime_text(mem.get("subject"))
+            npc_slug = self._slugify_runtime_id(self._clean_runtime_text(mem.get("npc_slug")))
+            memory_type = self._clean_runtime_text(mem.get("memory_type"))
+            importance = mem.get("importance")
+            if (
+                not subject
+                or not npc_slug
+                or npc_slug not in manifest["npcs"]
+                or not memory_type
+                or not isinstance(importance, (int, float))
+            ):
+                warn_msg = f"Memory '{subject or 'Unknown Memory'}' was skipped because it lacks an explicit runtime binding."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["memories"]["skipped"].append(subject or "Unknown Memory")
+                continue
             target_npc = db.query(NPCProfile).filter(
-                NPCProfile.slug == materialized_npc_slugs[0],
-                NPCProfile.game_project_id == game_project_id
+                NPCProfile.slug == npc_slug,
+                NPCProfile.game_project_id == game_project_id,
             ).first()
-        else:
-            target_npc = db.query(NPCProfile).filter(NPCProfile.game_project_id == game_project_id).first()
+            if not target_npc:
+                warn_msg = f"Memory '{subject}' was skipped because NPC '{npc_slug}' is unavailable."
+                report["warnings"].append(warn_msg)
+                manifest_warnings.append(warn_msg)
+                report["memories"]["skipped"].append(subject)
+                continue
+            # Check duplicate memory text for this NPC
+            existing_mem = db.query(NPCMemory).filter(
+                NPCMemory.npc_id == target_npc.id,
+                NPCMemory.memory_text == subject,
+                NPCMemory.game_project_id == game_project_id
+            ).first()
 
-        if not target_npc:
-            warn_msg = "No active NPC Profile found in database. NPC memory materialization skipped."
-            report["warnings"].append(warn_msg)
-            manifest_warnings.append(warn_msg)
-            for mem in memory_data:
-                report["memories"]["skipped"].append(mem.get("subject", "Unknown Memory"))
-        else:
-            for mem in memory_data:
-                subject = mem.get("subject", "Historical Event")
-                importance = float(mem.get("importance", 5))
-
-                # Check duplicate memory text for this NPC
-                existing_mem = db.query(NPCMemory).filter(
-                    NPCMemory.npc_id == target_npc.id,
-                    NPCMemory.memory_text == subject,
-                    NPCMemory.game_project_id == game_project_id
-                ).first()
-
-                if existing_mem:
-                    mem_id_str = str(existing_mem.id)
-                    # Provenance verification
-                    if mem_id_str not in manifest["memory_ids"]:
-                        warn_msg = f"Memory text for NPC '{target_npc.name}' already exists and is not owned by this blueprint. Skipping."
-                        report["warnings"].append(warn_msg)
-                        manifest_warnings.append(warn_msg)
-                        report["memories"]["skipped"].append(subject)
-                    else:
-                        existing_mem.importance_score = importance
-                        report["memories"]["updated"].append(subject)
+            if existing_mem:
+                mem_id_str = str(existing_mem.id)
+                # Provenance verification
+                if mem_id_str not in manifest["memory_ids"]:
+                    warn_msg = f"Memory text for NPC '{target_npc.name}' already exists and is not owned by this blueprint. Skipping."
+                    report["warnings"].append(warn_msg)
+                    manifest_warnings.append(warn_msg)
+                    report["memories"]["skipped"].append(subject)
                 else:
-                    # Create memory
-                    new_mem_id = uuid.uuid4()
-                    new_mem = NPCMemory(
-                        id=new_mem_id,
-                        npc_id=target_npc.id,
-                        memory_text=subject,
-                        memory_type="episodic",
-                        importance_score=importance,
-                        chroma_indexed=False,
-                        archived=False,
-                        game_project_id=game_project_id
-                    )
-                    db.add(new_mem)
-                    manifest["memory_ids"].append(str(new_mem_id))
-                    report["memories"]["created"].append(subject)
+                    existing_mem.importance_score = importance
+                    report["memories"]["updated"].append(subject)
+            else:
+                # Create memory with an explicit subject/owner; storage defaults are non-design metadata.
+                new_mem_id = uuid.uuid4()
+                new_mem = NPCMemory(
+                    id=new_mem_id,
+                    npc_id=target_npc.id,
+                    memory_text=subject,
+                    memory_type=memory_type,
+                    importance_score=importance,
+                    game_project_id=game_project_id
+                )
+                db.add(new_mem)
+                manifest["memory_ids"].append(str(new_mem_id))
+                report["memories"]["created"].append(subject)
 
         # 6. Materialize World State Flags
         flag_data = blueprint.level_design_suggestions.get("content", {}).get("interactive_elements", [])
@@ -545,19 +486,21 @@ class BlueprintMaterializerService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Blueprint not found or not owned by this project."
             )
+        readiness = BlueprintReadinessService().assess(blueprint)
+        if not readiness["can_serve_runtime"]:
+            if readiness["runtime_release_reason"] in {"unapproved", "unmaterialized", "empty_materialization"}:
+                detail: Any = readiness["runtime_release_blockers"][0]
+            else:
+                detail = {
+                    "message": "Runtime bundle is blocked until the current blueprint content is repaired.",
+                    "readiness": readiness,
+                }
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=detail,
+            )
 
         manifest = blueprint.materialization_manifest
-        if not manifest:
-            # Return empty structure if not yet materialized
-            return {
-                "api_version": "1.0",
-                "blueprint_id": blueprint.id,
-                "game_project_id": game_project_id,
-                "npcs": [],
-                "quests": [],
-                "memories": [],
-                "world_flags": []
-            }
 
         # Query only database records listed inside manifest to enforce strict provenance
         npcs = []
@@ -610,25 +553,56 @@ class BlueprintMaterializerService:
                 WorldStateFlag.game_project_id == game_project_id
             ).all()
 
-        if (
-            manifest.get("last_materialized_at")
-            and not npcs
-            and not quests
-            and not memories
-            and not world_flags
-        ):
-            fallback_records = self._resolve_fallback_runtime_records(db, blueprint, game_project_id)
-            npcs = fallback_records["npcs"]
-            quests = fallback_records["quests"]
-            memories = fallback_records["memories"]
-            world_flags = fallback_records["world_flags"]
-
         return {
-            "api_version": "1.0",
+            "api_version": "1.1",
             "blueprint_id": blueprint.id,
             "game_project_id": game_project_id,
             "npcs": npcs,
             "quests": quests,
             "memories": memories,
-            "world_flags": world_flags
+            "world_flags": world_flags,
+            "approved_design": self._approved_design_artifacts(blueprint, quests),
         }
+
+    def _approved_design_artifacts(
+        self,
+        blueprint: GameBlueprint,
+        runtime_quests: list[Quest],
+    ) -> dict[str, Any]:
+        """Expose reviewed GDD artifacts without fabricating engine-specific data."""
+        quest_ids_by_title = {quest.title: quest.id for quest in runtime_quests}
+        npcs = []
+        for npc in blueprint.npc_archetypes.get("content", {}).get("npcs", []):
+            name = self._normalize_npc_name(npc.get("name", ""))
+            slug = self._slugify_runtime_id(name)
+            archetype = self._clean_runtime_text(npc.get("archetype"))
+            if not name or not slug or not archetype:
+                continue
+            npcs.append({
+                "slug": slug,
+                "name": name,
+                "archetype": archetype,
+                "dialogue_style": self._clean_runtime_text(npc.get("dialogue_style"), ""),
+                "dialogue_hooks": [
+                    self._clean_runtime_text(hook, "")
+                    for hook in npc.get("dialogue_hooks", [])
+                    if self._clean_runtime_text(hook, "")
+                ],
+            })
+        quests = []
+        for quest in blueprint.quest_hooks.get("content", {}).get("quests", []):
+            title = self._clean_runtime_text(quest.get("title"), "")
+            objective = self._clean_runtime_text(quest.get("objective"), "")
+            if not title or not objective:
+                continue
+            quests.append({
+                "design_id": self._clean_runtime_text(quest.get("id"), "") or None,
+                "runtime_quest_id": quest_ids_by_title.get(title),
+                "title": title,
+                "objective": objective,
+                "objectives": [self._clean_runtime_text(item, "") for item in quest.get("objectives", []) if self._clean_runtime_text(item, "")],
+                "failure_states": [self._clean_runtime_text(item, "") for item in quest.get("failure_states", []) if self._clean_runtime_text(item, "")],
+                "dependencies": [self._clean_runtime_text(item, "") for item in quest.get("dependencies", []) if self._clean_runtime_text(item, "")],
+                "dialogue_hooks": [self._clean_runtime_text(item, "") for item in quest.get("dialogue_hooks", []) if self._clean_runtime_text(item, "")],
+            })
+        return {"contract_version": "1.0", "npcs": npcs, "quests": quests}

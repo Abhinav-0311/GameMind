@@ -54,7 +54,7 @@ class DesignAgentJobService:
             game_project_id=run.game_project_id,
             operation="resume",
             payload=decision.model_dump(mode="json"),
-            idempotency_key=f"resume:{run.id}:{artifact_id}",
+            idempotency_key=f"resume:{run.id}:{artifact_id}:{run.revision_count}:{(run.model_config or {}).get('consecutive_revision_failures', 0)}",
             max_attempts=settings.DESIGN_AGENT_JOB_MAX_ATTEMPTS,
         )
         run.status = "review_queued"
@@ -65,8 +65,19 @@ class DesignAgentJobService:
         now = datetime.now(timezone.utc)
         lease_cutoff = now - timedelta(seconds=settings.DESIGN_AGENT_JOB_LEASE_SECONDS)
         with self.session_factory() as db:
+            # A lost paid retry has an uncertain outcome; never replay it automatically.
+            expired = db.query(DesignAgentJob).filter(DesignAgentJob.operation == "retry_critique",
+                DesignAgentJob.status == "running", DesignAgentJob.locked_at < lease_cutoff).with_for_update(skip_locked=True).all()
+            for lost in expired:
+                lost.status, lost.locked_by, lost.locked_at = "failed", None, None
+                lost.completed_at = now
+                lost.last_error = "Critique retry worker lease expired; outcome unknown. No automatic replay."
+                run = db.get(DesignAgentRun, lost.run_id)
+                if run and run.status in {"running", "review_queued"}:
+                    run.status, run.last_error = "failed", lost.last_error
             reclaimed = db.query(DesignAgentJob).filter(
                 DesignAgentJob.status == "running",
+                DesignAgentJob.operation != "retry_critique",
                 DesignAgentJob.locked_at < lease_cutoff,
             ).update(
                 {
@@ -126,13 +137,16 @@ class DesignAgentJobService:
             daemon=True,
         )
         heartbeat.start()
+        resumed = None
         try:
             if operation == "start":
                 with self.session_factory() as db:
                     run = db.get(DesignAgentRun, run_id)
                     workflow.start(run)
             elif operation == "resume":
-                workflow.resume(run_id, ResumeDecision.model_validate(payload))
+                resumed = workflow.resume(run_id, ResumeDecision.model_validate(payload))
+            elif operation == "retry_critique":
+                workflow.retry_critique(run_id, UUID(payload["artifact_id"]), UUID(payload["failed_execution_id"]), job_id, worker_id)
             else:
                 raise ValueError(f"Unsupported design-agent job operation: {operation}")
         except Exception as error:
@@ -151,12 +165,19 @@ class DesignAgentJobService:
             if job is None:
                 logger.warning("Design-agent job %s completed after its lease was lost", job_id)
                 return
-            job.status = "succeeded"
+            rejected_revision = isinstance(resumed, dict) and resumed.get("revision_failed")
+            rejected_finalization = isinstance(resumed, dict) and resumed.get("finalization_failed")
+            job.status = "failed" if rejected_revision or rejected_finalization else "succeeded"
+            if rejected_revision:
+                job.last_error = "Revision failed; no new draft or revision slot consumed. Previous draft retained for human review. No automatic retry."
+            if rejected_finalization:
+                job.last_error = db.get(DesignAgentRun, run_id).last_error
             job.locked_at = None
             job.locked_by = None
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
-        logger.info("Design-agent job %s succeeded", job_id)
+        logger.info("Design-agent job %s %s", job_id, "finalization rejected" if rejected_finalization
+                    else "revision rejected" if rejected_revision else "succeeded")
 
     def _heartbeat(self, job_id: UUID, worker_id: str | None, stop: Event) -> None:
         interval = max(5.0, settings.DESIGN_AGENT_JOB_LEASE_SECONDS / 3)

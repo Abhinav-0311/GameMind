@@ -7,16 +7,29 @@ from app.design_agent.nvidia_provider import (
 from app.design_agent.provider import DesignAgentProvider, MockDesignAgentProvider
 
 
+def effective_provider_name(app_settings: Settings = settings) -> str:
+    if app_settings.LLM_PROFILE == "test":
+        return "mock"
+    if app_settings.LLM_PROFILE in {"dev", "showcase"}:
+        return "gemini"
+    return (app_settings.DESIGN_AGENT_PROVIDER or app_settings.LLM_PROVIDER).strip().lower()
+
+
 def build_design_agent_provider(
     app_settings: Settings = settings,
 ) -> DesignAgentProvider:
     """Build the configured provider without weakening the local default."""
 
-    provider_name = (
-        app_settings.DESIGN_AGENT_PROVIDER or app_settings.LLM_PROVIDER
-    ).strip().lower()
+    provider_name = effective_provider_name(app_settings)
     if provider_name == "mock":
         return MockDesignAgentProvider()
+    if app_settings.LLM_PROFILE in {"dev", "showcase"}:
+        from app.design_agent.gemini_provider import GeminiProvider, GeminiDesignAgentProvider
+        primary = GeminiDesignAgentProvider(llm_provider=GeminiProvider(app_settings))
+        return (ResilientDesignAgentProvider(primary=primary, fallback=MockDesignAgentProvider(),
+                    disabled_nodes=app_settings.DESIGN_AGENT_FALLBACK_DISABLED_NODES)
+                if app_settings.DESIGN_AGENT_FALLBACK_TO_MOCK else primary)
+
     if provider_name != "nvidia":
         raise ValueError(
             "LLM_PROVIDER/DESIGN_AGENT_PROVIDER must be either 'mock' or 'nvidia'."
@@ -37,3 +50,13 @@ def build_design_agent_provider(
         primary=primary,
         fallback=MockDesignAgentProvider(),
     )
+
+
+def validate_llm_startup(app_settings: Settings = settings) -> None:
+    if app_settings.LLM_PROFILE in {"dev", "showcase"}:
+        from app.design_agent.gemini_provider import GeminiProvider
+        provider = GeminiProvider(app_settings)
+        try:
+            provider.validate_models()
+        finally:
+            provider.close()

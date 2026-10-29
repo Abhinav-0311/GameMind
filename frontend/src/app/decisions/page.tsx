@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import ModalDialog from "@/components/ModalDialog";
 
-import { api, type DecisionCoverageResponse, type DesignDecision, type DocumentResponse } from "@/lib/api";
+import { api, ApiRequestError, requestFailureMessage, type DecisionCoverageResponse, type DesignDecision, type DocumentResponse } from "@/lib/api";
 
 function decisionTone(decision: DesignDecision) {
   if (decision.status === "resolved") return "border-emerald-500/35";
@@ -37,8 +38,14 @@ function DecisionsContent() {
   const [agentRunId, setAgentRunId] = useState<string | null>(null);
   const [agentConsentOpen, setAgentConsentOpen] = useState(false);
   const [startingAgentReview, setStartingAgentReview] = useState(false);
+  const [deferRuntime, setDeferRuntime] = useState(false);
+  const [allowUnspecifiedMemory, setAllowUnspecifiedMemory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [decisionsError, setDecisionsError] = useState<string | null>(null);
+  const [decisionsLoading, setDecisionsLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId),
@@ -51,48 +58,68 @@ function DecisionsContent() {
 
   useEffect(() => {
     let active = true;
-    api
-      .getDocuments()
+    Promise.resolve().then(() => {
+      if (!active) return [];
+      setLoading(true);
+      setSourcesError(null);
+      return api.getDocuments();
+    })
       .then((loaded) => {
         if (!active) return;
         setDocuments(loaded);
         setSelectedDocumentId((current) => {
-          if (current) return current;
+          if (current && loaded.some((document) => document.id === current)) return current;
           if (requestedDocumentId && loaded.some((document) => document.id === requestedDocumentId)) return requestedDocumentId;
           return loaded[0]?.id || "";
         });
       })
-      .catch(() => active && setError("Could not load sources. Start Docker and refresh this page."))
+      .catch((reason) => active && setSourcesError(requestFailureMessage(reason, "Sources")))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [requestedDocumentId]);
+  }, [requestedDocumentId, retry]);
 
   useEffect(() => {
+    let active = true;
     if (!selectedDocumentId) {
       Promise.resolve().then(() => {
+        if (!active) return;
         setDecisions([]);
         setDrafts({});
         setEvidenceSelections({});
         setCoverage(null);
+        setDecisionsLoading(false);
+        setDecisionsError(null);
       });
-      return;
+      return () => { active = false; };
     }
-    let active = true;
-    Promise.all([api.getDesignDecisions(selectedDocumentId), api.getDecisionCoverage(selectedDocumentId)])
-      .then(([loaded, assessed]) => {
-        if (!active) return;
+    Promise.resolve().then(() => {
+      if (!active) return null;
+      setDecisionsLoading(true);
+      setDecisionsError(null);
+      setCoverage(null);
+      return Promise.all([api.getDesignDecisions(selectedDocumentId), api.getDecisionCoverage(selectedDocumentId)]);
+    })
+      .then((result) => {
+        if (!active || !result) return;
+        const [loaded, assessed] = result;
         setDecisions(loaded);
         setDrafts(Object.fromEntries(loaded.map((decision) => [decision.id, decision.decision || ""])));
         setEvidenceSelections(Object.fromEntries(loaded.map((decision) => [decision.id, decision.evidence_document_id || ""])));
         setCoverage(assessed);
       })
-      .catch(() => active && setError("Could not load decisions for this source."));
+      .catch((reason) => {
+        if (active) {
+          setDecisionsError(requestFailureMessage(reason, "Decisions for this source"));
+          setCoverage(null);
+        }
+      })
+      .finally(() => active && setDecisionsLoading(false));
     return () => {
       active = false;
     };
-  }, [selectedDocumentId]);
+  }, [selectedDocumentId, retry]);
 
   const syncFromReview = async () => {
     if (!selectedDocumentId) return;
@@ -115,6 +142,7 @@ function DecisionsContent() {
             setAgentRunId(existingRun.id);
             agentNotice = " A governed review is already attached to this GDD.";
           } else {
+            setAllowUnspecifiedMemory(false);
             setAgentConsentOpen(true);
             agentNotice = " Start the governed review when you want a cited draft and independent critique.";
           }
@@ -123,7 +151,7 @@ function DecisionsContent() {
         }
       }
 
-      setNotice((updated.length === 0 ? "The source review found no unresolved decisions." : "Open decisions are ready to resolve.") + agentNotice);
+      setNotice((updated.some((decision) => decision.status === "open") ? "Open decisions are ready to resolve." : "The source review found no unresolved decisions.") + agentNotice);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create decisions from this source review.");
     } finally {
@@ -139,13 +167,18 @@ function DecisionsContent() {
       const run = await api.createDesignAgentRun({
         objective: "Review this GDD for missing or conflicting implementation decisions, then create a cited, reviewable design blueprint for the team to approve.",
         document_ids: [selectedDocumentId],
+        hosted_provider_consent: true,
+        defer_runtime: deferRuntime,
+        allow_unspecified_memory: allowUnspecifiedMemory,
       });
       setAgentRunId(run.id);
       setAgentConsentOpen(false);
       setNotice(run.degraded
-        ? "The NVIDIA review fell back to local mock output. Inspect the review trace before relying on it."
-        : "Open decisions are ready to resolve. A governed review is now preparing a cited draft and independent critique.");
+        ? "The hosted review fell back to local mock output. Inspect the review trace before relying on it."
+        : "A governed review is now preparing a cited draft and independent critique.");
     } catch (reason) {
+      setAgentConsentOpen(false);
+      if (reason instanceof ApiRequestError && reason.runId) setAgentRunId(reason.runId);
       setError(reason instanceof Error ? reason.message : "Could not start the governed review.");
     } finally {
       setStartingAgentReview(false);
@@ -210,7 +243,7 @@ function DecisionsContent() {
 
   return (
     <main className="page-shell">
-      <section className="flex flex-col gap-6 py-3 lg:flex-row lg:items-end lg:justify-between">
+      <section className="workbench-header flex flex-col gap-6 pt-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl">
           <p className="page-kicker">Design decisions</p>
           <h1 className="display-title mt-4 text-[2.15rem] leading-tight sm:text-[3rem]">Turn open questions into build choices.</h1>
@@ -218,14 +251,14 @@ function DecisionsContent() {
             Decisions stay attached to one source revision. They clarify scope without rewriting your original GDD or inventing requirements.
           </p>
         </div>
-        <p className="text-sm font-semibold text-[var(--text-secondary)]">{openCount} open decision{openCount === 1 ? "" : "s"}</p>
+        <p className="text-sm font-semibold text-[var(--text-secondary)]">{loading || decisionsLoading ? "Loading decisions" : sourcesError || decisionsError || !selectedDocumentId ? "Decision count unavailable" : `${openCount} open decision${openCount === 1 ? "" : "s"}`}</p>
       </section>
 
       {(error || notice) && (
         <div className={`mt-6 flex flex-wrap items-center justify-between gap-3 border-l-2 px-4 py-3 text-sm ${error ? "border-amber-500 text-[var(--foreground)]" : "border-emerald-500 text-[var(--foreground)]"}`} role={error ? "alert" : "status"}>
           <span>{error || notice}</span>
-          {!error && agentRunId && (
-            <Link href="/design-agent" className="shrink-0 font-semibold text-[var(--accent)] underline-offset-4 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+          {agentRunId && (
+            <Link href={`/design-agent?document=${encodeURIComponent(selectedDocumentId)}&run=${encodeURIComponent(agentRunId)}`} className="shrink-0 font-semibold text-[var(--accent)] underline-offset-4 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
               View review trace
             </Link>
           )}
@@ -245,7 +278,7 @@ function DecisionsContent() {
                   setNotice(null);
                   setError(null);
                 }}
-            disabled={loading || documents.length === 0}
+            disabled={loading || Boolean(sourcesError) || documents.length === 0}
             className="mt-3 min-h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--accent)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
           >
             {documents.map((document) => <option key={document.id} value={document.id}>{document.title} · revision {document.revision_number}</option>)}
@@ -253,10 +286,10 @@ function DecisionsContent() {
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
             {selectedDocument ? `${selectedDocument.chunks_count} indexed chunks` : "Choose a source to begin."}
           </p>
-          <button type="button" onClick={syncFromReview} disabled={!selectedDocumentId || syncing} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50">
+          <button id="review-source" type="button" onClick={syncFromReview} disabled={!selectedDocumentId || syncing || loading || decisionsLoading || Boolean(sourcesError || decisionsError)} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50">
             {syncing ? "Reviewing source" : selectedDocument?.source_kind === "gdd" ? "Review GDD" : "Find open decisions"}
           </button>
-          {hasOpenTechnicalDecision && (
+          {!sourcesError && !decisionsError && !decisionsLoading && hasOpenTechnicalDecision && (
             <button type="button" onClick={downloadTechnicalBriefTemplate} disabled={downloadingTemplate} className="btn-secondary mt-3 w-full disabled:cursor-not-allowed disabled:opacity-50">
               {downloadingTemplate ? "Preparing template" : "Download technical brief template"}
             </button>
@@ -275,9 +308,15 @@ function DecisionsContent() {
         </aside>
 
         <section aria-live="polite">
-          {loading ? (
+          {loading || decisionsLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse border-y border-[var(--border)] bg-[var(--card-muted)]" />)}
+            </div>
+          ) : sourcesError || decisionsError ? (
+            <div role="alert" className="border-y border-[var(--border)] py-10">
+              <h2 className="text-xl font-semibold text-[var(--foreground)]">Decision workspace unavailable</h2>
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">{sourcesError || decisionsError}</p>
+              <button className="btn-secondary mt-5" onClick={() => setRetry((value) => value + 1)}>Retry decisions</button>
             </div>
           ) : !selectedDocumentId ? (
             <div className="border-y border-[var(--border)] py-16 text-center">
@@ -297,7 +336,7 @@ function DecisionsContent() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="page-kicker">
-                        {decision.priority} priority · {decision.severity === "conflict" ? "scope conflict" : "open decision"}
+                        {decision.status === "resolved" ? "resolved decision" : "open decision"} · {decision.priority} priority{decision.severity === "conflict" ? " · scope conflict" : ""}
                       </p>
                       <h2 className="mt-2 text-xl font-semibold text-[var(--foreground)]">{decision.title}</h2>
                       {decision.guidance && <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{decision.guidance}</p>}
@@ -367,14 +406,34 @@ function DecisionsContent() {
       </section>
 
       {agentConsentOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/25 p-4" role="presentation">
-          <section className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="agent-review-title">
+        <ModalDialog labelledBy="agent-review-title" returnFocusId="review-source" dismissible={!startingAgentReview} onClose={() => setAgentConsentOpen(false)}>
+          <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
             <p className="page-kicker">Governed AI review</p>
             <h2 id="agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">Add a cited AI review to this GDD?</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
               GameMind will use the configured AI provider to review selected source evidence, prepare a cited draft, and run an independent critique. Your local source review and decisions stay available either way.
             </p>
+            <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
+              <input type="checkbox" checked={deferRuntime} onChange={(event) => setDeferRuntime(event.target.checked)}
+                disabled={startingAgentReview} aria-describedby="defer-runtime-help"
+                className="h-5 w-5 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]" />
+              Design only — defer runtime integration
+            </label>
+            <p id="defer-runtime-help" className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+              Runtime preview stays empty; runtime export and materialization stay blocked. Fixed for this run; all other design checks still apply.
+            </p>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <div className="w-full">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-[var(--foreground)]">
+                  <input type="checkbox" checked={allowUnspecifiedMemory} onChange={(event) => setAllowUnspecifiedMemory(event.target.checked)}
+                    disabled={startingAgentReview} aria-describedby="memory-scope-help"
+                    className="h-5 w-5 shrink-0 accent-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--accent)]" />
+                  Allow NPC memory to remain unspecified for this run
+                </label>
+                <p id="memory-scope-help" className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                  Empty, uncited memory with a warning is not assessed—not certified complete. Source-backed omissions and other design checks still block approval. Fixed for this run.
+                </p>
+              </div>
               <button type="button" onClick={() => setAgentConsentOpen(false)} disabled={startingAgentReview} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                 Continue with local review
               </button>
@@ -383,7 +442,7 @@ function DecisionsContent() {
               </button>
             </div>
           </section>
-        </div>
+        </ModalDialog>
       )}
     </main>
   );

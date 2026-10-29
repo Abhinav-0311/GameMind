@@ -45,3 +45,24 @@ def test_source_kind_override_enforces_project_scope(db_session):
         json={"source_kind": "gdd"},
     )
     assert response.status_code == 404
+
+
+def test_change_proposal_source_kind_is_accepted_and_preserved(db_session):
+    project_id = f"change_proposal_{uuid.uuid4().hex[:8]}"
+    document = RAGService().process_document(
+        db=db_session,
+        file_name="proposal.md",
+        file_bytes=b"# Change Proposal\nAdd a stealth takedown route.",
+        content_type="text/markdown",
+        game_project_id=project_id,
+        source_kind="change_proposal",
+    )
+
+    response = client.put(
+        f"/api/v1/documents/{document.id}/source-kind",
+        headers={"X-Game-Project-ID": project_id},
+        json={"source_kind": "change_proposal"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source_kind"] == "change_proposal"

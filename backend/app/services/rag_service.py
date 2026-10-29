@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from pypdf import PdfReader
 import chromadb
 from app.config import settings
+from app.design_agent.contracts import SECTION_RETRIEVAL_FOCUS
 from app.models.document import Document, DocumentChunk
 
 logger = logging.getLogger(__name__)
@@ -78,16 +79,6 @@ class RAGService:
             self.chroma_client = chroma_client
             self.collection = collection
 
-    @staticmethod
-    def _empty_query_rows(query_texts: list[str]) -> dict:
-        empty_rows = [[] for _ in query_texts]
-        return {
-            "ids": empty_rows,
-            "distances": empty_rows,
-            "documents": empty_rows,
-            "metadatas": empty_rows,
-        }
-
     def _query_collection_individually(
         self,
         query_texts: list[str],
@@ -113,10 +104,57 @@ class RAGService:
                     if "contigious 2d array" not in str(error).lower():
                         raise
                     if candidate_limit == 1:
-                        logger.warning("Chroma HNSW could not return evidence for one section query.")
+                        logger.warning(
+                            "Chroma HNSW could not return evidence for one section query; "
+                            "using scoped lexical fallback."
+                        )
+                        fallback = self._scoped_lexical_fallback(
+                            query_text, n_results, where
+                        )
                         for key in aggregated:
-                            aggregated[key].append([])
+                            aggregated[key].append(fallback[key])
         return aggregated
+
+    def _scoped_lexical_fallback(
+        self,
+        query_text: str,
+        n_results: int,
+        where: dict,
+    ) -> dict:
+        """Rank scoped stored chunks when Chroma's HNSW query is fragmented.
+
+        The collection already uses this deterministic lexical embedding. This
+        fallback therefore preserves the same project/document boundary and
+        ranking semantics without returning invented evidence.
+        """
+        try:
+            stored = self.collection.get(
+                where=where,
+                include=["documents", "metadatas"],
+            )
+        except Exception as error:
+            logger.warning("Scoped lexical fallback could not load chunks: %s", error)
+            return {key: [] for key in ("ids", "distances", "documents", "metadatas")}
+
+        ids = stored.get("ids") or []
+        documents = stored.get("documents") or []
+        metadatas = stored.get("metadatas") or []
+        query_vector = self._local_embeddings([query_text])[0]
+        ranked = []
+        for index, document in enumerate(documents):
+            if index >= len(ids) or not isinstance(document, str):
+                continue
+            document_vector = self._local_embeddings([document])[0]
+            similarity = sum(a * b for a, b in zip(query_vector, document_vector))
+            ranked.append((similarity, str(ids[index]), document, metadatas[index] if index < len(metadatas) else {}))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        selected = ranked[:n_results]
+        return {
+            "ids": [item[1] for item in selected],
+            "distances": [max(0.0, 1.0 - item[0]) for item in selected],
+            "documents": [item[2] for item in selected],
+            "metadatas": [item[3] for item in selected],
+        }
 
     def _query_collection(self, query_texts: list[str], n_results: int, where: dict) -> dict:
         """Query Chroma with a narrow fallback for its known batch HNSW failure."""
@@ -142,8 +180,14 @@ class RAGService:
                             n_results,
                             where,
                         )
-                    logger.warning("Chroma HNSW index could not return a single live match; returning no evidence.")
-                    return self._empty_query_rows(query_texts)
+                    logger.warning(
+                        "Chroma HNSW index could not return a single live match; "
+                        "using scoped lexical fallback."
+                    )
+                    fallback = self._scoped_lexical_fallback(
+                        query_texts[0], n_results, where
+                    )
+                    return {key: [fallback[key]] for key in fallback}
 
                 logger.warning(
                     "Chroma HNSW index could not return %s matches; retrying with %s.",
@@ -257,6 +301,7 @@ class RAGService:
             ("quest_brief", r"\b(?:quest brief|quest design|quest hooks?|mission design)\b"),
             ("level_brief", r"\b(?:level brief|level design|level layout|environment design)\b"),
             ("technical_brief", r"\b(?:technical brief|technical design|performance requirements?|engine constraints?)\b"),
+            ("change_proposal", r"\b(?:change proposal|design proposal|feature proposal)\b"),
             ("lore", r"\b(?:lore|world bible|setting bible|codex)\b"),
         )
         for source_kind, pattern in checks:
@@ -371,6 +416,7 @@ class RAGService:
         limit: int = 5,
         game_project_id: str = "default_project",
         document_ids: list[str] | None = None,
+        overfetch: bool = False,
     ) -> list[dict]:
         """Queries the local lexical vector index and returns grounded citations."""
         if not self.collection:
@@ -379,7 +425,7 @@ class RAGService:
         # 1. Query ChromaDB
         try:
             collection_count = self.collection.count()
-            n_results = limit
+            n_results = max(limit * 4, limit) if overfetch else limit
             if isinstance(collection_count, (int, float)):
                 if collection_count == 0:
                     return []
@@ -435,7 +481,7 @@ class RAGService:
                 "confidence": confidence
             })
 
-        return formatted_results
+        return formatted_results if overfetch else formatted_results[:limit]
 
     def query_lore_sections(
         self,
@@ -444,7 +490,11 @@ class RAGService:
         game_project_id: str = "default_project",
         document_ids: list[str] | None = None,
     ) -> list[dict]:
-        """Run one batched Chroma request and retain section-level provenance."""
+        """Batch planner and section searches without losing section provenance.
+
+        Each section has at most two queries, each bounded by limit_per_section.
+        Provider compaction still enforces the final evidence payload budget.
+        """
         if not self.collection:
             raise ValueError("ChromaDB vector collection is unavailable.")
         if not section_queries:
@@ -468,6 +518,12 @@ class RAGService:
 
         section_names = list(section_queries)
         query_texts = [section_queries[section] for section in section_names]
+        # Task wording is not a substitute for searching the source's design sections.
+        for section, query in section_queries.items():
+            focus = SECTION_RETRIEVAL_FOCUS.get(section)
+            if focus and focus != query:
+                section_names.append(section)
+                query_texts.append(focus)
         try:
             results = self._query_collection(query_texts, n_results, where)
         except Exception as error:
@@ -516,7 +572,9 @@ class RAGService:
                     },
                 )
                 item["similarity"] = max(item["similarity"], round(similarity, 4))
-                item["section_similarities"][section_name] = round(similarity, 4)
+                item["section_similarities"][section_name] = max(
+                    item["section_similarities"].get(section_name, 0), round(similarity, 4)
+                )
                 if section_name not in item["matched_sections"]:
                     item["matched_sections"].append(section_name)
 

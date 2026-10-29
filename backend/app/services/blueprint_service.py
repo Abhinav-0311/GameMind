@@ -35,18 +35,6 @@ class BlueprintService:
                 if cleaned:
                     yield chunk, cleaned
 
-    def _iter_chunk_lines_with_heading(self, chunks: List[DocumentChunk]) -> Iterable[Tuple[DocumentChunk, str, str]]:
-        """Keep nearby Markdown headings as context for local, rule-based extraction."""
-        for chunk in chunks:
-            heading = ""
-            for raw_line in chunk.content.split("\n"):
-                if re.match(r"^\s*#+\s+", raw_line):
-                    heading = self._clean_markdown(raw_line)
-                    continue
-                cleaned = self._clean_markdown(raw_line)
-                if cleaned:
-                    yield chunk, cleaned, heading
-
     def _iter_chunk_lines_with_context(
         self, chunks: List[DocumentChunk]
     ) -> Iterable[Tuple[DocumentChunk, str, str, str]]:
@@ -225,6 +213,21 @@ class BlueprintService:
             chunks,
             game_project_id,
         )
+        proposal_sources = [
+            source.title
+            for source in supporting_documents
+            if source.source_kind == "change_proposal"
+        ]
+        if proposal_sources:
+            proposal_names = ", ".join(proposal_sources)
+            proposal_warning = (
+                f"Includes proposed input from {proposal_names}. Treat claims that originate in this change proposal "
+                "as assumptions until a human approves them or they are added to a revised GDD."
+            )
+            for section in sections.values():
+                warnings = section.setdefault("warnings", [])
+                if proposal_warning not in warnings:
+                    warnings.append(proposal_warning)
 
         blueprint = GameBlueprint(
             title=f"Blueprint: {document.title}",
@@ -247,7 +250,23 @@ class BlueprintService:
         db.refresh(blueprint)
         return blueprint
 
+    def extract_heading_summary(self, chunks: List[DocumentChunk]) -> Dict[str, Any] | None:
+        """Preserve the hosted adapter's exact, explicitly headed source premise."""
+        for chunk in chunks:
+            for _, line, _, heading in self._iter_chunk_lines_with_context([chunk]):
+                if re.search(r"\b(summary|overview|synopsis|high concept|introduction)\b", heading, re.I) and line in chunk.content:
+                    return {"content": {"description": line}, "citations": [str(chunk.id)],
+                            "confidence": "Medium", "warnings": [
+                                "Locally extracted exact source excerpt, not model-authored. Review the cited premise in context."]}
+        return None
+
     def _parse_summary(self, doc_title: str, chunks: List[DocumentChunk]) -> Dict[str, Any]:
+        headed = self.extract_heading_summary(chunks)
+        if headed:
+            return self._section(
+                {"title": doc_title, "description": headed["content"]["description"]},
+                headed["citations"], "High", [],
+            )
         citations: List[str] = []
         description = None
         for chunk, line in self._iter_chunk_lines(chunks):
@@ -602,7 +621,7 @@ class BlueprintService:
 
         return {key: self._unique(values) for key, values in scope.items()}, self._unique(citations)
 
-    def _parse_quest_hooks(self, chunks: List[DocumentChunk]) -> Dict[str, Any]:
+    def _parse_quest_hooks(self, chunks: List[DocumentChunk], *, include_level_proposals: bool = True) -> Dict[str, Any]:
         found_quests = []
         citations = []
         seen_titles = set()
@@ -660,7 +679,7 @@ class BlueprintService:
         # does not already provide dedicated quest records. Dedicated quest tables
         # and Quest Hook lines are the stronger source of truth and must not be
         # diluted by inferred level-plan duplicates.
-        if not found_quests:
+        if not found_quests and include_level_proposals:
             seen_level_headings = set()
             for chunk, line, section, heading in self._iter_chunk_lines_with_context(chunks):
                 if not re.search(r"\b(?:story mode )?(?:level|mission) plan\b", section, re.IGNORECASE):

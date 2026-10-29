@@ -1,0 +1,455 @@
+{
+  "source_run_id": "fc541ba1-fa2d-48bc-bf04-20822bc37b18",
+  "frozen_settings": {
+    "allow_unspecified_memory": true,
+    "defer_runtime": false
+  },
+  "reviewed": {
+    "summary": {
+      "content": {
+        "description": "Project Frostpeak is an immersive tactical role-playing game set in the frozen ruins of the Northern kingdom of Frostpeak. The player assumes the role of a legendary pathfinder aiding the Frostpeak Resistance in reclaiming their home and restoring the lineage of King Arven from the occupying forces of the Cinder Vanguard."
+      },
+      "warnings": [
+        "Locally extracted exact source excerpt, not model-authored. Review the cited premise in context."
+      ],
+      "citations": [
+        "99d72f1b-e4a7-4dc6-bd06-6246f02f4fdf"
+      ],
+      "confidence": "Low"
+    },
+    "quest_hooks": {
+      "content": {
+        "quests": [
+          {
+            "id": "quest_1",
+            "title": "Quest Hook 1",
+            "reward": "100 gold and 250 XP.",
+            "runtime": null,
+            "objective": "Reclaim the Ash Pass border post. Players must clear guards and raise the Northern flag.",
+            "objectives": [
+              "Clear guards from the Ash Pass border post.",
+              "Raise the Northern flag."
+            ],
+            "assumptions": [
+              "Proposed failure state: Failure occurs if the player is entirely wiped out by garrison patrols before securing the post.",
+              "Proposed restart action: Player confirms reload at the last checkpoint or camp to re-attempt.",
+              "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated quest objectives, failure states, dialogue hooks, event actions are creative proposals and require design approval before runtime use.",
+              "Failure rule proposal (not verified in cited GDD): Player party is completely defeated by guards before raising the flag. Requires explicit design confirmation before runtime use.",
+              "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+            ],
+            "dependencies": [],
+            "dialogue_hooks": [
+              "Eldrin: The Ash Pass remains contested. Clear the guards and raise the Northern flag to restore our foothold."
+            ],
+            "failure_states": [
+              "Player party is completely defeated by guards before raising the flag."
+            ],
+            "state_contract": {
+              "failure": {
+                "events": [
+                  "q1_failure_1"
+                ],
+                "lifecycle": "failed"
+              },
+              "restart": {
+                "event": "q1_confirmed_restart",
+                "lifecycle": "active",
+                "clear_flags": [
+                  "q1_objective_1",
+                  "q1_objective_2"
+                ]
+              },
+              "version": "1",
+              "completion": {
+                "mode": "all",
+                "lifecycle": "completed",
+                "reevaluate_on": "each_objective_update",
+                "required_flags": [
+                  "q1_objective_1",
+                  "q1_objective_2"
+                ]
+              },
+              "objectives": [
+                {
+                  "flag": "q1_objective_1",
+                  "event": "q1_objective_1_completed",
+                  "objective": "Clear guards from the Ash Pass border post."
+                },
+                {
+                  "flag": "q1_objective_2",
+                  "event": "q1_objective_2_completed",
+                  "objective": "Raise the Northern flag."
+                }
+              ],
+              "event_actions": {
+                "q1_failure_1": "Player party is completely defeated by guards before raising the flag.",
+                "q1_confirmed_restart": "Player confirms checkpoint reload.",
+                "q1_objective_1_completed": "Defeat or neutralize all opposing guards present at the Ash Pass border post.",
+                "q1_objective_2_completed": "Interact with the flagpole to raise the Northern flag at the post."
+              }
+            },
+            "source_chunk_ids": [
+              "97087739-7136-48f7-8a8d-3e78f82a0aa2"
+            ],
+            "implementation_notes": [
+              "Ensure guard trigger zones reset correctly if player disengages.",
+              "Structured state proposal: start an attempt active with all objective flags false. While active, each declared objective event sets only its own flag true; preserve other flags. Do not mutate a completed/failed attempt from objective events.",
+              "Completion proposal: reevaluate after each objective update; set lifecycle to completed only when all required_flags are true. Test every partial state and both action orders; event descriptions are not executable bindings or playtest evidence.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: interact without an objective event. Expect: active; q1_objective_1=false, q1_objective_2=false; play dialogue only if its declared situation is satisfied.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: Defeat or neutralize all opposing guards present at the Ash Pass border post. until its proposed event (q1_objective_1_completed) occurs. Expect: active; q1_objective_1=true, q1_objective_2=false. Action: perform remaining objectives (Interact with the flagpole to raise the Northern flag at the post. (event: q1_objective_2_completed)). Expect: completed; q1_objective_1=true, q1_objective_2=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: active; q1_objective_1=false, q1_objective_2=false. Action: Interact with the flagpole to raise the Northern flag at the post. until its proposed event (q1_objective_2_completed) occurs. Expect: active; q1_objective_1=false, q1_objective_2=true. Action: perform remaining objectives (Defeat or neutralize all opposing guards present at the Ash Pass border post. (event: q1_objective_1_completed)). Expect: completed; q1_objective_1=true, q1_objective_2=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: completed; q1_objective_1=true, q1_objective_2=true. Action: replay each objective event. Expect: completed; q1_objective_1=true, q1_objective_2=true; active-only dialogue must remain suppressed.",
+              "Contract check (not executed): Setup: active with each incomplete flag state above. Action: exercise each failure event separately (Player party is completely defeated by guards before raising the flag.). Expect: failed with exactly the setup flags. Action: ordinary interaction. Expect: failed, flags unchanged; active-only dialogue must remain suppressed; no implicit restart.",
+              "Contract check (not executed): Setup: failed with each preserved incomplete flag state above. Action: Player confirms checkpoint reload.. Expect: active; q1_objective_1=false, q1_objective_2=false, cleared atomically. Interact and recheck dialogue eligibility; a reset does not guarantee replay or establish an event binding."
+            ]
+          },
+          {
+            "id": "quest_2",
+            "title": "Quest Hook 2",
+            "reward": "150 gold and sky-iron gear.",
+            "runtime": null,
+            "objective": "Mine 5 chunks of raw sky-iron ore from the cliffside veins.",
+            "objectives": [
+              "Mine 5 chunks of raw sky-iron ore from the cliffside veins."
+            ],
+            "assumptions": [
+              "Proposed failure state: Failure occurs if the player falls into active volcanic vents during extraction.",
+              "Proposed restart action: Player confirms respawn at the nearest steam checkpoint.",
+              "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated quest failure states, dialogue hooks, event actions are creative proposals and require design approval before runtime use.",
+              "Failure rule proposal (not verified in cited GDD): Player falls into active volcanic vents or suffers fatal environmental damage while mining. Requires explicit design confirmation before runtime use.",
+              "Quest state contract is an unverified implementation proposal, not an engine binding. Confirm observable events, source ordering and failure/restart rules before integration."
+            ],
+            "dependencies": [],
+            "dialogue_hooks": [
+              "Kaelen: The cliffside veins wait for no one. Mine those chunks of raw sky-iron ore."
+            ],
+            "failure_states": [
+              "Player falls into active volcanic vents or suffers fatal environmental damage while mining."
+            ],
+            "state_contract": {
+              "failure": {
+                "events": [
+                  "q2_failure_1"
+                ],
+                "lifecycle": "failed"
+              },
+              "restart": {
+                "event": "q2_confirmed_restart",
+                "lifecycle": "active",
+                "clear_flags": [
+                  "q2_objective_1"
+                ]
+              },
+              "version": "1",
+              "completion": {
+                "mode": "all",
+                "lifecycle": "completed",
+                "reevaluate_on": "each_objective_update",
+                "required_flags": [
+                  "q2_objective_1"
+                ]
+              },
+              "objectives": [
+                {
+                  "flag": "q2_objective_1",
+                  "event": "q2_objective_1_completed",
+                  "objective": "Mine 5 chunks of raw sky-iron ore from the cliffside veins."
+                }
+              ],
+              "event_actions": {
+                "q2_failure_1": "Player falls into active volcanic vents or suffers fatal environmental damage while mining.",
+                "q2_confirmed_restart": "Player confirms respawn at steam checkpoint.",
+                "q2_objective_1_completed": "Gather raw sky-iron ore from the cliffside veins until 5 chunks are collected."
+              }
+            },
+            "source_chunk_ids": [
+              "97087739-7136-48f7-8a8d-3e78f82a0aa2",
+              "fc904586-eb92-4f2a-b8b5-d09735bd9c44"
+            ],
+            "implementation_notes": [
+              "Track ore vein interaction counts to increment inventory progress accurately.",
+              "Structured state proposal: start an attempt active with all objective flags false. While active, each declared objective event sets only its own flag true; preserve other flags. Do not mutate a completed/failed attempt from objective events.",
+              "Completion proposal: reevaluate after each objective update; set lifecycle to completed only when all required_flags are true. Test every partial state and both action orders; event descriptions are not executable bindings or playtest evidence.",
+              "Contract check (not executed): Setup: active; q2_objective_1=false. Action: interact without an objective event. Expect: active; q2_objective_1=false; play dialogue only if its declared situation is satisfied.",
+              "Contract check (not executed): Setup: active; q2_objective_1=false. Action: Gather raw sky-iron ore from the cliffside veins until 5 chunks are collected. until its proposed event (q2_objective_1_completed) occurs. Expect: completed; q2_objective_1=true. Interact after each step and compare dialogue with its declared situation and repeat policy.",
+              "Contract check (not executed): Setup: completed; q2_objective_1=true. Action: replay each objective event. Expect: completed; q2_objective_1=true; active-only dialogue must remain suppressed.",
+              "Contract check (not executed): Setup: active with each incomplete flag state above. Action: exercise each failure event separately (Player falls into active volcanic vents or suffers fatal environmental damage while mining.). Expect: failed with exactly the setup flags. Action: ordinary interaction. Expect: failed, flags unchanged; active-only dialogue must remain suppressed; no implicit restart.",
+              "Contract check (not executed): Setup: failed with each preserved incomplete flag state above. Action: Player confirms respawn at steam checkpoint.. Expect: active; q2_objective_1=false, cleared atomically. Interact and recheck dialogue eligibility; a reset does not guarantee replay or establish an event binding."
+            ]
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "97087739-7136-48f7-8a8d-3e78f82a0aa2",
+        "fc904586-eb92-4f2a-b8b5-d09735bd9c44"
+      ],
+      "confidence": "Low"
+    },
+    "npc_archetypes": {
+      "content": {
+        "npcs": [
+          {
+            "name": "NPC Eldrin",
+            "archetype": "Archmage of the Watchtower",
+            "assumptions": [
+              "Proposed speaker-to-quest association: Eldrin acts as dialogue partner for Quest Hook 1.",
+              "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+              "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+            ],
+            "dialogue_hooks": [
+              "Greetings, pathfinder. The archives remember the lineage of King Arven, and much depends on your steps in these frozen ruins.",
+              "The Ash Pass remains contested. Clear the guards and raise the Northern flag to restore our foothold.",
+              "The banner flies once more. Take these spoils for your service to the resistance."
+            ],
+            "dialogue_style": "High-trust scholar and dialogue advisor; speaks in a formal, slow manner referencing ancient lore history to guide the player.",
+            "fresh_dialogue": false,
+            "source_chunk_ids": [
+              "4d759eb9-0843-4e94-a1ba-10bdc9d3affd"
+            ],
+            "dialogue_triggers": [
+              {
+                "text": "Greetings, pathfinder. The archives remember the lineage of King Arven, and much depends on your steps in these frozen ruins.",
+                "trigger": "npc_1_greeting_1",
+                "situation": "Initial meeting with Eldrin at the watchtower",
+                "eligibility": {
+                  "stage": "greeting",
+                  "progress": "any",
+                  "quest_id": null,
+                  "lifecycle": null
+                },
+                "manual_test": "Setup: Initial meeting with Eldrin at the watchtower; eligibility stage=greeting, quest=None, lifecycle=None, progress=any. Action: interact. Expect: Greetings, pathfinder. The archives remember the lineage of King Arven, and much depends on your steps in these frozen ruins. Repeat: no reset Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "no reset"
+              },
+              {
+                "text": "The Ash Pass remains contested. Clear the guards and raise the Northern flag to restore our foothold.",
+                "trigger": "npc_1_progress_2",
+                "situation": "Player engages Eldrin while Quest Hook 1 is active",
+                "eligibility": {
+                  "stage": "progress",
+                  "progress": "incomplete",
+                  "quest_id": "quest_1",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Player engages Eldrin while Quest Hook 1 is active; eligibility stage=progress, quest=quest_1, lifecycle=active, progress=incomplete. Action: interact. Expect: The Ash Pass remains contested. Clear the guards and raise the Northern flag to restore our foothold. Repeat: name resets Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "name resets"
+              },
+              {
+                "text": "The banner flies once more. Take these spoils for your service to the resistance.",
+                "trigger": "npc_1_completion_3",
+                "situation": "Player returns to Eldrin after completing Quest Hook 1",
+                "eligibility": {
+                  "stage": "completion",
+                  "progress": "complete",
+                  "quest_id": "quest_1",
+                  "lifecycle": "completed"
+                },
+                "manual_test": "Setup: Player returns to Eldrin after completing Quest Hook 1; eligibility stage=completion, quest=quest_1, lifecycle=completed, progress=complete. Action: interact. Expect: The banner flies once more. Take these spoils for your service to the resistance. Repeat: no reset Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "no reset"
+              }
+            ],
+            "relationship_notes": [
+              "High-trust scholar supporting the Frostpeak Resistance."
+            ],
+            "implementation_notes": [
+              "Use formal text pacing parameters for Eldrin's dialogue box.",
+              "Create a stable NPC profile for 'NPC Eldrin' and retain its source_chunk_ids in the review trace.",
+              "Bind each dialogue_triggers entry only while its eligibility holds. Run its manual_test and enforce repeat_policy; these are proposed checks, not executed tests.",
+              "Do not implement listed assumptions until a designer confirms them."
+            ]
+          },
+          {
+            "name": "NPC Kaelen",
+            "archetype": "Commander of the Cinder Vanguard garrison",
+            "assumptions": [
+              "Proposed speaker-to-quest association: Kaelen acts as dialogue partner for Quest Hook 2.",
+              "Server-derived dialogue keys and eligibility are unverified implementation proposals, not engine bindings or source facts.",
+              "Generated dialogue hooks are creative drafts and require narrative approval before runtime use.",
+              "Dialogue trigger mappings are implementation proposals; a designer must check each situation/line pairing, repeat policy and manual test before runtime use."
+            ],
+            "dialogue_hooks": [
+              "State your purpose. Strength and faction standing are all that matter here in the Vanguard's domain.",
+              "The cliffside veins wait for no one. Mine those chunks of raw sky-iron ore.",
+              "You survived the climb and delivered the ore. Here is your reward, as promised."
+            ],
+            "dialogue_style": "Pragmatic, cautious warrior who values faction standing and strength above all.",
+            "fresh_dialogue": false,
+            "source_chunk_ids": [
+              "4d759eb9-0843-4e94-a1ba-10bdc9d3affd",
+              "97087739-7136-48f7-8a8d-3e78f82a0aa2"
+            ],
+            "dialogue_triggers": [
+              {
+                "text": "State your purpose. Strength and faction standing are all that matter here in the Vanguard's domain.",
+                "trigger": "npc_2_greeting_1",
+                "situation": "Initial meeting with Kaelen at the garrison or camp",
+                "eligibility": {
+                  "stage": "greeting",
+                  "progress": "any",
+                  "quest_id": null,
+                  "lifecycle": null
+                },
+                "manual_test": "Setup: Initial meeting with Kaelen at the garrison or camp; eligibility stage=greeting, quest=None, lifecycle=None, progress=any. Action: interact. Expect: State your purpose. Strength and faction standing are all that matter here in the Vanguard's domain. Repeat: no reset Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "no reset"
+              },
+              {
+                "text": "The cliffside veins wait for no one. Mine those chunks of raw sky-iron ore.",
+                "trigger": "npc_2_progress_2",
+                "situation": "Player engages Kaelen while Quest Hook 2 is active",
+                "eligibility": {
+                  "stage": "progress",
+                  "progress": "incomplete",
+                  "quest_id": "quest_2",
+                  "lifecycle": "active"
+                },
+                "manual_test": "Setup: Player engages Kaelen while Quest Hook 2 is active; eligibility stage=progress, quest=quest_2, lifecycle=active, progress=incomplete. Action: interact. Expect: The cliffside veins wait for no one. Mine those chunks of raw sky-iron ore. Repeat: name resets Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "name resets"
+              },
+              {
+                "text": "You survived the climb and delivered the ore. Here is your reward, as promised.",
+                "trigger": "npc_2_completion_3",
+                "situation": "Player returns to Kaelen after completing Quest Hook 2",
+                "eligibility": {
+                  "stage": "completion",
+                  "progress": "complete",
+                  "quest_id": "quest_2",
+                  "lifecycle": "completed"
+                },
+                "manual_test": "Setup: Player returns to Kaelen after completing Quest Hook 2; eligibility stage=completion, quest=quest_2, lifecycle=completed, progress=complete. Action: interact. Expect: You survived the climb and delivered the ore. Here is your reward, as promised. Repeat: no reset Action: interact outside this situation; expect this trigger suppressed. Stated resets only; recheck situation eligibility; replay is not automatic. If suppressed with no allowed reset, verify it stays suppressed.",
+                "repeat_policy": "no reset"
+              }
+            ],
+            "relationship_notes": [
+              "Opposing or high-risk faction commander offering demanding tasks."
+            ],
+            "implementation_notes": [
+              "Character posture should convey defensive readiness.",
+              "Create a stable NPC profile for 'NPC Kaelen' and retain its source_chunk_ids in the review trace.",
+              "Bind each dialogue_triggers entry only while its eligibility holds. Run its manual_test and enforce repeat_policy; these are proposed checks, not executed tests.",
+              "Do not implement listed assumptions until a designer confirms them."
+            ]
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "4d759eb9-0843-4e94-a1ba-10bdc9d3affd",
+        "97087739-7136-48f7-8a8d-3e78f82a0aa2"
+      ],
+      "confidence": "Low"
+    },
+    "gameplay_systems": {
+      "content": {
+        "systems": [
+          {
+            "name": "Guerrilla Attacks and Faction Choice",
+            "description": "Rangers launch guerrilla attacks from the Ash Pass to free the frozen city. Faction choice holds high consequences for gameplay and world state flags."
+          },
+          {
+            "name": "Exploration and Resource Gathering",
+            "description": "Players navigate a vertical cliffside path featuring active volcanic vents, sky-iron ore veins, and steam checkpoints, enabling tasks such as mining raw sky-iron ore."
+          },
+          {
+            "name": "Border Post Reclamation",
+            "description": "Players engage in tactical operations to clear guards and raise the Northern flag at locations such as the Ash Pass border post."
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "99d72f1b-e4a7-4dc6-bd06-6246f02f4fdf",
+        "4d759eb9-0843-4e94-a1ba-10bdc9d3affd",
+        "97087739-7136-48f7-8a8d-3e78f82a0aa2"
+      ],
+      "confidence": "Low"
+    },
+    "npc_memory_design": {
+      "content": {
+        "rules": []
+      },
+      "warnings": [
+        "Unspecified, not assessed.",
+        "No section-matched source citation supports this output."
+      ],
+      "citations": [],
+      "confidence": "Low"
+    },
+    "art_style_direction": {
+      "content": {
+        "visual_notes": [
+          "High-contrast color palette pairing warm oranges and elemental reds from Cinder Vanguard fire engines against deep icy blues and granite grays of frozen Northern citadel ruins.",
+          "Characters have sharp, hand-painted textures highlighting the gritty, cold environment."
+        ],
+        "visual_theme": "Stylized Dark Fantasy"
+      },
+      "warnings": [],
+      "citations": [
+        "99d72f1b-e4a7-4dc6-bd06-6246f02f4fdf",
+        "4d759eb9-0843-4e94-a1ba-10bdc9d3affd"
+      ],
+      "confidence": "Low"
+    },
+    "narrative_direction": {
+      "content": {
+        "themes": [
+          "tactical role-playing",
+          "guerrilla resistance",
+          "elemental conflict",
+          "faction choice consequences"
+        ],
+        "lore_background": "Project Frostpeak is set in the frozen ruins of the Northern kingdom of Frostpeak, centering around the aftermath of the Ember Siege of 842 where the volcanic nation of Vulcana, led by Warlord Ignis, launched an elemental assault to seize control of Frostpeak's geothermal energy and rich sky-iron deposits."
+      },
+      "warnings": [],
+      "citations": [
+        "99d72f1b-e4a7-4dc6-bd06-6246f02f4fdf",
+        "4d759eb9-0843-4e94-a1ba-10bdc9d3affd"
+      ],
+      "confidence": "Low"
+    },
+    "unity_runtime_preview": {
+      "content": {
+        "target_platform": "Windows PC"
+      },
+      "warnings": [],
+      "citations": [
+        "99d72f1b-e4a7-4dc6-bd06-6246f02f4fdf",
+        "4d759eb9-0843-4e94-a1ba-10bdc9d3affd",
+        "97087739-7136-48f7-8a8d-3e78f82a0aa2",
+        "fc904586-eb92-4f2a-b8b5-d09735bd9c44"
+      ],
+      "confidence": "Low"
+    },
+    "level_design_suggestions": {
+      "content": {
+        "levels": [
+          {
+            "focus": "Players navigate a vertical cliffside path interspersed with active volcanic vents, sky-iron ore veins, and steam checkpoints. The level culminates at the monumental East Gate, which remains barricaded by Cinder Vanguard defenses.",
+            "title": "Geothermal Vents zone"
+          }
+        ]
+      },
+      "warnings": [],
+      "citations": [
+        "97087739-7136-48f7-8a8d-3e78f82a0aa2"
+      ],
+      "confidence": "Low"
+    }
+  },
+  "final_section_overrides": {
+    "npc_memory_design": {
+      "content": {
+        "rules": []
+      },
+      "warnings": [
+        "Unspecified, not assessed.",
+        "No section-matched source citation supports this output."
+      ],
+      "citations": [],
+      "confidence": "Low",
+      "memory_unspecified": true
+    }
+  }
+}

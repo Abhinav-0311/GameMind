@@ -1,3 +1,6 @@
+import json
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -8,7 +11,7 @@ from app.database import get_db
 from app.dependencies import get_game_project_id
 from app.schemas import (
     BlueprintGenerateRequest, BlueprintResponse, BlueprintExportResponse,
-    BlueprintComparisonResponse, BlueprintComparisonSection, BlueprintReadinessResponse,
+    BlueprintComparisonResponse, BlueprintComparisonSection, BlueprintChangeImpactResponse, BlueprintChangeImpactItem, BlueprintReadinessResponse,
     BlueprintCitationResponse, BlueprintProvenanceResponse, BlueprintSectionProvenanceResponse,
     MaterializationReportResponse, MaterializeBlueprintRequest,
     BlueprintRuntimeBundleResponse
@@ -43,17 +46,22 @@ BLUEPRINT_SECTION_FIELDS = (
     ("Quests", "quest_hooks"),
 )
 
-BLUEPRINT_PROVENANCE_FIELDS = (
-    ("summary", "Game summary"),
-    ("narrative_direction", "Narrative"),
-    ("art_style_direction", "Art style"),
-    ("npc_archetypes", "NPCs"),
-    ("npc_memory_design", "Memory"),
-    ("level_design_suggestions", "Levels"),
-    ("gameplay_systems", "Gameplay systems"),
-    ("quest_hooks", "Quests"),
-    ("unity_runtime_preview", "Runtime"),
-)
+CHANGE_IMPACT_STOP_WORDS = {
+    "about", "after", "before", "change", "feature", "from", "into", "must", "need",
+    "only", "proposal", "should", "that", "the", "their", "then", "this", "with",
+}
+
+
+def _impact_terms(text: str) -> set[str]:
+    return {
+        term.lower()
+        for term in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", text)
+        if term.lower() not in CHANGE_IMPACT_STOP_WORDS
+    }
+
+BLUEPRINT_PROVENANCE_FIELDS = tuple(
+    (field, label) for label, field in BLUEPRINT_SECTION_FIELDS
+) + (("unity_runtime_preview", "Runtime"),)
 
 @router.post("/generate", response_model=BlueprintResponse, status_code=status.HTTP_201_CREATED)
 def generate_blueprint(
@@ -148,6 +156,8 @@ def export_blueprint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Blueprint not found or not owned by this project."
         )
+    if (blueprint.unity_runtime_preview or {}).get("runtime_deferred") is True:
+        raise HTTPException(status_code=409, detail="Runtime integration explicitly deferred. Download the design brief instead.")
     return {
         "api_version": "1.0",
         "blueprint_id": blueprint.id,
@@ -321,6 +331,62 @@ def compare_blueprints(
         base_blueprint_id=base.id,
         revised_blueprint_id=revised.id,
         changed_sections=changed_sections,
+    )
+
+
+@router.get("/{blueprint_id}/change-impact/{proposal_document_id}", response_model=BlueprintChangeImpactResponse)
+def preview_change_impact(
+    blueprint_id: UUID,
+    proposal_document_id: UUID,
+    db: Session = Depends(get_db),
+    game_project_id: str = Depends(get_game_project_id),
+):
+    """Show source-backed candidate sections to review for a proposed GDD-external change."""
+    blueprint = db.query(GameBlueprint).filter(
+        GameBlueprint.id == blueprint_id,
+        GameBlueprint.game_project_id == game_project_id,
+    ).first()
+    if not blueprint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blueprint not found or not owned by this project.")
+
+    proposal = db.query(Document).filter(
+        Document.id == proposal_document_id,
+        Document.game_project_id == game_project_id,
+    ).first()
+    if not proposal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change proposal not found or not owned by this project.")
+    if proposal.source_kind != "change_proposal":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Impact preview requires a Change proposal source.")
+
+    proposal_text = "\n".join(
+        chunk.content
+        for chunk in db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == proposal.id
+        ).order_by(DocumentChunk.chunk_index).all()
+    )
+    proposal_terms = _impact_terms(proposal_text)
+    if not proposal_terms:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Change proposal has no reviewable text.")
+
+    impacts = []
+    for label, field in BLUEPRINT_SECTION_FIELDS:
+        section = getattr(blueprint, field) or {}
+        content = section.get("content", {}) if isinstance(section, dict) else {}
+        section_terms = _impact_terms(json.dumps(content, ensure_ascii=False))
+        matched_terms = sorted(proposal_terms & section_terms)
+        if not matched_terms:
+            continue
+        impacts.append(BlueprintChangeImpactItem(
+            section=label,
+            matched_terms=matched_terms[:6],
+            message="Candidate review area: proposal terminology overlaps this extracted section. Confirm the intended change before regenerating or materializing runtime data.",
+        ))
+
+    return BlueprintChangeImpactResponse(
+        blueprint_id=blueprint.id,
+        proposal_document_id=proposal.id,
+        proposal_title=proposal.title,
+        impacts=impacts,
     )
 
 

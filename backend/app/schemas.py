@@ -50,7 +50,7 @@ class DocumentDetailResponse(DocumentResponse):
 
 
 class SourceKindUpdate(BaseModel):
-    source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|general)$")
+    source_kind: str = Field(..., pattern="^(gdd|lore|npc_sheet|quest_brief|level_brief|technical_brief|change_proposal|general)$")
 
 
 class TechnicalBriefTemplateResponse(BaseModel):
@@ -140,6 +140,19 @@ class BlueprintComparisonResponse(BaseModel):
     changed_sections: List[BlueprintComparisonSection] = []
 
 
+class BlueprintChangeImpactItem(BaseModel):
+    section: str
+    matched_terms: List[str] = []
+    message: str
+
+
+class BlueprintChangeImpactResponse(BaseModel):
+    blueprint_id: UUID
+    proposal_document_id: UUID
+    proposal_title: str
+    impacts: List[BlueprintChangeImpactItem] = []
+
+
 class GameProjectCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
 
@@ -213,6 +226,7 @@ class WorkspaceMemberResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Lore search query text")
     limit: Optional[int] = Field(default=5, ge=1, le=20, description="Max number of items to retrieve")
+    include_history: bool = Field(default=False, description="Include superseded source revisions")
 
 class QueryResultResponse(BaseModel):
     chunk_id: str
@@ -222,6 +236,8 @@ class QueryResultResponse(BaseModel):
     chunk_index: Optional[int]
     similarity: float
     confidence: str
+    source_document_id: Optional[str] = None
+    revision_number: Optional[int] = None
 
 class QueryResponse(BaseModel):
     query: str
@@ -300,6 +316,7 @@ class DialogueAssembleRequest(BaseModel):
     npc_slug: str = Field(..., min_length=1, description="Unique NPC slug identification")
     player_message: str = Field(..., min_length=1, description="Raw message input from player")
     selected_chunk_ids: Optional[List[UUID]] = Field(default=None, description="Database chunk identifiers to retrieve context from")
+    source_document_id: Optional[UUID] = Field(default=None, description="Optional source document boundary for lore retrieval")
     player_id: Optional[str] = Field(default="default_player", description="Player identifier for relationship/quest tracking")
     conversation_id: Optional[UUID] = Field(default=None, description="Optional active conversation session identifier")
 
@@ -375,7 +392,7 @@ class DialogueCitation(BaseModel):
     document_id: UUID
     chunk_id: UUID
     title: str
-    similarity: float
+    similarity: Optional[float]
 
     model_config = ConfigDict(
         from_attributes=True
@@ -732,6 +749,9 @@ class BlueprintReadinessResponse(BaseModel):
     status: str
     can_approve: bool
     can_materialize: bool
+    can_serve_runtime: bool
+    runtime_release_reason: str
+    runtime_release_blockers: List[str] = []
     missing_required: List[str] = []
     blockers: List[str] = []
     advisories: List[str] = []
@@ -773,11 +793,43 @@ class MaterializationReportResponse(BaseModel):
     flags: MaterializationReportSection
     warnings: List[str] = []
 
+
+class ApprovedRuntimeNpcArtifact(BaseModel):
+    """Approved GDD character data, safe for engine-neutral clients."""
+
+    slug: str
+    name: str
+    archetype: str
+    dialogue_style: str
+    dialogue_hooks: List[str] = []
+
+
+class ApprovedRuntimeQuestArtifact(BaseModel):
+    """Approved GDD quest data, separate from the legacy quest-row schema."""
+
+    design_id: str | None = None
+    runtime_quest_id: UUID | None = None
+    title: str
+    objective: str
+    objectives: List[str] = []
+    failure_states: List[str] = []
+    dependencies: List[str] = []
+    dialogue_hooks: List[str] = []
+
+
+class ApprovedRuntimeDesignArtifacts(BaseModel):
+    contract_version: str = "1.0"
+    npcs: List[ApprovedRuntimeNpcArtifact] = []
+    quests: List[ApprovedRuntimeQuestArtifact] = []
+
 class BlueprintRuntimeBundleResponse(BaseModel):
-    api_version: str = "1.0"
+    api_version: str = "1.1"
     blueprint_id: UUID
     game_project_id: str
     npcs: List[NPCProfileResponse]
     quests: List[QuestResponse]
     memories: List[NPCMemoryResponse]
     world_flags: List[WorldStateFlagResponse]
+    approved_design: ApprovedRuntimeDesignArtifacts = Field(
+        default_factory=ApprovedRuntimeDesignArtifacts
+    )

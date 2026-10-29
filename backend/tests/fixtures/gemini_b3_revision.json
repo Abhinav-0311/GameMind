@@ -1,0 +1,14 @@
+{
+  "memory_section": {
+    "content": {"rules": ["Faction choice holds high consequences for gameplay and world state flags."]},
+    "warnings": [],
+    "citations": ["49b2a4e7-d873-42ac-ace4-41ad4ebc9b4a", "bd73cdfc-9add-4dbc-a28a-eed23f4a0b84"],
+    "confidence": "Low"
+  },
+  "response": {
+    "changes": [{
+      "artifact_path": "npc_memory_design",
+      "replacement": "{\"content\": {\"rules\": [\"Faction choice holds high consequences for gameplay and world state flags.\"]}, \"warnings\": [\"Warning: The GDD specifies no NPC memory mechanism, persistence, recall, or dialogue-history behavior. These systems require human design implementation.\"], \"citations\": [\"49b2a4e7-d873-42ac-ace4-41ad4ebc9b4a\", \"bd73cdfc-9add-4dbc-a28a-eed23f4a0b84\"], \"confidence\": \"Low\"}"
+    }]
+  }
+}

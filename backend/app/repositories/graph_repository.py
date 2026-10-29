@@ -90,13 +90,20 @@ class GraphRepository:
         return query.first()
 
     def get_adjacent_relationships(
-        self, db: Session, entity_id: uuid.UUID, direction: str = "both", as_of: Optional[datetime] = None
+        self,
+        db: Session,
+        entity_id: uuid.UUID,
+        direction: str = "both",
+        as_of: Optional[datetime] = None,
+        game_project_id: str = "default_project",
     ) -> List[WorldRelationship]:
         """
         Query adjacent relationship edges. Does not perform row-level locking.
         Filters out soft-deleted records based on the as_of timestamp.
         """
-        query = db.query(WorldRelationship)
+        query = db.query(WorldRelationship).filter(
+            WorldRelationship.game_project_id == game_project_id
+        )
         
         # Apply direction filter
         if direction == "out":
@@ -252,6 +259,7 @@ class GraphRepository:
         rel = WorldRelationship(
             source_id=source.id,
             target_id=target.id,
+            game_project_id=game_project_id,
             rel_type=rel_type,
             weight=weight,
             version=1,
@@ -301,6 +309,7 @@ class GraphRepository:
         new_rel = WorldRelationship(
             source_id=source.id,
             target_id=target.id,
+            game_project_id=game_project_id,
             rel_type=rel_type,
             weight=weight if weight is not None else active_rel.weight,
             version=active_rel.version + 1,

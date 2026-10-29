@@ -1,4 +1,5 @@
 from app.models.document import Document, DocumentChunk
+from app.models.gemini_usage import GeminiDailyUsage
 from app.models.project import GameProject
 from app.models.design_decision import DesignDecision
 from app.models.blueprint import GameBlueprint
@@ -19,6 +20,7 @@ from app.models.design_agent import (
     DesignAgentCritique,
     DesignAgentEvaluation,
     DesignAgentEvidenceSnapshot,
+    DesignAgentFindingResolution,
     DesignAgentJob,
     DesignAgentNodeExecution,
     DesignAgentReviewEvent,

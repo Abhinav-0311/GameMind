@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import Base
 # Import all models to ensure they are registered on Base.metadata
 from app.models.document import Document, DocumentChunk
+from app.models.gemini_usage import GeminiDailyUsage
 from app.models.project import GameProject
 from app.models.design_decision import DesignDecision
 from app.models.npc import NPCProfile

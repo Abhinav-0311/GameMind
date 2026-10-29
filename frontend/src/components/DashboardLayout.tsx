@@ -4,7 +4,17 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { api, getActiveProjectId, setActiveProjectId, subscribeToProjectChange, type AuthUser, type GameProject } from "@/lib/api";
+import ModalDialog from "@/components/ModalDialog";
+import {
+  api,
+  getActiveProjectId,
+  setActiveProjectId,
+  setActiveProjectUser,
+  subscribeToProjectChange,
+  requestFailureMessage,
+  type AuthUser,
+  type GameProject,
+} from "@/lib/api";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -21,7 +31,6 @@ interface CommandItem {
   id: string;
   name: string;
   category: string;
-  shortcut: string;
   action: () => void;
 }
 
@@ -29,7 +38,6 @@ interface CommandNavigationItem {
   name: string;
   href: string;
   category: "Build" | "Test" | "Support";
-  shortcut: string;
   icon: React.ReactNode;
 }
 
@@ -130,17 +138,27 @@ const commandNavigationItems: CommandNavigationItem[] = [
     name: item.name,
     href: item.href,
     category: item.section,
-    shortcut: item.name === "Home" ? "G H" : `G ${item.name[0]}`,
     icon: item.icon,
   })),
-  { name: "NPC Studio", href: "/npcs", category: "Support", shortcut: "G N", icon: <IconPeople /> },
-  { name: "Hint Studio", href: "/hints", category: "Support", shortcut: "G I", icon: <IconPlay /> },
-  { name: "Diagnostics", href: "/analytics", category: "Support", shortcut: "G D", icon: <IconChart /> },
+  { name: "NPC Studio", href: "/npcs", category: "Support", icon: <IconPeople /> },
+  { name: "Hint Studio", href: "/hints", category: "Support", icon: <IconPlay /> },
+  { name: "Diagnostics", href: "/analytics", category: "Support", icon: <IconChart /> },
 ];
 
 const sections: NavigationItem["section"][] = ["Build", "Test"];
 const themeStorageKey = "gamemind-theme";
 const themeChangeEvent = "gamemind-theme-change";
+const publicAccountRoutes = new Set([
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/accept-invitation",
+]);
+
+function isPublicAccountRoute(pathname: string): boolean {
+  return publicAccountRoutes.has(pathname);
+}
 
 function getStoredTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
@@ -169,31 +187,90 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [projects, setProjects] = useState<GameProject[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [creatingProject, setCreatingProject] = useState(false);
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [connection, setConnection] = useState<"checking" | "connected" | "degraded" | "unavailable">("checking");
+  const [retry, setRetry] = useState(0);
+  const isPublicRoute = isPublicAccountRoute(pathname);
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (isPublicRoute) return;
+    let active = true;
+    let inFlight = false;
+    const checkConnection = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const health = await api.getHealth();
+        if (active) setConnection(health.status === "healthy" ? "connected" : "degraded");
+      } catch {
+        if (active) setConnection("unavailable");
+      } finally {
+        inFlight = false;
+      }
+    };
+    void Promise.resolve().then(() => {
+      if (active) {
+        setConnection("checking");
+        void checkConnection();
+      }
+    });
+    const interval = window.setInterval(checkConnection, 30_000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [isPublicRoute, retry]);
+
+  useEffect(() => {
+    if (isPublicRoute) return;
     let active = true;
 
-    api.getAuthSession()
-      .then((session) => {
+    const loadWorkspace = async () => {
+      // Yield first so this is a true async synchronization step, rather than
+      // scheduling a second render directly from the effect body.
+      await Promise.resolve();
+      if (!active) return;
+      setProjectsLoading(true);
+      setWorkspaceReady(false);
+      setProjectError(null);
+
+      try {
+        const session = await api.getAuthSession();
         if (!active) return;
+
         setSessionUser(session.user);
-        if (session.auth_required && !session.user) router.replace("/login");
-      })
-      .catch(() => {
-        // Existing connection states handle backend availability independently.
-      });
+        setActiveProjectUser(session.user?.id ?? null);
+        if (session.auth_required && !session.user) {
+          router.replace("/login");
+          return;
+        }
+
+        const loadedProjects = await api.getProjects();
+        if (!active) return;
+        setProjects(loadedProjects);
+
+        const storedProjectId = getActiveProjectId();
+        const selectedProject = loadedProjects.some((project) => project.id === storedProjectId)
+          ? storedProjectId
+          : loadedProjects[0]?.id ?? "";
+        if (selectedProject !== storedProjectId) setActiveProjectId(selectedProject);
+        setWorkspaceReady(true);
+      } catch (error: unknown) {
+        if (active) setProjectError(requestFailureMessage(error, "Workspace"));
+      } finally {
+        if (active) setProjectsLoading(false);
+      }
+    };
+
+    void loadWorkspace();
 
     return () => {
       active = false;
     };
-  }, [pathname, router]);
+  }, [isPublicRoute, router, retry]);
 
   const currentPage = useMemo(
     () => navigationItems.find((item) => isRouteActive(pathname, item.href)) ?? navigationItems[0],
@@ -214,7 +291,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         id: item.href,
         name: item.name,
         category: item.category,
-        shortcut: item.shortcut,
         action: () => {
           router.push(item.href);
           setMobileNavOpen(false);
@@ -231,31 +307,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
-
-  useEffect(() => {
-    if (pathname === "/login") return;
-    let active = true;
-
-    api
-      .getProjects()
-      .then((loadedProjects) => {
-        if (!active) return;
-        setProjects(loadedProjects);
-        if (!loadedProjects.some((project) => project.id === activeProjectId)) {
-          setActiveProjectId("default_project");
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) setProjectError(error instanceof Error ? error.message : "Could not load workspaces.");
-      })
-      .finally(() => {
-        if (active) setProjectsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeProjectId, pathname]);
 
   const toggleTheme = () => {
     const nextTheme = theme === "dark" ? "light" : "dark";
@@ -292,12 +343,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setAccountMenuOpen(false);
     await api.logout();
     setSessionUser(null);
+    setActiveProjectUser(null);
     router.replace("/login");
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        if (!paletteOpen && document.querySelector("dialog[open]")) return;
         event.preventDefault();
         setPaletteOpen((prev) => !prev);
         setSearchQuery("");
@@ -305,13 +358,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         return;
       }
 
-      if (event.key === "Escape") {
-        setPaletteOpen(false);
-        setMobileNavOpen(false);
-        return;
-      }
-
-      if (!paletteOpen || filteredCommands.length === 0) return;
+      if (!paletteOpen || filteredCommands.length === 0 || !(event.target instanceof HTMLInputElement) || event.target.id !== "command-search") return;
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -335,7 +382,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setPaletteOpen(false);
   };
 
-  if (["/login", "/forgot-password", "/reset-password", "/verify-email", "/accept-invitation"].includes(pathname)) return <>{children}</>;
+  if (isPublicRoute) return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-[var(--background)] text-[var(--foreground)] antialiased">
@@ -349,13 +396,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 type="button"
                 onClick={() => setMobileNavOpen(true)}
                 aria-label="Open navigation"
+                aria-haspopup="dialog"
+                aria-expanded={mobileNavOpen}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] lg:hidden"
               >
                 <IconMenu />
               </button>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold leading-none text-[var(--foreground)]">{pageTitle}</p>
-                <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Zero-cost local game builder</p>
+                <p className="mt-1 hidden text-xs text-[var(--text-secondary)] sm:block">Evidence-first game design</p>
               </div>
             </div>
 
@@ -412,10 +461,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   {theme === "dark" ? "Light" : "Dark"}
                 </span>
               </button>
-              <div className="hidden items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--green)_28%,transparent)] bg-[color-mix(in_srgb,var(--green)_12%,transparent)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] sm:flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
-                Connected
-              </div>
+              <button
+                type="button"
+                onClick={() => setRetry((value) => value + 1)}
+                disabled={connection === "checking" || projectsLoading}
+                title="Recheck API connection and workspace access"
+                className="hidden items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] sm:flex"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${connection === "connected" && workspaceReady ? "bg-[var(--green)]" : "bg-[var(--text-tertiary)]"}`} />
+                <span aria-live="polite">{projectsLoading || connection === "checking" ? "Checking API" : !workspaceReady ? "Workspace unavailable" : connection === "connected" ? "API connected" : connection === "degraded" ? "API degraded" : "API unavailable"}</span>
+              </button>
               {sessionUser && (
                 <div className="relative">
                   <button
@@ -448,18 +503,38 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </header>
 
-          <main key={activeProjectId} className="flex-1 px-4 py-8 sm:px-6 lg:px-10">{children}</main>
+          <main key={activeProjectId} className="flex-1 px-4 py-8 sm:px-6 lg:px-10">
+            {projectsLoading ? (
+              <WorkspaceState
+                eyebrow="Workspace"
+                title="Preparing your workspace."
+                body="Checking the projects available to this account before loading game data."
+              />
+            ) : !workspaceReady ? (
+              <WorkspaceState
+                eyebrow="Workspace unavailable"
+                title="We could not confirm your workspace."
+                body={projectError || "Try again after the API connection is available."}
+                actionLabel="Try again"
+                onAction={() => setRetry((value) => value + 1)}
+              />
+            ) : projects.length === 0 ? (
+              <WorkspaceState
+                eyebrow="Workspace"
+                title="Create your first game workspace."
+                body="Your documents, design decisions, and approved runtime data stay isolated per game."
+                actionLabel="Create workspace"
+                onAction={() => setProjectDialogOpen(true)}
+              />
+            ) : (
+              children
+            )}
+          </main>
         </div>
       </div>
 
       {mobileNavOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation overlay"
-            onClick={() => setMobileNavOpen(false)}
-            className="absolute inset-0 bg-black/70"
-          />
+        <ModalDialog label="Workspace navigation" className="drawer-dialog" onClose={() => setMobileNavOpen(false)}>
           <div className="relative h-full w-[min(22rem,88vw)] border-r border-[var(--border)] bg-[var(--sidebar)] shadow-2xl">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <Brand />
@@ -467,6 +542,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 type="button"
                 onClick={() => setMobileNavOpen(false)}
                 aria-label="Close navigation"
+                data-autofocus
                 className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <IconClose />
@@ -501,17 +577,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <Navigation pathname={pathname} onNavigate={() => setMobileNavOpen(false)} />
           </div>
-        </div>
+        </ModalDialog>
       )}
 
       {paletteOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 px-4 pt-20 backdrop-blur-sm sm:pt-24">
+        <ModalDialog label="Search pages" className="max-w-xl" onClose={() => setPaletteOpen(false)}>
           <div className="flex max-h-[28rem] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
             <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
               <span className="text-[var(--text-secondary)]">
                 <IconSearch />
               </span>
               <input
+                id="command-search"
+                aria-label="Search pages"
                 type="text"
                 placeholder="Search pages..."
                 value={searchQuery}
@@ -520,7 +598,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   setActiveIndex(0);
                 }}
                 className="h-10 flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--text-tertiary)]"
-                autoFocus
+                data-autofocus
               />
               <button
                 type="button"
@@ -564,9 +642,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                             <span className="block text-xs text-[var(--text-tertiary)]">{cmd.category}</span>
                           </span>
                         </span>
-                        <span className="rounded-lg border border-[var(--border)] bg-[var(--card-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-secondary)]">
-                          {cmd.shortcut}
-                        </span>
                       </button>
                     );
                   })}
@@ -575,25 +650,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
 
             <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--card-muted)] px-3 py-2 text-[10px] font-medium text-[var(--text-secondary)]">
-              <span>Arrow keys to move</span>
+              <span>Arrow keys to move · Enter to open</span>
               <span>Esc to close</span>
             </div>
           </div>
-        </div>
+        </ModalDialog>
       )}
 
       {projectDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="presentation">
-          <button
-            type="button"
-            aria-label="Close new project dialog"
-            onClick={() => !creatingProject && setProjectDialogOpen(false)}
-            className="absolute inset-0"
-          />
+        <ModalDialog labelledBy="new-project-title" className="max-w-md" dismissible={!creatingProject} onClose={() => setProjectDialogOpen(false)}>
           <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="new-project-title"
             className="relative w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-2xl"
           >
             <p className="page-kicker">New workspace</p>
@@ -614,11 +680,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 maxLength={100}
                 minLength={2}
                 required
-                autoFocus
+                data-autofocus
                 placeholder="e.g. Moonlit Citadel"
                 className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent)]"
               />
-              {projectError && <p className="mt-3 text-sm text-rose-700" role="alert">{projectError}</p>}
+              {projectError && <p className="mt-3 text-sm text-[var(--danger-text)]" role="alert">{projectError}</p>}
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   type="button"
@@ -634,7 +700,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </form>
           </section>
-        </div>
+        </ModalDialog>
       )}
     </div>
   );
@@ -648,6 +714,33 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate: () =>
       </div>
       <Navigation pathname={pathname} onNavigate={onNavigate} />
     </aside>
+  );
+}
+
+function WorkspaceState({
+  eyebrow,
+  title,
+  body,
+  actionLabel,
+  onAction,
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <section className="mx-auto flex min-h-[52vh] max-w-xl flex-col justify-center py-10">
+      <p className="page-kicker">{eyebrow}</p>
+      <h1 className="mt-4 font-display text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">{title}</h1>
+      <p className="mt-4 max-w-lg text-sm leading-7 text-[var(--text-secondary)]">{body}</p>
+      {actionLabel && onAction ? (
+        <button type="button" onClick={onAction} className="btn-primary mt-8 w-fit">
+          {actionLabel}
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -665,7 +758,7 @@ function Brand() {
         <div>
           <p className="text-[1.05rem] font-semibold leading-none tracking-normal text-[var(--foreground)] transition">GameMind</p>
           <p className="mt-1.5 font-mono text-[10px] font-semibold uppercase tracking-normal text-[var(--text-secondary)]">
-            Guided game builder
+            Evidence-first game design
           </p>
         </div>
     </Link>

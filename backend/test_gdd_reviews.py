@@ -1,12 +1,38 @@
 import uuid
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.services.gdd_review_service import GddReviewService
 from app.services.rag_service import RAGService
 from main import app
 
 
 client = TestClient(app)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Vulcana launched an assault to seize control of Frostpeak's geothermal energy.", "needs_decision"),
+    ("Eldrin controls the ancient tower.", "needs_decision"),
+    ("Platform: Windows.", "covered"),
+    ("Control scheme: third-person camera.", "covered"),
+    ("Controls: WASD movement.", "covered"),
+    ("Keyboard and mouse input.", "covered"),
+])
+def test_gdd_review_distinguishes_narrative_control_from_input_design(text, expected):
+    document = SimpleNamespace(id=uuid.uuid4(), title="Control review", revision_number=1)
+    chunk = SimpleNamespace(id=uuid.uuid4(), content=text)
+    db = MagicMock()
+    query = db.query.return_value.filter.return_value
+    query.first.return_value = document
+    query.order_by.return_value.all.return_value = [chunk]
+
+    result = GddReviewService().review(db, document.id, "qa_controls")
+    finding = next(item for item in result["findings"] if item["title"] == "Platform and controls")
+    assert finding["severity"] == expected
+    assert finding["citations"] == ([str(chunk.id)] if expected == "covered" else [])
 
 
 def test_gdd_review_returns_missing_decisions_and_explicit_conflicts(db_session):
