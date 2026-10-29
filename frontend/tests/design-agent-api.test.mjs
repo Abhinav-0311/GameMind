@@ -19,6 +19,38 @@ const advisory = { id: "exact-check", check: "quest_label_mismatch", severity: "
   paths: ["/npc_archetypes/content/npcs/0/dialogue_triggers/0/situation"],
   message: "Review both fields; neither is assumed correct.", values: { situation: "Quest 0", quest_id: "quest_1" } };
 
+async function loadComponent(name) {
+  const componentSource = await readFile(new URL(`../src/components/${name}.tsx`, import.meta.url), "utf8");
+  const code = ts.transpileModule(componentSource, { compilerOptions: {
+    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
+  } }).outputText;
+  const compiled = { exports: {} };
+  runInNewContext("(function(require,module,exports){" + code + "})")(
+    createRequire(import.meta.url), compiled, compiled.exports);
+  return compiled.exports.default;
+}
+
+for (const [provider, expected, absent] of [
+  ["gemini", [/Google&#x27;s Gemini API/, /free tier/, /improve its products/, /demo or non-confidential/, /Mock mode.*sends nothing/], /This run is offline/],
+  ["mock", [/This run is offline/, /sends nothing/, /deterministic extraction/], /may be sent/],
+  ["nvidia", [/hosted provider/, /nvidia/, /source text may be sent/, /until you confirm/], /Google/],
+]) {
+  test(`shared consent describes the effective ${provider} provider honestly`, async () => {
+    const Consent = await loadComponent("DesignReviewConsent");
+    const html = renderToStaticMarkup(Consent({ provider }));
+    for (const pattern of expected) assert.match(html, pattern);
+    assert.doesNotMatch(html, absent);
+  });
+}
+
+test("critique-only consent preserves recovery scope and data-use warning", async () => {
+  const Consent = await loadComponent("DesignReviewConsent");
+  const html = renderToStaticMarkup(Consent({ provider: "gemini", critiqueOnly: true }));
+  assert.match(html, /saved draft and its frozen source text/);
+  assert.match(html, /Planning, retrieval and generation will not repeat/);
+  assert.match(html, /free tier/);
+});
+
 test("advisories cannot set needsRevision or disable approval, including on blocked runs", () => {
   const run = { status: "awaiting_review", provider_name: "gemini", degraded: false,
     current_artifact: { id: "draft" }, critique: { id: "critique", artifact_id: "draft",
@@ -37,24 +69,49 @@ test("advisories cannot set needsRevision or disable approval, including on bloc
 });
 
 test("advisory panel is separate, non-interactive, escaped, and has an honest empty state", async () => {
-  const componentSource = await readFile(new URL("../src/components/DraftQualityAdvisories.tsx", import.meta.url), "utf8");
-  const componentCode = ts.transpileModule(componentSource, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
-  } }).outputText;
-  const compiled = { exports: {} };
-  runInNewContext("(function(require,module,exports){" + componentCode + "})")(
-    createRequire(import.meta.url), compiled, compiled.exports);
-  const Panel = compiled.exports.default;
+  const Panel = await loadComponent("DraftQualityAdvisories");
   const html = renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: [
     { ...advisory, message: "<script>not executable</script>" }] } }));
   assert.match(html, /Advisories \(non-blocking\)/);
   assert.match(html, /medium/);
   assert.match(html, /dialogue_triggers\/0\/situation/);
   assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /exact-ch/);
+  assert.match(html, /Quest 0/);
+  assert.match(html, /quest_1/);
   assert.doesNotMatch(html, /<(button|input|form|select|script)\b/);
   assert.match(renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: [] } })), /not a quality guarantee/);
   assert.equal(renderToStaticMarkup(Panel({ evaluation: null })), "");
 });
+
+test("advisory comparison renders objective text and misplaced rule without executing markup", async () => {
+  const Panel = await loadComponent("DraftQualityAdvisories");
+  const html = renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: [
+    { ...advisory, id: "objective-id", check: "objective_text_copied_as_dialogue",
+      values: { dialogue: "Mine five ore.", objectives: [{ path: "/objective", value: "Mine FIVE ore!" }] } },
+    { ...advisory, id: "warning-id", check: "warning_in_rules", severity: "low", values: { rule: "WARNING: <script>not assessed</script>" } },
+  ] } }));
+  for (const text of [/Dialogue/, /Matching objective/, /Mine five ore\./, /Mine FIVE ore!/, /Rule text/, /WARNING: &lt;script&gt;/]) assert.match(html, text);
+  assert.doesNotMatch(html, /<(button|input|form|select|script)\b/);
+});
+
+test("absent human evaluation makes no request", async (context) => {
+  context.mock.method(globalThis, "fetch", () => { throw new Error("Unexpected evaluation request"); });
+  assert.equal(await api.getDesignAgentEvaluation("run", false), null);
+});
+
+test("present human evaluation still loads normally", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => Response.json({ id: "human-review", overall_score: 0.8 }));
+  assert.equal((await api.getDesignAgentEvaluation("run", true)).id, "human-review");
+});
+
+for (const status of [401, 403, 404, 500]) {
+  test(`unexpected human-evaluation ${status} is not hidden as absence`, async (context) => {
+    context.mock.method(globalThis, "fetch", async () => Response.json({ detail: "Evaluation unavailable" }, { status }));
+    await assert.rejects(api.getDesignAgentEvaluation("run", true),
+      error => error instanceof ApiRequestError && error.status === status);
+  });
+}
 
 test("review forwards explicit acknowledgement bound to the artifact", async (context) => {
   let sent;

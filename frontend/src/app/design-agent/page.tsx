@@ -6,6 +6,7 @@ import ModalDialog from "@/components/ModalDialog";
 import FrozenDesignEvidence from "@/components/FrozenDesignEvidence";
 import DesignFindingReviews from "@/components/DesignFindingReviews";
 import DraftQualityAdvisories from "@/components/DraftQualityAdvisories";
+import DesignReviewConsent from "@/components/DesignReviewConsent";
 import { deriveReviewGate } from "@/lib/design-review-gate";
 import {
   api,
@@ -462,12 +463,15 @@ export default function DesignAgentPage() {
   useEffect(() => {
     if (!activeRun || activeRun.status !== "completed") return;
     let mounted = true;
-    api.getDesignAgentEvaluation(activeRun.id)
+    api.getDesignAgentEvaluation(activeRun.id, activeRun.has_evaluation === true)
       .then((loadedEvaluation) => {
         if (mounted) setEvaluation(loadedEvaluation);
       })
-      .catch(() => {
-        if (mounted) setEvaluation(null);
+      .catch((reason) => {
+        if (mounted) {
+          setEvaluation(null);
+          setError(requestFailureMessage(reason, "Human evaluation"));
+        }
       });
     return () => {
       mounted = false;
@@ -846,9 +850,7 @@ export default function DesignAgentPage() {
           <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
             <p className="page-kicker">{offlineConsent ? "Offline review" : "Governed AI review"}</p>
             <h2 id="start-agent-review-title" className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{critiqueRetry ? "Retry this draft's critique?" : "Start a cited review?"}</h2>
-            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-              {offlineConsent ? "This run is offline. The mock provider processes source excerpts locally and sends nothing to a hosted provider. It uses deterministic extraction, not newly generated content." : critiqueRetry ? "The saved draft and its frozen source excerpts will be sent to the configured hosted provider for critique only. Planning, retrieval and generation will not repeat. The draft stays unchanged; nothing is approved." : "The selected source revision may be sent to the configured hosted provider to create a cited draft and independent critique. No provider request is made until you confirm."}
-            </p>
+            <DesignReviewConsent provider={critiqueRetry ? activeRun?.provider_name ?? null : configuredProvider} critiqueOnly={Boolean(critiqueRetry)} />
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button type="button" onClick={() => { setStartConsentOpen(false); setCritiqueRetry(null); }} disabled={action === "start" || action === "critique"} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
                 Cancel

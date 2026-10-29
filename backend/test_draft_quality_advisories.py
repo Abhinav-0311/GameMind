@@ -138,3 +138,22 @@ def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(
     assert verify_final_integrity(artifact.content, final.content, run.model_config)['verdict'] == 'EXACT'
     brief, _ = DesignAgentService().technical_brief(db_session, run.id, run.game_project_id)
     assert 'warning_in_rules' not in brief and 'draft_quality_evaluation' not in brief
+
+
+def test_run_response_reports_only_its_scoped_human_evaluation(db_session):
+    from app.design_agent.service import DesignAgentService
+    from app.models.design_agent import DesignAgentEvaluation
+    from test_finalize_content_integrity import saved_review
+
+    _, run, _, _, _ = saved_review(db_session)
+    run.status = 'completed'
+    db_session.commit()
+    assert DesignAgentService._response(db_session, run).has_evaluation is False
+    evaluation = DesignAgentEvaluation(run_id=run.id, game_project_id=run.game_project_id,
+        annotations={}, metrics=[], overall_score=0, passed=False)
+    db_session.add(evaluation)
+    db_session.commit()
+    assert DesignAgentService._response(db_session, run).has_evaluation is True
+    evaluation.game_project_id = 'other-workspace'
+    db_session.commit()
+    assert DesignAgentService._response(db_session, run).has_evaluation is False

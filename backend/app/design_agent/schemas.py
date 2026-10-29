@@ -180,6 +180,7 @@ class DesignAgentRunResponse(BaseModel):
     provider_name: str
     degraded: bool = False
     draft_evaluation: DraftQualityEvaluation | None = None
+    has_evaluation: bool = False
     defer_runtime: bool = False
     allow_unspecified_memory: bool = False
     retrieval_revision: int

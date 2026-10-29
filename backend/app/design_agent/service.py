@@ -30,6 +30,7 @@ from app.models.design_agent import (
     DesignAgentArtifact,
     DesignAgentCritique,
     DesignAgentEvidenceSnapshot,
+    DesignAgentEvaluation,
     DesignAgentJob,
     DesignAgentNodeExecution,
     DesignAgentReviewEvent,
@@ -111,6 +112,10 @@ class DesignAgentService:
             current_node=run.current_node,
             provider_name=run.provider_name,
             degraded=degraded_review_required(db, run),
+            has_evaluation=run.status == "completed" and db.query(DesignAgentEvaluation.id).filter(
+                DesignAgentEvaluation.run_id == run.id,
+                DesignAgentEvaluation.game_project_id == run.game_project_id,
+            ).first() is not None,
             draft_evaluation=((run.model_config or {}).get("draft_quality_evaluation")
                               if reviewed_artifact and str(reviewed_artifact.id) ==
                               (run.model_config or {}).get("draft_quality_evaluation", {}).get("artifact_id") else None),
