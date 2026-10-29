@@ -64,7 +64,7 @@ class DesignAgentProvider(Protocol):
         evidence: list[dict[str, Any]],
         rejection_reason: str,
         target_sections: list[str] | None = None,
-        *, review_request: dict[str, Any] | None = None,
+        *, review_request: dict[str, Any] | None = None, target_paths: list[str] | None = None,
     ) -> ProviderResult: ...
 
 
@@ -224,8 +224,13 @@ class MockDesignAgentProvider:
         evidence: list[dict[str, Any]],
         rejection_reason: str,
         target_sections: list[str] | None = None,
-        *, review_request: dict[str, Any] | None = None,
+        *, review_request: dict[str, Any] | None = None, target_paths: list[str] | None = None,
     ) -> ProviderResult:
+        if target_paths is not None:
+            from app.design_agent.field_corrections import validate_target_paths
+            from app.design_agent.grounding import NoMaterialRevisionError, OFFLINE_REVISION_UNAVAILABLE
+            validate_target_paths(target_paths, artifact)
+            raise NoMaterialRevisionError(OFFLINE_REVISION_UNAVAILABLE)
         revised = copy.deepcopy(artifact)
         targets = review_targets(rejection_reason, target_sections)
         target = targets[0]

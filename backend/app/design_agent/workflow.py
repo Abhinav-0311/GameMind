@@ -134,13 +134,18 @@ class DesignAgentWorkflow:
             return self._compile(saver).invoke(initial_state, self._thread_config(run.id))
 
     def resume(self, run_id: UUID, decision: ResumeDecision) -> dict[str, Any]:
+        correction = decision.decision == 'request_correction'
+        if correction:
+            self._claim_correction(run_id, decision)
         started = time.perf_counter()
+        outcome = None
         try:
             with self._checkpointer() as saver:
-                return self._compile(saver).invoke(
+                outcome = self._compile(saver).invoke(
                     Command(resume=decision.model_dump()),
                     self._thread_config(run_id),
                 )
+                return outcome
         except Exception as error:
             messages = [f"{type(error).__name__}: {error}", traceback.format_exc()]
             # Traceback formatting omits locals; redact configured credentials in exception text too.
@@ -163,6 +168,48 @@ class DesignAgentWorkflow:
                     execution.details = {**(execution.details or {}), "http_status": 500}
                     db.commit()
             raise
+        finally:
+            if correction:
+                with self._session() as db:
+                    request = db.get(DesignAgentNodeExecution, decision.correction_request_id)
+                    run = db.get(DesignAgentRun, run_id)
+                    latest = db.query(DesignAgentArtifact).filter_by(run_id=run_id).order_by(DesignAgentArtifact.version.desc()).first()
+                    saved = latest is not None and str(latest.id) != str(decision.artifact_id)
+                    request.status = 'completed' if saved else 'failed'
+                    request.completed_at = datetime.now(timezone.utc)
+                    request.details = {**request.details, 'outcome': 'saved' if saved else 'draft_unchanged',
+                        'result_artifact_id': str(latest.id) if latest else None,
+                        'error': run.last_error, 'revision_count': run.revision_count}
+                    if saved:
+                        from app.design_agent.field_corrections import pointer_value
+                        original = db.get(DesignAgentArtifact, decision.artifact_id)
+                        request.details = {**request.details, 'dependent_changes': [
+                            {'path': effect['path'], 'before': pointer_value(original.content, effect['path']),
+                             'after': pointer_value(latest.content, effect['path'])}
+                            for effect in request.details['dependent_effects']
+                            if pointer_value(original.content, effect['path']) != pointer_value(latest.content, effect['path'])]}
+                    db.commit()
+
+    def _claim_correction(self, run_id, decision):
+        from app.design_agent.field_corrections import validate_target_paths
+        with self._session() as db:
+            run = db.query(DesignAgentRun).filter_by(id=run_id).with_for_update().one()
+            request = db.get(DesignAgentNodeExecution, decision.correction_request_id) if decision.correction_request_id else None
+            artifact = db.query(DesignAgentArtifact).filter_by(run_id=run_id).order_by(DesignAgentArtifact.version.desc()).first()
+            details = request.details if request else {}
+            if (request is None or request.run_id != run_id or request.game_project_id != run.game_project_id
+                    or request.node_name != 'correction_request' or request.status != 'pending'
+                    or artifact is None or artifact.immutable or artifact.id != decision.artifact_id
+                    or details.get('action') != decision.decision or details.get('target_paths') != decision.target_paths
+                    or details.get('reason') != decision.reason or details.get('artifact_id') != str(artifact.id)
+                    or details.get('artifact_version') != artifact.version
+                    or details.get('artifact_sha256') != content_digest(artifact.content)
+                    or details.get('reviewer_label') != decision.reviewer_label
+                    or details.get('reviewer_user_id') != decision.reviewer_user_id):
+                raise ValueError('Stale, duplicate or altered correction request; no workflow work was started.')
+            validate_target_paths(decision.target_paths, artifact.content)
+            request.status = 'running'
+            db.commit()
 
     @contextmanager
     def _session(self) -> Iterator[Session]:
@@ -673,7 +720,7 @@ class DesignAgentWorkflow:
                 "artifact_id": state["current_artifact_id"],
                 "artifact_version": state["current_artifact_version"],
                 "critique": state["critique"],
-                "allowed_actions": ["approve", "reject"],
+                "allowed_actions": ["approve", "reject", "request_correction"],
             }
         )
 
@@ -682,6 +729,9 @@ class DesignAgentWorkflow:
         with self._session() as db:
             run = self._load_run(db, state)
             decision.require_current_artifact(state["current_artifact_id"])
+            if decision.decision == 'request_correction':
+                from app.design_agent.field_corrections import validate_target_paths
+                validate_target_paths(decision.target_paths, state['current_artifact'])
             if decision.decision == "approve":
                 require_degraded_acknowledgement(db, run, decision.acknowledge_degraded)
             if decision.decision == "approve" and requires_design_quality_review(run, decision.confirmed_proposals):
@@ -703,11 +753,11 @@ class DesignAgentWorkflow:
             existing = db.query(DesignAgentReviewEvent).filter(
                 DesignAgentReviewEvent.artifact_id == UUID(state["current_artifact_id"])
             ).first()
-            if existing and existing.decision != decision.decision:
+            if existing and existing.decision != decision.decision and decision.decision != 'request_correction':
                 raise RuntimeError("This artifact already has a different review decision.")
             if existing and decision.acknowledge_degraded:
                 existing.details = {**(existing.details or {}), "acknowledge_degraded": True}
-            if existing is None:
+            if existing is None and decision.decision != 'request_correction':
                 db.add(
                     DesignAgentReviewEvent(
                         run_id=run.id,
@@ -732,6 +782,9 @@ class DesignAgentWorkflow:
                     "decision": decision.decision,
                     "artifact_version": state["current_artifact_version"],
                     "target_sections": decision.target_sections,
+                    **({'target_paths': decision.target_paths, 'reason': decision.reason,
+                        'correction_request_id': str(decision.correction_request_id)}
+                       if decision.decision == 'request_correction' else {}),
                     "confirmed_proposals": [item.model_dump() for item in decision.confirmed_proposals],
                     "acknowledge_degraded": decision.acknowledge_degraded,
                     "reviewer_label": decision.reviewer_label,
@@ -740,9 +793,14 @@ class DesignAgentWorkflow:
             )
         return {
             "review_decision": decision.decision,
+            "revision_failed": False,
             "finalization_failed": False,
             "rejection_reason": decision.reason or "",
-            "revision_targets": review_targets(decision.reason or "", decision.target_sections) if decision.decision == "reject" else [],
+            "revision_targets": (sorted({path.split('/')[1] for path in decision.target_paths})
+                if decision.decision == 'request_correction' else
+                review_targets(decision.reason or "", decision.target_sections) if decision.decision == "reject" else []),
+            "correction_paths": decision.target_paths or [],
+            "correction_request_id": str(decision.correction_request_id) if decision.correction_request_id else None,
             "confirmed_proposals": [item.model_dump() for item in decision.confirmed_proposals],
             "acknowledge_degraded": decision.acknowledge_degraded,
         }
@@ -774,6 +832,10 @@ class DesignAgentWorkflow:
                     "revision_failed": False,
                 }
 
+            paths = state.get('correction_paths')
+            if paths:
+                from app.design_agent.field_corrections import validate_correction_scope
+                validate_correction_scope(state['current_artifact'], result.content, paths, state['evidence_items'])
             content = validate_generated_blueprint(
                 result.content,
                 state["evidence_items"],
@@ -785,8 +847,10 @@ class DesignAgentWorkflow:
             targets = state.get("revision_targets") or review_targets(state["rejection_reason"])
             # Normalization must not rewrite a historical unrelated section.
             for section in state["current_artifact"]:
-                if section not in targets:
+                if section not in targets and not paths:
                     content[section] = copy.deepcopy(state["current_artifact"][section])
+            if paths:
+                validate_correction_scope(state['current_artifact'], content, paths, state['evidence_items'])
             validate_structured_revision(
                 state["current_artifact"],
                 content,
@@ -824,6 +888,7 @@ class DesignAgentWorkflow:
                 state["rejection_reason"],
                 target_sections=state.get("revision_targets") or review_targets(state["rejection_reason"]),
                 review_request=canonical_review_request(state),
+                **({'target_paths': state['correction_paths']} if state.get('correction_paths') else {}),
             ),
             persist,
         )

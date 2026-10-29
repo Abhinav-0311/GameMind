@@ -1070,7 +1070,7 @@ export const api = {
 
   async reviewDesignAgentRun(
     runId: string,
-    payload: { decision: "approve" | "reject"; reason?: string; target_sections?: string[];
+    payload: { decision: "approve" | "reject" | "request_correction"; reason?: string; target_sections?: string[]; target_paths?: string[];
       artifact_id?: string; confirmed_proposals?: DesignAgentProposalConfirmation[]; acknowledge_degraded?: boolean },
   ): Promise<DesignAgentRun> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/review`, {

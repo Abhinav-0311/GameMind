@@ -126,38 +126,34 @@ def _validate_npc_identities(
             )
 
 
+def generated_quest_proposal_annotation(quest, evidence_by_id):
+    source_text = _normalise_for_quote_match(_cited_evidence_text(quest, evidence_by_id))
+    fields = {
+        "objective": [quest["objective"]],
+        "reward": [quest["reward"]] if quest.get("reward") else [],
+        "objectives": quest["objectives"],
+        "failure states": quest["failure_states"],
+        "dialogue hooks": quest["dialogue_hooks"],
+        "event actions": list(((quest.get("state_contract") or {}).get("event_actions") or {}).values()),
+    }
+    generated_fields = [label for label, values in fields.items() if any(
+        (normalised := _normalise_for_quote_match(value)) and normalised not in source_text for value in values)]
+    return ("Generated quest " + ", ".join(generated_fields)
+            + " are creative proposals and require design approval before runtime use.") if generated_fields else None
+
+
 def _mark_generated_quest_details_for_review(
     validated: dict[str, Any],
     evidence_by_id: dict[str, dict[str, Any]],
 ) -> None:
     """Expose generated quest design as a proposal when it is not a GDD fact."""
     for quest in validated["quest_hooks"]["content"]["quests"]:
-        source_text = _normalise_for_quote_match(
-            _cited_evidence_text(quest, evidence_by_id)
-        )
-        fields = {
-            "objective": [quest["objective"]],
-            "reward": [quest["reward"]] if quest.get("reward") else [],
-            "objectives": quest["objectives"],
-            "failure states": quest["failure_states"],
-            "dialogue hooks": quest["dialogue_hooks"],
-            "event actions": list(((quest.get("state_contract") or {}).get("event_actions") or {}).values()),
-        }
-        generated_fields = [
-            label
-            for label, values in fields.items()
-            if any(
-                (normalised := _normalise_for_quote_match(value))
-                and normalised not in source_text
-                for value in values
-            )
-        ]
-        if generated_fields:
+        source_text = _normalise_for_quote_match(_cited_evidence_text(quest, evidence_by_id))
+        annotation = generated_quest_proposal_annotation(quest, evidence_by_id)
+        if annotation:
             quest["assumptions"] = list(dict.fromkeys([
                 *quest["assumptions"],
-                "Generated quest "
-                + ", ".join(generated_fields)
-                + " are creative proposals and require design approval before runtime use.",
+                annotation,
             ]))
         # Preserve useful drafts, but make each invented failure rule visible.
         # A citation to a level plan does not establish an attempt limit or timer.

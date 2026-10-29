@@ -33,12 +33,13 @@ class DesignAgentCritiqueRetryRequest(BaseModel):
 
 
 class DesignAgentReviewRequest(BaseModel):
-    decision: Literal["approve", "reject"]
+    decision: Literal["approve", "reject", "request_correction"]
     reason: str | None = Field(default=None, max_length=4000)
     target_sections: list[BlueprintSectionKey] | None = Field(default=None, min_length=1, max_length=9)
     artifact_id: UUID | None = None
     confirmed_proposals: list[ProposalConfirmation] = Field(default_factory=list, max_length=64)
     acknowledge_degraded: StrictBool = False
+    target_paths: list[str] | None = None
 
     @model_validator(mode="after")
     def require_rejection_reason(self):

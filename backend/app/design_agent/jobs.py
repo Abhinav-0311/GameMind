@@ -49,13 +49,19 @@ class DesignAgentJobService:
         decision: ResumeDecision,
         artifact_id: UUID,
     ) -> DesignAgentJob:
+        correction = decision.decision == 'request_correction'
+        if correction:
+            from app.design_agent.finding_reviews import content_digest
+            scope = content_digest({'action': decision.decision, 'artifact_id': str(artifact_id),
+                                    'target_paths': decision.target_paths, 'request_id': str(decision.correction_request_id)})
         job = DesignAgentJob(
             run_id=run.id,
             game_project_id=run.game_project_id,
             operation="resume",
             payload=decision.model_dump(mode="json"),
-            idempotency_key=f"resume:{run.id}:{artifact_id}:{run.revision_count}:{(run.model_config or {}).get('consecutive_revision_failures', 0)}",
-            max_attempts=settings.DESIGN_AGENT_JOB_MAX_ATTEMPTS,
+            idempotency_key=(f'correction:{run.id}:{scope}' if correction else
+                f"resume:{run.id}:{artifact_id}:{run.revision_count}:{(run.model_config or {}).get('consecutive_revision_failures', 0)}"),
+            max_attempts=1 if correction else settings.DESIGN_AGENT_JOB_MAX_ATTEMPTS,
         )
         run.status = "review_queued"
         db.add(job)

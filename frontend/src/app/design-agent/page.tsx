@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ModalDialog from "@/components/ModalDialog";
+import FieldCorrectionDialog from "@/components/FieldCorrectionDialog";
 import FrozenDesignEvidence from "@/components/FrozenDesignEvidence";
 import DesignFindingReviews from "@/components/DesignFindingReviews";
 import {
@@ -302,12 +303,13 @@ export default function DesignAgentPage() {
   const [startConsentOpen, setStartConsentOpen] = useState(false);
   const [critiqueRetryChoice, setCritiqueRetry] = useState<{ runId: string; artifactId: string; executionId: string } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [correctionDraft, setCorrectionDraft] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [revisionSections, setRevisionSections] = useState<(typeof sections)[number]["key"][]>(["summary"]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const [action, setAction] = useState<"start" | "approve" | "reject" | "refresh" | "brief" | "runtime" | "critique" | null>(null);
+  const [action, setAction] = useState<"start" | "approve" | "reject" | "request_correction" | "refresh" | "brief" | "runtime" | "critique" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalChoices, setProposalChoices] = useState<{ artifactId: string; keys: string[] } | null>(null);
@@ -573,14 +575,17 @@ export default function DesignAgentPage() {
     }
   }
 
-  async function submitReview(decision: "approve" | "reject") {
+  async function submitReview(decision: "approve" | "reject" | "request_correction", correction?: { reason: string; paths: string[]; artifactId: string }) {
     if (!activeRun) return;
+    if (decision === "request_correction" && (!correction || correction.artifactId !== artifactId || !reviewable)) {
+      setCorrectionDraft(null); setError("The draft changed. Review the current artifact before requesting a correction."); return;
+    }
     if (!artifactId || (decision === "approve" && approvalBlocked)) {
       setError(decision === "approve" ? "Review the current draft and resolve its blockers before approval."
         : "Review the current draft before requesting a revision.");
       return;
     }
-    if (decision === "reject" && revisionBlocked) {
+    if (decision !== "approve" && revisionBlocked) {
       setError(failedRevisionLimitReached ? "Consecutive failed revision limit reached. Start a new run with fresh provider consent."
         : "Revision budget exhausted. Start a new run with fresh provider consent.");
       return;
@@ -600,7 +605,8 @@ export default function DesignAgentPage() {
     try {
       const run = await api.reviewDesignAgentRun(activeRun.id, {
         decision,
-        reason: decision === "reject" ? rejectionReason.trim() : undefined,
+        reason: decision === "request_correction" ? correction?.reason : decision === "reject" ? rejectionReason.trim() : undefined,
+        target_paths: decision === "request_correction" ? correction?.paths : undefined,
         target_sections: decision === "reject" ? sections.filter((section) => revisionSections.includes(section.key)).map((section) => section.key) : undefined,
         artifact_id: artifactId,
         confirmed_proposals: decision === "approve" ? selectedProposals : undefined,
@@ -608,6 +614,7 @@ export default function DesignAgentPage() {
       });
       replaceRun(run);
       setRejectOpen(false);
+      setCorrectionDraft(null);
       setRejectionReason("");
       setNotice(
         run.status === "review_queued"
@@ -1149,6 +1156,12 @@ export default function DesignAgentPage() {
                       {action === "approve" ? "Finalizing…" : approvalBlocked ? "Approval blocked" : "Approve run"}
                     </button>
                     <button
+                      id="request-field-correction" type="button" className="btn-secondary w-full"
+                      disabled={action !== null || findingBusy || revisionBlocked}
+                      onClick={() => { setError(null); setCorrectionDraft(artifactId ?? null); }}>
+                      Request correction
+                    </button>
+                    <button
                       type="button"
                       className="btn-secondary w-full"
                       onClick={() => { setRevisionSections([activeSection]); setRejectOpen(true); }}
@@ -1278,6 +1291,12 @@ export default function DesignAgentPage() {
             </section>
           )}
 
+          {reviewable && !revisionBlocked && correctionDraft === artifactId && artifactId && activeRun.current_artifact && (
+            <FieldCorrectionDialog key={`${activeRun.id}:${artifactId}`} artifactId={artifactId}
+              content={activeRun.current_artifact.content} busy={action !== null} error={error}
+              onClose={() => setCorrectionDraft(null)}
+              onSubmit={(reason, paths, selectedArtifactId) => submitReview("request_correction", { reason, paths, artifactId: selectedArtifactId })} />
+          )}
           <details key={activeRun.id} open={activeRun.status === "failed"} className="mt-6 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]">
               <span>
