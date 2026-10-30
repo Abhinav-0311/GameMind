@@ -30,12 +30,15 @@ METRIC_LABELS = {
 }
 
 
-def save_draft_quality_evaluation(run: DesignAgentRun, artifact: DesignAgentArtifact) -> None:
+def save_draft_quality_evaluation(
+    run: DesignAgentRun, artifact: DesignAgentArtifact, *, evidence: list[dict[str, Any]] | None = None,
+) -> None:
     """Persist advisory-only evaluation outside artifacts, critiques and human scores."""
     from app.design_agent.grounding import assess_draft_advisories
     from app.design_agent.schemas import DraftQualityEvaluation
 
-    evaluation = DraftQualityEvaluation(artifact_id=artifact.id, advisories=assess_draft_advisories(artifact.content))
+    evaluation = DraftQualityEvaluation(artifact_id=artifact.id, advisories=assess_draft_advisories(
+        artifact.content, evidence=evidence, resolved_decisions=(run.model_config or {}).get("resolved_decisions")))
     run.model_config = {**(run.model_config or {}), "draft_quality_evaluation": evaluation.model_dump(mode="json")}
 
 

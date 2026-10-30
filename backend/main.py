@@ -154,13 +154,14 @@ def health_check():
     except Exception as e:
         logger.error(f"ChromaDB connection verification failed: {e}")
 
+    provider = effective_provider_name()
     return {
         "status": "healthy" if db_status == "healthy" and chroma_status == "healthy" else "degraded",
         "database": db_status,
         "database_pool": pool_status,
         "chromadb": chroma_status,
-        "ai_mode": "local_demo",
-        "llm_provider": effective_provider_name(),
+        "ai_mode": "local_demo" if provider == "mock" else provider,
+        "llm_provider": provider,
         "embedding_provider": "local_lexical",
         "vector_collection": "lore_chunks_local_lexical_v1",
         "vector_dimension": 384

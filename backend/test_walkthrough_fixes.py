@@ -115,3 +115,4 @@ def test_health_names_effective_provider_without_instantiating_it(monkeypatch, p
     response = TestClient(app).get('/health')
     assert response.status_code == 200
     assert response.json()['llm_provider'] == expected
+    assert response.json()['ai_mode'] == ('local_demo' if expected == 'mock' else expected)

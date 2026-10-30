@@ -358,7 +358,8 @@ def test_adapter_and_scoped_revision_use_new_contract_only_when_versioned():
             assert "Populate requested supported fields" in prompt
             assert "Preserve all unmentioned data" in prompt
             continue
-        assert "Fill every supported section in the requested scope before expanding NPCs and quests" in prompt
+        assert "Fill every supported section in the requested scope before expanding NPCs and quests" not in prompt
+        assert "Preserve source-stated faction-choice consequences in narrative/systems" in prompt
         assert "Low retrieval similarity does not erase explicit facts" in prompt
         assert "A human request to propose failure/restart behavior permits concrete, labelled proposals" in prompt
         assert "Otherwise keep failure_states empty and restart_action null" in prompt
@@ -875,7 +876,7 @@ def test_governed_prompts_are_concise_design_instructions_not_copied_checklists(
     assert prompt.count(request["objective"]) == 1
     assert "review targets" not in task.lower()
     assert "do not copy the human request" in task.lower()
-    assert "do not expand completion actions" in task.lower()
+    assert "add no return/delivery/hand-in requirements through speech, hooks or notes" in task.lower()
     assert "manual_test" in task and "completion_action" in task and "quest_index" in task
     assert "state_contract.event_actions" not in task
     assert "plan" not in payload and "resolved_decisions" in payload

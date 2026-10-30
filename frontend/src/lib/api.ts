@@ -436,7 +436,8 @@ export interface DesignFindingReview {
 
 export interface DraftQualityAdvisory {
   id: string;
-  check: "quest_label_mismatch" | "objective_text_copied_as_dialogue" | "warning_in_rules";
+  check: "quest_label_mismatch" | "objective_text_copied_as_dialogue" | "warning_in_rules"
+    | "empty_quest_dialogue" | "quest_label_in_assumptions" | "runtime_value_without_support";
   severity: "low" | "medium";
   paths: string[];
   message: string;

@@ -116,6 +116,21 @@ def test_quest_hooks_are_requested_as_spoken_lines_not_narration(design_prompt):
     assert "label new wording and event bindings as proposals in assumptions" in design_prompt
 
 
+def test_v2_generation_keeps_the_compact_runtime_source_and_spoken_hook_rules():
+    from test_design_contract_v2 import REQUEST, governed_artifact
+    capture = BlueprintCapturingProvider(governed_artifact())
+    NvidiaDesignAgentProvider(llm_provider=capture).generate(REQUEST, [])
+    task = capture.requests[0].messages[1]['content'].split('Task: ', 1)[1].split('\nInput:', 1)[0]
+    for rule in (
+        'Runtime inputs and new gameplay requirements need cited evidence or frozen resolved_decisions; otherwise omit with a warning.',
+        'Add no return/delivery/hand-in requirements through speech, hooks or notes.',
+        'Preserve source-stated faction-choice consequences in narrative/systems.',
+        'Each quest with an objective needs at least one short spoken dialogue_hooks line, not copied objective text.',
+    ):
+        assert task.count(rule) == 1
+    assert 'Fill every supported section in the requested scope before expanding NPCs and quests.' not in task
+
+
 def test_quest_steps_are_concrete_and_not_silenced_by_npc_mapping_rule(design_prompt):
     assert "quest implementation_notes" in design_prompt
     assert "scene integration and manual verification of state_contract" in design_prompt

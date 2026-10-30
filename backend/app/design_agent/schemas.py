@@ -159,7 +159,8 @@ class DesignAgentEvidenceResponse(BaseModel):
 
 class DraftQualityAdvisory(BaseModel):
     id: str
-    check: Literal["quest_label_mismatch", "objective_text_copied_as_dialogue", "warning_in_rules"]
+    check: Literal["quest_label_mismatch", "objective_text_copied_as_dialogue", "warning_in_rules",
+                   "empty_quest_dialogue", "quest_label_in_assumptions", "runtime_value_without_support"]
     severity: Literal["low", "medium"]
     paths: list[str]
     message: str

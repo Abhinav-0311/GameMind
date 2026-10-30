@@ -72,6 +72,15 @@ const { deriveReviewGate } = await import(`data:text/javascript;base64,${Buffer.
 const advisory = { id: "exact-check", check: "quest_label_mismatch", severity: "medium",
   paths: ["/npc_archetypes/content/npcs/0/dialogue_triggers/0/situation"],
   message: "Review both fields; neither is assumed correct.", values: { situation: "Quest 0", quest_id: "quest_1" } };
+const moreAdvisories = [
+  { ...advisory, id: "empty-hook", check: "empty_quest_dialogue", severity: "low",
+    paths: ["/quest_hooks/content/quests/0/dialogue_hooks"], values: { objective: "Mine 5 ore.", dialogue_hooks: [] } },
+  { ...advisory, id: "note-label", check: "quest_label_in_assumptions",
+    values: { note: "Associated with Quest 0", quest_id: "quest_1" } },
+  { ...advisory, id: "runtime-value", check: "runtime_value_without_support",
+    paths: ["/unity_runtime_preview/content/primary_input"],
+    values: { value: "<Keyboard and Mouse>", evidence_ids: ["source-1"], decision_ids: ["decision-1"] } },
+];
 
 async function loadComponent(name) {
   const componentSource = await readFile(new URL(`../src/components/${name}.tsx`, import.meta.url), "utf8");
@@ -116,7 +125,7 @@ test("advisories cannot set needsRevision or disable approval, including on bloc
   for (const variant of [run, { ...run, degraded: true }, { ...run, approval_blocked_reason: "Recorded rejection" }]) {
     const before = deriveReviewGate({ ...inputs, activeRun: variant });
     const after = deriveReviewGate({ ...inputs, activeRun: { ...variant,
-      draft_evaluation: { artifact_id: "draft", advisories: [advisory] } } });
+      draft_evaluation: { artifact_id: "draft", advisories: [advisory, ...moreAdvisories] } } });
     assert.deepEqual(after, before);
   }
   assert.equal(deriveReviewGate({ ...inputs, findingReview: { critique_blocked: true } }).needsRevision, true);
@@ -147,6 +156,22 @@ test("advisory comparison renders objective text and misplaced rule without exec
   ] } }));
   for (const text of [/Dialogue/, /Matching objective/, /Mine five ore\./, /Mine FIVE ore!/, /Rule text/, /WARNING: &lt;script&gt;/]) assert.match(html, text);
   assert.doesNotMatch(html, /<(button|input|form|select|script)\b/);
+});
+
+test("new advisories show their exact comparisons without controls or executable markup", async () => {
+  const Panel = await loadComponent("DraftQualityAdvisories");
+  const html = renderToStaticMarkup(Panel({ evaluation: { artifact_id: "draft", advisories: moreAdvisories } }));
+  for (const pattern of [/Mine 5 ore\./, /Dialogue hooks/, /\[\]/, /Associated with Quest 0/, /Linked quest ID/,
+    /quest_1/, /Runtime value/, /&lt;Keyboard and Mouse&gt;/, /source-1/, /decision-1/, /#runtime-/]) assert.match(html, pattern);
+  assert.doesNotMatch(html, /<(button|input|form|select|script)\b/);
+});
+
+test("Home uses the effective provider, not the legacy mode or NVIDIA wording", async () => {
+  const home = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+  assert.match(home, /health\?\.llm_provider/);
+  assert.doesNotMatch(home, /health\?\.ai_mode/);
+  assert.match(home, /AI review is an explicit, governed choice\./);
+  assert.doesNotMatch(home, /NVIDIA review/);
 });
 
 test("absent human evaluation makes no request", async (context) => {
