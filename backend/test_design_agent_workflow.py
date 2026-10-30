@@ -472,6 +472,7 @@ def test_normal_review_api_persists_compact_dialogue_revision_and_recritiques(db
     service = make_service(db_session, rag, provider=provider)
     try:
         run = start_run(service, document.id, project_id)
+        assert run["draft_evaluation"]["artifact_id"] == run["current_artifact"]["id"]
         response = client.post(
             f"/api/v1/design-agent/runs/{run['id']}/review",
             headers={"X-Game-Project-ID": project_id},
@@ -481,6 +482,8 @@ def test_normal_review_api_persists_compact_dialogue_revision_and_recritiques(db
         assert response.status_code == 200, response.text
         revised = response.json()
         assert revised["status"] == "awaiting_review" and revised["revision_count"] == 1
+        assert revised["draft_evaluation"]["artifact_id"] == revised["current_artifact"]["id"]
+        assert revised["draft_evaluation"]["artifact_id"] != run["draft_evaluation"]["artifact_id"]
         assert provider.revision_calls == 1 and provider.critique_calls == 2
         assert rag.calls == 1
         after = revised["current_artifact"]["content"]

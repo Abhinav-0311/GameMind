@@ -152,13 +152,18 @@ class ContentFieldRevision(ContentBlueprintRevision):
     changes: list[ContentFieldChange] = Field(min_length=1, max_length=32)
 
 
-def content_field_revision_model(targets: list[str], artifact: dict) -> type[BaseModel]:
+def content_field_revision_model(targets: list[str], artifact: dict, *, target_paths: list[str] | None = None) -> type[BaseModel]:
     if not targets or any(target not in ContentBlueprintDraft.model_fields for target in targets):
         raise ValueError("Select valid content revision sections.")
     projected = project_content_revision(artifact, targets)
     paths = [path for path in artifact_content_paths(projected)
              if path.rsplit("/", 1)[-1] not in {"id", "trigger"}]
     paths.extend(f"/{section}/{field}" for section in targets for field in ("citations", "confidence", "warnings"))
+    if target_paths is not None:
+        from app.design_agent.field_corrections import validate_target_paths
+        paths = validate_target_paths(target_paths, artifact)
+        if any(path.split('/')[1] not in targets for path in paths):
+            raise ValueError('Correction paths must belong to the selected sections.')
     contract = content_revision_model(targets, artifact).model_validate(projected)
     types = {}
     for path in paths:
@@ -181,12 +186,19 @@ def content_field_revision_model(targets: list[str], artifact: dict) -> type[Bas
                 for index, (annotation, allowed) in enumerate(types.items())]
     change = Union[tuple(variants)]
     return create_model("ScopedContentFieldRevision", __base__=ContentFieldRevision,
-                        changes=(list[change], Field(min_length=1, max_length=32)))
+                        changes=(list[change], Field(min_length=1, max_length=len(paths) if target_paths is not None else 32)))
 
 
 def assemble_content_field_revision(artifact: dict, content: dict, targets: list[str], evidence: list[dict],
-                                    *, defer_runtime: bool = False) -> dict:
-    changes = content_field_revision_model(targets, artifact).model_validate(content).model_dump()["changes"]
+                                    *, defer_runtime: bool = False, target_paths: list[str] | None = None) -> dict:
+    changes = content_field_revision_model(targets, artifact, target_paths=target_paths).model_validate(content).model_dump()["changes"]
+    if target_paths is not None:
+        from app.design_agent.field_corrections import expected_correction
+        replacements = {change['artifact_path']: change['replacement'] for change in changes}
+        if len(replacements) != len(changes) or set(replacements) != set(target_paths):
+            raise ValueError('Correct each selected field exactly once.')
+        candidate = expected_correction(artifact, replacements, evidence)
+        return {target: candidate[target] for target in targets}
     wire, identities = project_content_revision(artifact, targets), copy.deepcopy(artifact)
     seen = []
     for change in changes:

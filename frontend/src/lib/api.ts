@@ -434,6 +434,20 @@ export interface DesignFindingReview {
   resolutions: DesignFindingResolution[];
 }
 
+export interface DraftQualityAdvisory {
+  id: string;
+  check: "quest_label_mismatch" | "objective_text_copied_as_dialogue" | "warning_in_rules";
+  severity: "low" | "medium";
+  paths: string[];
+  message: string;
+  values: Record<string, unknown>;
+}
+
+export interface DraftQualityEvaluation {
+  artifact_id: string;
+  advisories: DraftQualityAdvisory[];
+}
+
 export interface DesignAgentRun {
   id: string;
   game_project_id: string;
@@ -443,6 +457,8 @@ export interface DesignAgentRun {
   current_node?: string | null;
   provider_name: string;
   degraded: boolean;
+  draft_evaluation?: DraftQualityEvaluation | null;
+  has_evaluation?: boolean;
   defer_runtime?: boolean;
   allow_unspecified_memory?: boolean;
   retrieval_revision: number;
@@ -1070,7 +1086,7 @@ export const api = {
 
   async reviewDesignAgentRun(
     runId: string,
-    payload: { decision: "approve" | "reject"; reason?: string; target_sections?: string[];
+    payload: { decision: "approve" | "reject" | "request_correction"; reason?: string; target_sections?: string[]; target_paths?: string[];
       artifact_id?: string; confirmed_proposals?: DesignAgentProposalConfirmation[]; acknowledge_degraded?: boolean },
   ): Promise<DesignAgentRun> {
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/review`, {
@@ -1113,10 +1129,10 @@ export const api = {
     return res.json();
   },
 
-  async getDesignAgentEvaluation(runId: string): Promise<DesignAgentEvaluation | null> {
+  async getDesignAgentEvaluation(runId: string, hasEvaluation: boolean): Promise<DesignAgentEvaluation | null> {
+    if (!hasEvaluation) return null;
     const res = await fetch(`${API_BASE_URL}/api/v1/design-agent/runs/${runId}/evaluation`);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error("Could not load the quality scorecard");
+    if (!res.ok) throw new ApiRequestError(await responseErrorMessage(res, "Could not load the human evaluation"), res.status);
     return res.json();
   },
 

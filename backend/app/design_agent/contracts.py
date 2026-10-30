@@ -916,7 +916,7 @@ class ProposalConfirmation(BaseModel):
 
 
 class ResumeDecision(BaseModel):
-    decision: Literal["approve", "reject"]
+    decision: Literal["approve", "reject", "request_correction"]
     reason: str | None = None
     reviewer_user_id: str | None = None
     reviewer_label: str = "local_developer"
@@ -924,9 +924,18 @@ class ResumeDecision(BaseModel):
     artifact_id: UUID | None = None
     confirmed_proposals: list[ProposalConfirmation] = Field(default_factory=list, max_length=64)
     acknowledge_degraded: StrictBool = False
+    target_paths: list[str] | None = None
+    correction_request_id: UUID | None = None
 
     @model_validator(mode="after")
     def require_confirmation_scope(self):
+        if self.decision == "request_correction":
+            from app.design_agent.field_corrections import validate_target_paths
+            self.target_paths = validate_target_paths(self.target_paths)
+            if self.artifact_id is None or not (self.reason or '').strip() or self.target_sections is not None:
+                raise ValueError('A correction requires the current artifact_id, a reason and exact target_paths, not sections.')
+        elif self.target_paths is not None or self.correction_request_id is not None:
+            raise ValueError('Exact correction paths are only accepted with request_correction.')
         if self.acknowledge_degraded and (self.decision != "approve" or self.artifact_id is None):
             raise ValueError("Degraded acknowledgement requires approval and the exact artifact_id.")
         if self.confirmed_proposals and (self.decision != "approve" or self.artifact_id is None):
@@ -962,6 +971,8 @@ class DesignAgentState(TypedDict, total=False):
     review_decision: str
     rejection_reason: str
     revision_targets: list[str]
+    correction_paths: list[str]
+    correction_request_id: str | None
     revision_failed: bool
     finalization_failed: bool
     acknowledge_degraded: bool

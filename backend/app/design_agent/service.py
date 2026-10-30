@@ -30,6 +30,7 @@ from app.models.design_agent import (
     DesignAgentArtifact,
     DesignAgentCritique,
     DesignAgentEvidenceSnapshot,
+    DesignAgentEvaluation,
     DesignAgentJob,
     DesignAgentNodeExecution,
     DesignAgentReviewEvent,
@@ -111,6 +112,13 @@ class DesignAgentService:
             current_node=run.current_node,
             provider_name=run.provider_name,
             degraded=degraded_review_required(db, run),
+            has_evaluation=run.status == "completed" and db.query(DesignAgentEvaluation.id).filter(
+                DesignAgentEvaluation.run_id == run.id,
+                DesignAgentEvaluation.game_project_id == run.game_project_id,
+            ).first() is not None,
+            draft_evaluation=((run.model_config or {}).get("draft_quality_evaluation")
+                              if reviewed_artifact and str(reviewed_artifact.id) ==
+                              (run.model_config or {}).get("draft_quality_evaluation", {}).get("artifact_id") else None),
             defer_runtime=(run.model_config or {}).get("defer_runtime") is True,
             allow_unspecified_memory=(run.model_config or {}).get("allow_unspecified_memory") is True,
             retrieval_revision=run.retrieval_revision,
@@ -324,6 +332,7 @@ class DesignAgentService:
         artifact_id: UUID | None = None,
         confirmed_proposals: list[dict] | None = None,
         acknowledge_degraded: bool = False,
+        target_paths: list[str] | None = None,
     ) -> DesignAgentRunResponse:
         run = self._get_run(db, run_id, game_project_id)
         if run.status != "awaiting_review":
@@ -331,7 +340,12 @@ class DesignAgentService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"This run cannot be reviewed while its status is '{run.status}'.",
             )
-        if decision == "reject" and run.revision_count >= run.max_revisions:
+        if decision != 'request_correction' and db.query(DesignAgentNodeExecution.id).filter(
+                DesignAgentNodeExecution.run_id == run.id,
+                DesignAgentNodeExecution.node_name == 'correction_request',
+                DesignAgentNodeExecution.status.in_(['pending', 'running'])).first():
+            raise HTTPException(status_code=409, detail='A correction is active. Wait for its outcome before reviewing this draft.')
+        if decision in {"reject", "request_correction"} and run.revision_count >= run.max_revisions:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
@@ -339,7 +353,7 @@ class DesignAgentService:
                     "a clearer objective and fresh provider consent. The current draft is unchanged."
                 ),
             )
-        if (decision == "reject" and (run.model_config or {}).get("consecutive_revision_failures", 0)
+        if (decision in {"reject", "request_correction"} and (run.model_config or {}).get("consecutive_revision_failures", 0)
                 >= settings.DESIGN_AGENT_MAX_CONSECUTIVE_REVISION_FAILURES):
             raise HTTPException(status_code=409, detail="Consecutive failed revision limit reached. No further revision request was sent; start a new run with fresh consent. The draft is unchanged.")
         if decision == "approve":
@@ -360,7 +374,7 @@ class DesignAgentService:
             DesignAgentReviewEvent.run_id == run.id,
             DesignAgentReviewEvent.game_project_id == game_project_id,
             DesignAgentReviewEvent.artifact_id == artifact.id).first() if artifact else None
-        if existing_review and existing_review.decision != decision:
+        if existing_review and existing_review.decision != decision and decision != 'request_correction':
             raise HTTPException(status_code=409, detail=(REJECTED_DRAFT_APPROVAL_MESSAGE
                 if existing_review.decision == "reject" else
                 "This draft already has a recorded approval and cannot currently be rejected."))
@@ -377,6 +391,15 @@ class DesignAgentService:
                         "This draft needs revision before approval: " + str(error)
                     ),
                 ) from error
+        if decision == 'request_correction':
+            from app.design_agent.field_corrections import validate_target_paths
+            if artifact is None or artifact.immutable or artifact_id != artifact.id:
+                raise HTTPException(status_code=409, detail='A correction requires the current mutable artifact_id.')
+            try:
+                target_paths = validate_target_paths(target_paths, artifact.content)
+                ResumeDecision(decision=decision, reason=reason, artifact_id=artifact_id, target_paths=target_paths)
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
         resume_decision = ResumeDecision(
             decision=decision,
             reason=reason.strip() if reason else None,
@@ -386,7 +409,37 @@ class DesignAgentService:
             artifact_id=artifact.id if artifact else None,
             confirmed_proposals=confirmed_proposals or [],
             acknowledge_degraded=acknowledge_degraded,
+            target_paths=target_paths,
         )
+        if decision == 'request_correction':
+            from app.design_agent.field_corrections import correction_effects, pointer_value
+            from app.design_agent.finding_reviews import content_digest
+            # Reserve under the run lock, then release it before graph/provider work.
+            db.refresh(run, with_for_update=True)
+            latest = db.query(DesignAgentArtifact).filter_by(run_id=run.id).order_by(DesignAgentArtifact.version.desc()).first()
+            if run.status != 'awaiting_review' or latest.id != artifact.id or latest.immutable:
+                db.rollback()
+                raise HTTPException(status_code=409, detail='The review context changed; refresh the current mutable draft.')
+            fingerprint = content_digest({'action': decision, 'artifact_id': str(artifact.id),
+                                          'target_paths': target_paths, 'reason': resume_decision.reason})
+            previous = db.query(DesignAgentNodeExecution).filter_by(run_id=run.id,
+                game_project_id=game_project_id, node_name='correction_request').all()
+            if any(item.status in {'pending', 'running'} or (item.details or {}).get('request_key') == fingerprint for item in previous):
+                db.rollback()
+                raise HTTPException(status_code=409, detail='This correction is already submitted or another correction is active. No new work was started.')
+            reservation = DesignAgentNodeExecution(run_id=run.id, game_project_id=game_project_id,
+                node_name='correction_request', attempt=max((item.attempt for item in previous), default=0) + 1,
+                status='pending', details={'action': decision, 'request_key': fingerprint,
+                    'artifact_id': str(artifact.id), 'artifact_version': artifact.version,
+                    'artifact_sha256': content_digest(artifact.content), 'target_paths': target_paths,
+                    'current_values': {path: pointer_value(artifact.content, path) for path in target_paths},
+                    'dependent_effects': [correction_effects(path) for path in target_paths],
+                    'reason': resume_decision.reason, 'reviewer_label': resume_decision.reviewer_label,
+                    'reviewer_user_id': resume_decision.reviewer_user_id, 'outcome': 'pending'})
+            db.add(reservation)
+            db.flush()
+            resume_decision.correction_request_id = reservation.id
+            run.status = 'review_queued'
         if settings.DESIGN_AGENT_EXECUTION_MODE == "queued":
             artifact = db.query(DesignAgentArtifact).filter(
                 DesignAgentArtifact.run_id == run.id,
@@ -401,6 +454,8 @@ class DesignAgentService:
             db.commit()
             db.refresh(run)
             return self._response(db, run)
+        if decision == 'request_correction':
+            db.commit()
         try:
             resumed = self.workflow.resume(
                 run.id,
@@ -423,6 +478,8 @@ class DesignAgentService:
             message = (OFFLINE_REVISION_UNAVAILABLE + " The previous draft and critique are unchanged. "
                        if run.provider_name == "mock" and run.last_error == OFFLINE_REVISION_UNAVAILABLE
                        else "The revision failed; the previous draft and critique are unchanged. ")
+            if decision == 'request_correction':
+                message = 'The correction failed; the previous draft and critique are unchanged. No rejection was recorded. The draft can still be approved if its other review gates allow. '
             raise HTTPException(status_code=self._failure_status(db, run, 409, node_name="revise"),
                 detail=message +
                 f"No revision was consumed; {remaining} successful revision slot(s) remain. "
