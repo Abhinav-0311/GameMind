@@ -929,7 +929,10 @@ def _request_coverage_gaps(
     return gaps
 
 
-def assess_draft_advisories(content: dict[str, Any]) -> list[DraftQualityAdvisory]:
+def assess_draft_advisories(
+    content: dict[str, Any], *, evidence: list[dict[str, Any]] | None = None,
+    resolved_decisions: list[dict[str, Any]] | None = None,
+) -> list[DraftQualityAdvisory]:
     """Read-only exact recognizers, separate from every finding and approval metric."""
     from app.design_agent.finding_reviews import content_digest
     advisories: list[DraftQualityAdvisory] = []
@@ -961,20 +964,72 @@ def assess_draft_advisories(content: dict[str, Any]) -> list[DraftQualityAdvisor
                     "The Quest label and linked quest ID disagree, or the numbered quest is absent. Review both fields; neither is assumed correct.",
                     {"situation": situation, "quest_id": quest_id, "quest_title": by_id[quest_id].get("title"),
                      "label_number": number, "linked_quest_number": suffixes[quest_id], "stored_quest_ids": [q["id"] for q in quests]})
+        linked_ids = {(trigger.get("eligibility") or {}).get("quest_id")
+                      for trigger in npc.get("dialogue_triggers", [])
+                      if (trigger.get("eligibility") or {}).get("quest_id") is not None}
+        if len(linked_ids) == 1:
+            quest_id = next(iter(linked_ids))
+            if quest_id in suffixes and sum(q["id"] == quest_id for q in quests) == 1:
+                for field in ("assumptions", "notes", "implementation_notes", "relationship_notes"):
+                    notes = npc.get(field, [])
+                    if not isinstance(notes, list):
+                        continue
+                    for j, note in enumerate(notes):
+                        if not isinstance(note, str):
+                            continue
+                        labels = set(re.findall(r"\bQuest ([0-9]+)\b", note, re.I))
+                        if (len(labels) == 1 and re.search(r"\bassociated with Quest ([0-9]+)\b", note, re.I)
+                                and int(next(iter(labels))) != suffixes[quest_id]):
+                            add("quest_label_in_assumptions", "medium", [f"/npc_archetypes/content/npcs/{i}/{field}/{j}"],
+                                "The association note's Quest label and the NPC's linked quest ID disagree. Review both; neither is assumed correct.",
+                                {"note": note, "quest_id": quest_id, "label_number": int(next(iter(labels))),
+                                 "linked_quest_number": suffixes[quest_id]})
     for i, quest in enumerate(quests):
         base = f"/quest_hooks/content/quests/{i}"
         objectives = [(base + "/objective", quest.get("objective", ""))] + [
             (base + f"/objectives/{j}", objective) for j, objective in enumerate(quest.get("objectives", []))]
-        for j, dialogue in enumerate(quest.get("dialogue_hooks", [])):
+        dialogues = quest.get("dialogue_hooks")
+        for j, dialogue in enumerate(dialogues if isinstance(dialogues, list) else []):
+            if not isinstance(dialogue, str):
+                continue
             matches = [(path, text) for path, text in objectives if normalized(text) and normalized(dialogue) == normalized(text)]
             if matches:
                 add("objective_text_copied_as_dialogue", "medium", [base + f"/dialogue_hooks/{j}", *[p for p, _ in matches]],
                     "Dialogue exactly repeats an objective after text normalization. Review whether this is useful spoken dialogue.",
                     {"dialogue": dialogue, "objectives": [{"path": p, "value": text} for p, text in matches]})
+        if isinstance(quest.get("objective"), str) and quest["objective"].strip() and dialogues == []:
+            add("empty_quest_dialogue", "low", [base + "/dialogue_hooks"],
+                "This quest has an objective but no quest dialogue hook. Confirm whether it should be silent or needs a spoken line.",
+                {"objective": quest["objective"], "dialogue_hooks": []})
     for i, rule in enumerate(content.get("npc_memory_design", {}).get("content", {}).get("rules", [])):
         if rule.strip() in {"Unspecified, not assessed.", "Unspecified, not assessed"} or rule.strip().lower().startswith("warning:"):
             add("warning_in_rules", "low", [f"/npc_memory_design/content/rules/{i}"],
                 "Move this metadata warning to the section's warnings list; do not treat it as a memory rule.", {"rule": rule})
+    if evidence is not None and resolved_decisions is not None:
+        runtime = content.get("unity_runtime_preview", {})
+        cited_ids = list(dict.fromkeys(runtime.get("citations", [])))
+        excerpts = {chunk_id: {item["content"] for item in evidence
+                              if str(item.get("chunk_id")) == chunk_id and isinstance(item.get("content"), str)}
+                    for chunk_id in cited_ids}
+        # Missing/conflicting frozen excerpts cannot establish literal absence.
+        if all(len(texts) == 1 for texts in excerpts.values()):
+            def tokens(value):
+                return re.findall(r"[^\W_]+", unicodedata.normalize("NFKC", str(value)).casefold())
+
+            texts = [next(iter(values)) for values in excerpts.values()]
+            texts += [item["decision"] for item in resolved_decisions if isinstance(item.get("decision"), str)]
+            tokenized = [tokens(text) for text in texts]
+            for field in ("primary_input", "target_platform"):
+                value = runtime.get("content", {}).get(field)
+                if not isinstance(value, (str, int, float, bool)):
+                    continue
+                needle = tokens(value)
+                if needle and not any(haystack[i:i + len(needle)] == needle for haystack in tokenized
+                                      for i in range(len(haystack) - len(needle) + 1)):
+                    add("runtime_value_without_support", "medium", [f"/unity_runtime_preview/content/{field}"],
+                        "No literal supporting value found. This literal-text check is not proof the value is wrong; review the cited evidence and frozen decisions.",
+                        {"value": value, "evidence_ids": cited_ids,
+                         "decision_ids": [str(item["decision_id"]) for item in resolved_decisions if item.get("decision_id")]})
     return advisories
 
 

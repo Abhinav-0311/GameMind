@@ -617,7 +617,7 @@ class DesignAgentWorkflow:
             )
             db.add(artifact)
             db.flush()
-            save_draft_quality_evaluation(run, artifact)
+            save_draft_quality_evaluation(run, artifact, evidence=state["evidence_items"])
             db.commit()
             db.refresh(artifact)
             return {
@@ -873,7 +873,7 @@ class DesignAgentWorkflow:
             run.model_config = {**(run.model_config or {}), "consecutive_revision_failures": 0}
             db.add(artifact)
             db.flush()
-            save_draft_quality_evaluation(run, artifact)
+            save_draft_quality_evaluation(run, artifact, evidence=state["evidence_items"])
             db.commit()
             db.refresh(artifact)
             return {

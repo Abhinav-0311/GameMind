@@ -104,7 +104,8 @@ export default function WorkspaceOverview() {
   const hasBlockedRuntimeRelease = blueprints.some(
     (blueprint) => hasMaterializedRuntimeRecords(blueprint) && readinessByBlueprint[blueprint.id] && !readinessByBlueprint[blueprint.id].can_serve_runtime
   );
-  const isLocalMode = health?.ai_mode === "local_demo";
+  const provider = health?.llm_provider;
+  const isLocalMode = provider === "mock";
 
   const nextAction: NextAction = useMemo(() => {
     if (isLoading || !available.documents || !available.blueprints || !available.readiness) {
@@ -195,8 +196,7 @@ export default function WorkspaceOverview() {
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
             GameMind helps new game developers convert GDDs, lore, NPC notes, quest ideas, and level concepts into
-            grounded blueprints and engine-ready runtime data. Local evidence checks run first; NVIDIA review is an
-            explicit, governed choice.
+            grounded blueprints and engine-ready runtime data. Local evidence checks run first; AI review is an explicit, governed choice.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -308,7 +308,7 @@ export default function WorkspaceOverview() {
             <ReadinessRow label="Backend" value={health?.status ?? "unavailable"} good={health?.status === "healthy"} loading={isLoading} />
             <ReadinessRow label="Database" value={health?.database ?? "unavailable"} good={health?.database === "healthy"} loading={isLoading} />
             <ReadinessRow label="Vector index" value={health?.chromadb ?? "unavailable"} good={health?.chromadb === "healthy"} loading={isLoading} />
-            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : health?.ai_mode ?? "unavailable"} good={Boolean(health?.ai_mode)} loading={isLoading} />
+            <ReadinessRow label="AI mode" value={isLocalMode ? "local demo" : provider ?? "unavailable"} good={Boolean(provider)} loading={isLoading} />
           </div>
         </aside>
       </section>

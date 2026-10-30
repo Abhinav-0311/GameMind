@@ -31,14 +31,14 @@ def test_exact_positive_controls_and_stable_ids_without_mutation():
     draft = synthetic()
     before = copy.deepcopy(draft)
     advisories = grounding.assess_draft_advisories(draft)
-    assert [a.check for a in advisories] == ['quest_label_mismatch'] * 3 + ['objective_text_copied_as_dialogue'] * 2 + ['warning_in_rules']
-    assert [a.severity for a in advisories] == ['medium'] * 5 + ['low']
+    assert [a.check for a in advisories] == ['quest_label_mismatch'] * 3 + ['objective_text_copied_as_dialogue'] * 2 + ['empty_quest_dialogue', 'warning_in_rules']
+    assert [a.severity for a in advisories] == ['medium'] * 5 + ['low'] * 2
     assert advisories[0].values['situation'] == 'Quest 0 completion'
     assert advisories[0].values['quest_id'] == 'quest_1'
     assert advisories[0].paths == ['/npc_archetypes/content/npcs/0/dialogue_triggers/0/situation',
                                    '/npc_archetypes/content/npcs/0/dialogue_triggers/0/eligibility/quest_id']
     assert advisories[3].values['dialogue'] == 'Ｍｉｎｅ five chunks of ore!'
-    assert len({a.id for a in advisories}) == 6
+    assert len({a.id for a in advisories}) == 7
     assert advisories == grounding.assess_draft_advisories(draft)
     assert draft == before
 
@@ -86,6 +86,7 @@ def test_shared_words_and_real_warning_mechanic_are_not_advisories():
     draft = synthetic()
     draft['npc_archetypes'] = {'content': {'npcs': []}}
     draft['quest_hooks']['content']['quests'][0]['dialogue_hooks'] = ['Bring that ore back to me.']
+    draft['quest_hooks']['content']['quests'][1]['dialogue_hooks'] = ['Hold your ground.']
     draft['npc_memory_design']['content']['rules'] = ['Warn the player before deleting a save']
     assert grounding.assess_draft_advisories(draft) == []
 
@@ -100,7 +101,130 @@ def test_null_eligibility_and_duplicate_quest_ids_abstain():
     assert not any(a.check == 'quest_label_mismatch' for a in grounding.assess_draft_advisories(draft))
 
 
-def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(db_session):
+def more_advisory_draft():
+    return {
+        'npc_archetypes': {'content': {'npcs': [
+            {'assumptions': ['Associated with Quest 0.'], 'dialogue_triggers': [
+                {'situation': 'Check border post progress', 'eligibility': {'quest_id': 'quest_1'}}]},
+            {'notes': ['Associated with Quest 1.'], 'dialogue_triggers': [
+                {'situation': 'Check mining progress', 'eligibility': {'quest_id': 'quest_2'}}]},
+        ]}},
+        'quest_hooks': {'content': {'quests': [
+            {'id': 'quest_1', 'objective': 'Clear guards and raise the flag.', 'dialogue_hooks': []},
+            {'id': 'quest_2', 'objective': 'Mine 5 chunks of ore.', 'dialogue_hooks': []},
+        ]}},
+        'unity_runtime_preview': {'content': {'primary_input': 'Keyboard and Mouse',
+            'target_platform': 'Windows PC', 'engine_version': 'Proposed engine', 'runtime_notes': ['Server note']},
+            'citations': ['source']},
+    }
+
+
+def test_more_advisories_report_exact_values_without_changing_the_draft():
+    draft = more_advisory_draft()
+    before = copy.deepcopy(draft)
+    advisories = grounding.assess_draft_advisories(draft,
+        evidence=[{'chunk_id': 'source', 'content': 'Mine ore.'}],
+        resolved_decisions=[{'decision_id': 'platform', 'decision': 'Use Windows PC.'}])
+    grouped = {name: [a for a in advisories if a.check == name] for name in (
+        'empty_quest_dialogue', 'quest_label_in_assumptions', 'runtime_value_without_support')}
+    assert [len(v) for v in grouped.values()] == [2, 2, 1]
+    assert grouped['empty_quest_dialogue'][0].severity == 'low'
+    assert grouped['empty_quest_dialogue'][0].paths == ['/quest_hooks/content/quests/0/dialogue_hooks']
+    labels = grouped['quest_label_in_assumptions']
+    assert [a.values['quest_id'] for a in labels] == ['quest_1', 'quest_2']
+    assert labels[0].values['note'] == 'Associated with Quest 0.'
+    runtime = grouped['runtime_value_without_support'][0]
+    assert runtime.paths == ['/unity_runtime_preview/content/primary_input']
+    assert runtime.values == {'value': 'Keyboard and Mouse', 'evidence_ids': ['source'], 'decision_ids': ['platform']}
+    assert 'literal-text check' in runtime.message and 'not proof' in runtime.message
+    assert all(a.severity == 'medium' for a in [*labels, runtime])
+    assert draft == before
+    assert advisories == grounding.assess_draft_advisories(draft,
+        evidence=[{'chunk_id': 'source', 'content': 'Mine ore.'}],
+        resolved_decisions=[{'decision_id': 'platform', 'decision': 'Use Windows PC.'}])
+
+
+@pytest.mark.parametrize('hooks', [None, '', {}, ['Spoken invitation.'], ['']])
+def test_empty_dialogue_abstains_on_nonempty_or_invalid_values(hooks):
+    draft = more_advisory_draft()
+    for quest in draft['quest_hooks']['content']['quests']:
+        quest['dialogue_hooks'] = hooks
+    assert not any(a.check == 'empty_quest_dialogue' for a in grounding.assess_draft_advisories(draft))
+
+
+def test_empty_dialogue_requires_explicit_list_and_nonblank_objective():
+    draft = more_advisory_draft()
+    first, second = draft['quest_hooks']['content']['quests']
+    first.pop('dialogue_hooks')
+    second['objective'] = ' '
+    assert not any(a.check == 'empty_quest_dialogue' for a in grounding.assess_draft_advisories(draft))
+
+
+@pytest.mark.parametrize('text', ['quest_index 0/1', 'Remembers the betrayal in Quest 2',
+    'Associated with Quest 1', 'Associated with Quest 0; remembers Quest 2'])
+def test_assumption_labels_abstain_on_indexes_other_mentions_and_ambiguity(text):
+    draft = more_advisory_draft()
+    draft['npc_archetypes']['content']['npcs'] = [draft['npc_archetypes']['content']['npcs'][0]]
+    draft['npc_archetypes']['content']['npcs'][0]['assumptions'] = [text]
+    assert not any(a.check == 'quest_label_in_assumptions' for a in grounding.assess_draft_advisories(draft))
+
+
+@pytest.mark.parametrize('field', ['assumptions', 'notes', 'implementation_notes', 'relationship_notes'])
+def test_association_recognition_is_case_insensitive_in_each_supported_note_list(field):
+    draft = more_advisory_draft()
+    npc = draft['npc_archetypes']['content']['npcs'][0]
+    draft['npc_archetypes']['content']['npcs'] = [npc]
+    npc.pop('assumptions')
+    npc[field] = ['aSsOcIaTeD wItH qUeSt 0.']
+    advisory, = [a for a in grounding.assess_draft_advisories(draft) if a.check == 'quest_label_in_assumptions']
+    assert advisory.paths == [f'/npc_archetypes/content/npcs/0/{field}/0']
+    assert advisory.values['quest_id'] == 'quest_1'
+
+
+@pytest.mark.parametrize('links', [[None], ['missing'], ['quest_1', 'quest_2']])
+def test_assumption_labels_require_one_resolvable_link(links):
+    draft = more_advisory_draft()
+    npc = draft['npc_archetypes']['content']['npcs'][0]
+    draft['npc_archetypes']['content']['npcs'] = [npc]
+    npc['dialogue_triggers'] = [{'situation': 'Progress', 'eligibility': {'quest_id': link}} for link in links]
+    assert not any(a.check == 'quest_label_in_assumptions' for a in grounding.assess_draft_advisories(draft))
+    npc['dialogue_triggers'] = [{'situation': 'Progress', 'eligibility': {'quest_id': 'quest_1'}}]
+    draft['quest_hooks']['content']['quests'].append(copy.deepcopy(draft['quest_hooks']['content']['quests'][0]))
+    assert not any(a.check == 'quest_label_in_assumptions' for a in grounding.assess_draft_advisories(draft))
+
+
+@pytest.mark.parametrize('evidence,decisions', [
+    (None, None), ([], None), (None, []),
+    ([{'chunk_id': 'different', 'content': 'Other source'}], []),
+])
+def test_runtime_support_abstains_without_complete_frozen_context(evidence, decisions):
+    assert not any(a.check == 'runtime_value_without_support' for a in grounding.assess_draft_advisories(
+        more_advisory_draft(), evidence=evidence, resolved_decisions=decisions))
+
+
+@pytest.mark.parametrize('value', ['Keyboard and Mouse', 'ＫＥＹＢＯＡＲＤ and mouse', False, 7])
+def test_runtime_support_matches_complete_tokens_in_cited_evidence(value):
+    draft = more_advisory_draft()
+    draft['unity_runtime_preview']['content']['primary_input'] = value
+    advisories = grounding.assess_draft_advisories(draft,
+        evidence=[{'chunk_id': 'source', 'content': 'Keyboard and Mouse; false; 7.'}],
+        resolved_decisions=[{'decision_id': 'platform', 'decision': 'Use Windows PC.'}])
+    assert not any(a.check == 'runtime_value_without_support' for a in advisories)
+
+
+def test_runtime_support_ignores_uncited_text_and_invalid_or_blank_values():
+    draft = more_advisory_draft()
+    context = {'evidence': [{'chunk_id': 'source', 'content': 'Keyboard choice and a Mouse.'},
+                            {'chunk_id': 'uncited', 'content': 'Keyboard and Mouse'}],
+               'resolved_decisions': [{'decision_id': 'platform', 'decision': 'Use Windows PC.'}]}
+    assert len([a for a in grounding.assess_draft_advisories(draft, **context)
+                if a.check == 'runtime_value_without_support']) == 1
+    for value in (None, '', ' ', [], {}, '---'):
+        draft['unity_runtime_preview']['content']['primary_input'] = value
+        assert not any(a.check == 'runtime_value_without_support' for a in grounding.assess_draft_advisories(draft, **context))
+
+
+def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(db_session, monkeypatch):
     from app.design_agent.evaluation import save_draft_quality_evaluation
     from app.design_agent.finding_reviews import DesignFindingReviewService, content_digest
     from app.design_agent.review_policy import validate_persisted_design_approval
@@ -110,6 +234,12 @@ def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(
     from verify_final_integrity import verify_final_integrity
 
     workflow, run, artifact, critique, state = saved_review(db_session)
+    new_advisories = grounding.assess_draft_advisories(more_advisory_draft(),
+        evidence=[{'chunk_id': 'source', 'content': 'Mine ore.'}],
+        resolved_decisions=[{'decision_id': 'platform', 'decision': 'Use Windows PC.'}])
+    assess = grounding.assess_draft_advisories
+    monkeypatch.setattr(grounding, 'assess_draft_advisories',
+        lambda content, **context: assess(content, **context) + new_advisories)
     snapshot = db_session.get(DesignAgentEvidenceSnapshot, artifact.evidence_snapshot_id)
     before = copy.deepcopy((artifact.content, critique.content, state))
     identities = DesignFindingReviewService._identities(artifact, critique, snapshot)
@@ -122,6 +252,8 @@ def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(
     response = DesignAgentService._response(db_session, run)
     assert response.draft_evaluation.artifact_id == artifact.id
     assert any(a.check == 'warning_in_rules' for a in response.draft_evaluation.advisories)
+    assert {'empty_quest_dialogue', 'quest_label_in_assumptions', 'runtime_value_without_support'} <= {
+        a.check for a in response.draft_evaluation.advisories}
     assert DesignFindingReviewService._identities(artifact, critique, snapshot) == identities
     assert validate_persisted_design_approval(db_session, run, artifact, state['confirmed_proposals']) == score
     assert saved_review_request(run) == review_request
@@ -138,6 +270,24 @@ def test_persisted_advisory_evaluation_cannot_change_approval_identity_or_final(
     assert verify_final_integrity(artifact.content, final.content, run.model_config)['verdict'] == 'EXACT'
     brief, _ = DesignAgentService().technical_brief(db_session, run.id, run.game_project_id)
     assert 'warning_in_rules' not in brief and 'draft_quality_evaluation' not in brief
+    assert all(check not in brief for check in ('empty_quest_dialogue', 'quest_label_in_assumptions', 'runtime_value_without_support'))
+
+
+def test_persistence_receives_frozen_context_without_touching_it():
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from app.design_agent.evaluation import save_draft_quality_evaluation
+    run = SimpleNamespace(model_config={'resolved_decisions': [
+        {'decision_id': 'platform', 'decision': 'Use Windows PC.'}]})
+    artifact = SimpleNamespace(id=uuid4(), content=more_advisory_draft())
+    evidence = [{'chunk_id': 'source', 'content': 'Mine ore.'}]
+    before = copy.deepcopy((artifact.content, run.model_config, evidence))
+    save_draft_quality_evaluation(run, artifact, evidence=evidence)
+    runtime = [a for a in run.model_config['draft_quality_evaluation']['advisories']
+               if a['check'] == 'runtime_value_without_support']
+    assert [a['values']['value'] for a in runtime] == ['Keyboard and Mouse']
+    assert artifact.content == before[0] and evidence == before[2]
+    assert run.model_config['resolved_decisions'] == before[1]['resolved_decisions']
 
 
 def test_run_response_reports_only_its_scoped_human_evaluation(db_session):

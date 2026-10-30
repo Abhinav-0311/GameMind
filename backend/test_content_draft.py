@@ -246,8 +246,8 @@ def test_wire_schema_excludes_bookkeeping_but_keeps_grounding_and_runtime_bounda
     prompt = capture.requests[0].messages[1]["content"]
     assert "At most three spoken mappings per NPC" in prompt
     assert "no unsolicited greeting" in prompt
-    assert "spoken instructions, quest hooks and notes" in prompt
-    assert "Return, delivery or hand-in" in prompt
+    assert "Add no return/delivery/hand-in requirements through speech, hooks or notes" in prompt
+    assert "Runtime inputs and new gameplay requirements need cited evidence or frozen resolved_decisions" in prompt
     payload = json.loads(prompt.split("Input: ", 1)[1])
     assert payload["section_citation_ids"] == {section: [] for section in BLUEPRINT_SECTION_KEYS}
     overflow = copy.deepcopy(draft)

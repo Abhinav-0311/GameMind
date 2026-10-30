@@ -6,6 +6,13 @@ function comparedValues({ check, values }: DraftQualityAdvisory): [string, unkno
       ? values.objectives.map((objective): [string, unknown] => ["Matching objective", objective.value]) : [])];
   }
   if (check === "quest_label_mismatch") return [["Situation", values.situation], ["Linked quest ID", values.quest_id]];
+  if (check === "empty_quest_dialogue") return [["Objective", values.objective], ["Dialogue hooks", JSON.stringify(values.dialogue_hooks)]];
+  if (check === "quest_label_in_assumptions") return [["Association note", values.note], ["Linked quest ID", values.quest_id]];
+  if (check === "runtime_value_without_support") return [
+    ["Runtime value", typeof values.value === "string" ? values.value : JSON.stringify(values.value)],
+    ["Evidence IDs checked", Array.isArray(values.evidence_ids) ? values.evidence_ids.join(", ") || "None" : "Unavailable"],
+    ["Decision IDs checked", Array.isArray(values.decision_ids) ? values.decision_ids.join(", ") || "None" : "Unavailable"],
+  ];
   return [["Rule text", values.rule]];
 }
 
