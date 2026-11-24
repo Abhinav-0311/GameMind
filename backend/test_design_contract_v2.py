@@ -878,6 +878,8 @@ def test_governed_prompts_are_concise_design_instructions_not_copied_checklists(
     assert "do not copy the human request" in task.lower()
     assert "add no return/delivery/hand-in requirements through speech, hooks or notes" in task.lower()
     assert "manual_test" in task and "completion_action" in task and "quest_index" in task
+    assert "Quest runtime and dependencies are server-owned; omit both." in task
+    assert "quest.runtime null" not in task
     assert "state_contract.event_actions" not in task
     assert "plan" not in payload and "resolved_decisions" in payload
     capture = BlueprintCapturingProvider({"review_mode": "defect_detection", "verdict": "ready_for_review", "findings": [], "summary": "Capture only",

@@ -98,6 +98,27 @@ def test_saved_b4b_v2_final_hash_is_exactly_the_reviewed_hash(db_session):
     assert all(getattr(blueprint, key) == value for key, value in final.content.items())
 
 
+def test_historical_b4b_quest_bindings_still_validate_materialize_and_render(db_session):
+    from app.design_agent.contracts import GovernedBlueprintContent
+    from app.services.materializer_service import BlueprintMaterializerService
+
+    workflow, run, draft, _, state = saved_review(db_session)
+    before = copy.deepcopy(draft.content)
+    quests = before["quest_hooks"]["content"]["quests"]
+    assert all(quest["runtime"] for quest in quests)
+    assert quests[1]["dependencies"] == ["Quest Hook 1"]
+    assert GovernedBlueprintContent.model_validate(before).model_dump() == before
+    workflow._finalize(state)
+    final = db_session.query(DesignAgentArtifact).filter_by(run_id=run.id, artifact_type="final").one()
+    assert final.content == draft.content == before
+    blueprint = db_session.get(GameBlueprint, final.blueprint_id)
+    brief, _ = DesignAgentService().technical_brief(db_session, run.id, run.game_project_id)
+    assert "cinder_guard" in brief and "Quest Hook 1" in brief
+    materialization = BlueprintMaterializerService().materialize_blueprint(db_session, blueprint.id, run.game_project_id)
+    assert len(materialization["quests"]["created"]) == 2
+    assert blueprint.quest_hooks == before["quest_hooks"]
+
+
 @pytest.mark.parametrize('defer,memory', [(True, False), (False, True), (True, True)])
 def test_final_metadata_exceptions_are_exact_and_do_not_rewrite_review(db_session, defer, memory):
     workflow, run, draft, review, state = saved_review(db_session, defer=defer, memory=memory)

@@ -679,9 +679,11 @@ def grounded_response_model(contract: type[BaseModel], evidence: list[dict], *,
             records_type = content_type.model_fields[records_key].annotation
             if ids:
                 record_fields = {"source_chunk_ids": (citation_type, Field(min_length=1))}
-                if records_key == "quests" and defer_runtime:
-                    record_fields["runtime"] = (Literal[None], None)
                 variants = get_args(records_type.__args__[0]) or (records_type.__args__[0],)
+                # A content-first wire record excludes runtime entirely. Do not
+                # reintroduce it when narrowing the persisted/legacy contract.
+                if records_key == "quests" and defer_runtime and not variants[0].model_fields["runtime"].exclude:
+                    record_fields["runtime"] = (Literal[None], None)
                 record = Union[tuple(create_model("Grounded" + variant.__name__,
                                                   __base__=variant, **record_fields) for variant in variants)]
                 records = (list[record], deepcopy(content_type.model_fields[records_key]))

@@ -49,7 +49,7 @@ def test_explicit_source_quest_facts_cannot_be_reauthored_in_generation_or_revis
     assert provider._source_quest_facts([table]) == [{"objective": "Collect 5 crystals", "reward": "100 gold", "source_chunk_ids": [evidence[0]["chunk_id"]]}]
 
 
-def test_assembly_preserves_authored_content_and_derives_only_bookkeeping():
+def test_assembly_preserves_authored_content_and_leaves_server_owned_quest_fields_unset():
     source = governed_artifact()
     draft = content_draft_fixture(source)
     original = copy.deepcopy(draft)
@@ -60,8 +60,9 @@ def test_assembly_preserves_authored_content_and_derives_only_bookkeeping():
         assert result[section]["citations"] == source[section]["citations"]
     quest = result["quest_hooks"]["content"]["quests"][0]
     authored = draft["quest_hooks"]["content"]["quests"][0]
-    for key in ("objective", "reward", "failure_states", "dependencies", "source_chunk_ids", "runtime"):
+    for key in ("objective", "reward", "failure_states", "source_chunk_ids"):
         assert quest[key] == authored[key]
+    assert quest["runtime"] is None and quest["dependencies"] == []
     state = quest["state_contract"]
     flags = [item["flag"] for item in state["objectives"]]
     events = [item["event"] for item in state["objectives"]] + state["failure"]["events"] + [state["restart"]["event"]]
@@ -77,6 +78,21 @@ def test_assembly_preserves_authored_content_and_derives_only_bookkeeping():
     assert "unverified implementation proposals" in npc["assumptions"][-1]
     assert "unverified implementation proposals" in quest["assumptions"][-1]
     assert validate_generated_blueprint(result, design_contract_version=2)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("runtime", {"npc_slug": "mira", "difficulty": "Normal", "gold_reward": 100, "xp_reward": 0,
+                 "objectives": [{"description": "Clear guards", "target_type": "EnemyNPC",
+                                 "target_id": "guard", "quantity_required": 4}]}),
+    ("dependencies", ["Quest Hook 1"]),
+    ("runtime", None),
+    ("dependencies", []),
+])
+def test_generation_rejects_unsolicited_server_owned_fields(field, value):
+    draft = content_draft_fixture(governed_artifact())
+    draft["quest_hooks"]["content"]["quests"][0][field] = value
+    with pytest.raises(ValidationError, match=rf"Quest {field} is server-owned; omit it"):
+        assemble_content_draft(draft)
 
 
 def test_explicit_quest_indexes_keep_reordered_dialogue_attached_to_the_right_quest():
@@ -257,7 +273,7 @@ def test_wire_schema_excludes_bookkeeping_but_keeps_grounding_and_runtime_bounda
         ContentBlueprintDraft.model_validate(overflow)
     schema = ContentBlueprintDraft.model_json_schema()
     assert "propertyNames" not in json.dumps(schema)
-    assert not {"id", "state_contract"} & schema["$defs"]["DraftQuest"]["properties"].keys()
+    assert not {"id", "state_contract", "runtime", "dependencies"} & schema["$defs"]["DraftQuest"]["properties"].keys()
     assert not {"trigger", "eligibility", "manual_test"} & schema["$defs"]["DraftDialogue"]["properties"].keys()
     dialogue = schema["$defs"]["DraftDialogue"]
     for stage in ("greeting", "progress", "completion", "failed", "other"):
@@ -290,6 +306,7 @@ def test_wire_schema_excludes_bookkeeping_but_keeps_grounding_and_runtime_bounda
             NvidiaDesignAgentProvider(llm_provider=BlueprintCapturingProvider(
                 governed_artifact(), source_ids={source_id: invalid_reference})).generate(REQUEST, supplied)
     model = grounded_response_model(ContentBlueprintDraft, evidence, defer_runtime=True)
+    assert not {"runtime", "dependencies"} & model.model_json_schema()["$defs"]["GroundedDraftQuest"]["properties"].keys()
     draft["unity_runtime_preview"].update(content={}, citations=[], confidence="Low")
     assert model.model_validate(draft)
     for section, field in (("quest_hooks", "citations"), ("npc_archetypes", "source_chunk_ids")):

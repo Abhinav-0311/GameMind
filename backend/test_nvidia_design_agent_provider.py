@@ -133,6 +133,8 @@ def content_draft_fixture(content):
     indexes = {quest["id"]: index for index, quest in enumerate(quests)}
     for quest in quests:
         quest.pop("id")
+        quest.pop("runtime", None)
+        quest.pop("dependencies", None)
         state = quest.pop("state_contract")
         quest["objectives"] = [{"objective": item["objective"], "completion_action": state["event_actions"][item["event"]]}
                                for item in state["objectives"]]
