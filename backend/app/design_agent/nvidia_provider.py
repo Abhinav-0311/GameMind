@@ -592,7 +592,7 @@ class NvidiaDesignAgentProvider:
                     "Add no return/delivery/hand-in requirements through speech, hooks or notes. "
                     "Preserve source-stated faction-choice consequences in narrative/systems. "
                     "Each quest with an objective needs at least one short spoken dialogue_hooks line, not copied objective text. "
-                    "Runtime stays null without complete cited bindings. "
+                    "Quest runtime and dependencies are server-owned; omit both. "
                 )
                 payload = {"evidence": payload["evidence"], "section_content_guide": payload["section_content_guide"],
                            "resolved_decisions": payload["plan"].get("resolved_decisions", [])}
@@ -647,7 +647,11 @@ class NvidiaDesignAgentProvider:
             if human_request.get("fresh_dialogue") is True and node_name != "critique":
                 instruction += " Compose fresh spoken lines; content_segments are exact source spans, with example dialogue omitted, not missing GDD support."
             if human_request.get("defer_runtime") is True:
-                instruction += " Design-only scope: runtime preview content/citations empty, confidence Low with a deferral warning; quest.runtime null. This is not a missing-content defect."
+                instruction += (
+                    " Design-only scope: runtime preview content/citations empty, confidence Low with a deferral warning"
+                    + ("." if content_first or content_revision else "; quest.runtime null.")
+                    + " This is not a missing-content defect."
+                )
         if human_request.get("allow_unspecified_memory") is True and not dialogue_patch:
             instruction += (
                 " The human permits NPC memory to remain unspecified. Review existing memory, do not author it. "

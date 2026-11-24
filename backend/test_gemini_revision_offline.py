@@ -155,7 +155,11 @@ def test_revision_adapts_literals_to_env_byte_threshold(b3_revision, design_sche
                 with pytest.raises(NvidiaStructuredOutputError):
                     provider.complete(CompletionRequest('revise', request().messages, model))
         small_wire, large_wire = [call['response_format'][0]['schema'] for call in calls]
-        assert 10000 < len(json.dumps(design_schemas['revise'].model_json_schema(), separators=(',', ':')).encode()) < 20000
+        full = design_schemas['revise'].model_json_schema()
+        literal_schema = _gemini_response_schema(full, keep_literals=True)
+        # The literal-preserving candidate, not the unreduced schema, selects the mode.
+        assert len(json.dumps(literal_schema, separators=(',', ':'), ensure_ascii=False).encode()) > limit
+        assert len(json.dumps(full, separators=(',', ':'), ensure_ascii=False).encode()) < 20000
         assert ('enum' in small_wire['$defs']['TypedContentFieldChange0']['properties']['artifact_path']) is keeps_literals
         assert ('const' in small_wire['$defs']['TypedContentFieldChange1']['properties']['artifact_path']) is keeps_literals
         assert len(json.dumps(small_wire, separators=(',', ':'), ensure_ascii=False).encode()) == (1411 if keeps_literals else 1190)
@@ -165,6 +169,7 @@ def test_revision_adapts_literals_to_env_byte_threshold(b3_revision, design_sche
         records = [record.getMessage() for record in caplog.records if 'Gemini schema' in record.getMessage()]
         assert len(records) == 2
         assert ('mode=keep_literals' if keeps_literals else 'mode=reduced') in records[0]
+        assert 'mode=reduced' in records[1]
         assert f'bytes={1411 if keeps_literals else 1190}' in records[0]
         assert all('Faction' not in line and 'offline-key' not in line for line in records)
     finally:

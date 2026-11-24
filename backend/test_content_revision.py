@@ -3,9 +3,11 @@ import copy
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from app.design_agent.content_draft import (
-    assemble_content_revision, content_revision_model, project_content_revision,
+    assemble_content_field_revision, assemble_content_revision, content_field_revision_model,
+    content_revision_model, project_content_revision,
 )
 from app.design_agent.contracts import GovernedBlueprintContent, grounded_response_model
 from app.design_agent.grounding import validate_generated_blueprint
@@ -73,6 +75,62 @@ def test_reordered_revision_preserves_quest_ids_objective_keys_and_dialogue_refe
     assert mapping["trigger"] == original["npc_archetypes"]["content"]["npcs"][0]["dialogue_triggers"][0]["trigger"]
     assert mapping["eligibility"] == {"stage": "completion", "quest_id": "ore-contract", "lifecycle": "completed", "progress": "complete"}
     assert set(result) == set(targets)
+
+
+def test_section_revision_preserves_historical_bindings_and_dependencies_by_id():
+    from test_finalize_content_integrity import FIXTURE
+
+    original = json.loads(FIXTURE.read_text())["content"]
+    before = copy.deepcopy(original)
+    targets = ["quest_hooks"]
+    projected = project_content_revision(original, targets)
+    quests = projected["quest_hooks"]["content"]["quests"]
+    assert all(not {"runtime", "dependencies"} & quest.keys() for quest in quests)
+    quests.reverse()
+    change = {"changes": [{"artifact_path": "/quest_hooks/content/quests", "replacement": quests}]}
+    rebuilt = assemble_content_field_revision(original, change, targets, [])
+    saved = before["quest_hooks"]["content"]["quests"]
+    assert saved[0]["runtime"] != saved[1]["runtime"] and saved[1]["dependencies"]
+    for actual, old in zip(rebuilt["quest_hooks"]["content"]["quests"], reversed(saved)):
+        assert (actual["id"], actual["runtime"], actual["dependencies"]) == (
+            old["id"], old["runtime"], old["dependencies"])
+    assert original == before
+
+
+def test_section_revision_cannot_replace_a_historical_bound_quest_with_a_new_id():
+    from test_finalize_content_integrity import FIXTURE
+
+    original = json.loads(FIXTURE.read_text())["content"]
+    original["npc_archetypes"]["content"]["npcs"] = []
+    targets = ["quest_hooks"]
+    projected = project_content_revision(original, targets)
+    quests = projected["quest_hooks"]["content"]["quests"]
+    quests[1]["id"] = None
+    with pytest.raises(ValueError, match="retain quests with saved runtime or dependencies"):
+        assemble_content_field_revision(original, {
+            "changes": [{"artifact_path": "/quest_hooks/content/quests", "replacement": quests}],
+        }, targets, [])
+
+
+@pytest.mark.parametrize("field,value", [("runtime", None), ("dependencies", ["Quest Hook 1"])])
+def test_revision_rejects_server_owned_fields_in_direct_and_collection_replacements(field, value):
+    original = source()
+    targets = ["quest_hooks"]
+    direct_path = f"/quest_hooks/content/quests/0/{field}"
+    response = content_field_revision_model(targets, original)
+    assert direct_path not in json.dumps(response.model_json_schema())
+    with pytest.raises(ValidationError):
+        assemble_content_field_revision(original, {
+            "changes": [{"artifact_path": direct_path, "replacement": value}],
+        }, targets, [])
+    quests = project_content_revision(original, targets)["quest_hooks"]["content"]["quests"]
+    quests[0][field] = value
+    with pytest.raises(ValidationError, match=rf"Quest {field} is server-owned; omit it"):
+        assemble_content_field_revision(original, {
+            "changes": [{"artifact_path": "/quest_hooks/content/quests", "replacement": quests}],
+        }, targets, [])
+    with pytest.raises(ValueError, match="Only individual quest dialogue hooks"):
+        content_field_revision_model(targets, original, target_paths=[direct_path])
 
 
 def test_npc_only_revision_keeps_quests_exact_and_uses_frozen_quest_context():

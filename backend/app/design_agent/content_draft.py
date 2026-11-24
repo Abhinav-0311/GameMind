@@ -8,9 +8,11 @@ from pydantic.json_schema import SkipJsonSchema
 
 from app.design_agent.contracts import (
     BlueprintSection, BlueprintSectionRevision, GeneratedNPCDesignCandidate, GovernedBlueprintContent,
-    GeneratedGovernedBlueprintContent, QuestDesignCandidate, QuestEventAction, QuestRuntimeBinding,
+    GeneratedGovernedBlueprintContent, QuestDesignCandidate, QuestEventAction,
     artifact_content_paths, grounded_response_model,
 )
+
+_SERVER_OWNED_QUEST_FIELDS = ("runtime", "dependencies")
 
 
 class DraftObjective(BaseModel):
@@ -57,11 +59,21 @@ class DraftQuest(QuestDesignCandidate):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     id: SkipJsonSchema[None] = None
     state_contract: SkipJsonSchema[None] = None
-    runtime: QuestRuntimeBinding | None = None
+    runtime: SkipJsonSchema[None] = Field(default=None, exclude=True)
+    dependencies: SkipJsonSchema[list[str]] = Field(default_factory=list, max_length=0, exclude=True)
     reward: str | None = Field(..., min_length=1, max_length=1000)
     objectives: list[DraftObjective] = Field(min_length=1, max_length=4)
     failure_states: list[QuestEventAction] = Field(default_factory=list)
     restart_action: QuestEventAction | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def omit_server_owned_fields(cls, data):
+        if isinstance(data, dict):
+            for field in _SERVER_OWNED_QUEST_FIELDS:
+                if field in data:
+                    raise ValueError(f"Quest {field} is server-owned; omit it.")
+        return data
 
 
 class DraftQuestContent(BaseModel):
@@ -280,6 +292,8 @@ def project_content_revision(artifact: dict, targets: list[str], quest_ids: list
                     "quest_index": ids.index(line["eligibility"]["quest_id"]) if line["eligibility"]["quest_id"] is not None else None,
                 } for line in record["dialogue_triggers"]]
             else:
+                for field in _SERVER_OWNED_QUEST_FIELDS:
+                    record.pop(field)
                 contract = record.pop("state_contract")
                 actions = contract["event_actions"]
                 record["objectives"] = [{"objective": item["objective"], "completion_action": actions[item["event"]]}
@@ -329,6 +343,10 @@ def _assemble_records(draft: dict, previous: dict | None = None) -> None:
             seen_ids.add(identity)
         index, old = old_by_id.get(identity, (len(old_quests) + position, {}))
         quest["id"] = identity or _unused_key(f"quest_{index}", used_ids)
+        # New quests have no binding or dependencies. For a revision, carry
+        # forward only values belonging to the same saved quest ID.
+        quest["runtime"] = copy.deepcopy(old.get("runtime"))
+        quest["dependencies"] = copy.deepcopy(old.get("dependencies", []))
         old_contract = old.get("state_contract") or {}
         old_objectives = {item["objective"]: item for item in old_contract.get("objectives", [])}
         used = {item["flag"] for item in old_contract.get("objectives", [])} | set(old_contract.get("event_actions", {}))
@@ -371,6 +389,11 @@ def _assemble_records(draft: dict, previous: dict | None = None) -> None:
         }
         quest["assumptions"] = list(dict.fromkeys([*quest["assumptions"],
             "Server-derived quest keys and state bookkeeping are unverified implementation proposals, not engine bindings or source facts."]))
+    if "quest_hooks" in draft and any(
+        quest_id not in seen_ids and (quest.get("runtime") is not None or quest.get("dependencies"))
+        for quest_id, (_, quest) in old_by_id.items()
+    ):
+        raise ValueError("Revision must retain quests with saved runtime or dependencies.")
     old_npcs = (previous or {}).get("npc_archetypes", {}).get("content", {}).get("npcs", [])
     old_by_name = {npc["name"]: (index, npc) for index, npc in enumerate(old_npcs, 1)}
     used_triggers = {line["trigger"] for npc in old_npcs for line in npc["dialogue_triggers"]}

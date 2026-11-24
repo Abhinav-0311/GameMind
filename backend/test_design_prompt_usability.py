@@ -122,6 +122,7 @@ def test_v2_generation_keeps_the_compact_runtime_source_and_spoken_hook_rules():
     NvidiaDesignAgentProvider(llm_provider=capture).generate(REQUEST, [])
     task = capture.requests[0].messages[1]['content'].split('Task: ', 1)[1].split('\nInput:', 1)[0]
     for rule in (
+        'Quest runtime and dependencies are server-owned; omit both.',
         'Runtime inputs and new gameplay requirements need cited evidence or frozen resolved_decisions; otherwise omit with a warning.',
         'Add no return/delivery/hand-in requirements through speech, hooks or notes.',
         'Preserve source-stated faction-choice consequences in narrative/systems.',
@@ -129,6 +130,7 @@ def test_v2_generation_keeps_the_compact_runtime_source_and_spoken_hook_rules():
     ):
         assert task.count(rule) == 1
     assert 'Fill every supported section in the requested scope before expanding NPCs and quests.' not in task
+    assert 'Runtime stays null without complete cited bindings.' not in task
 
 
 def test_quest_steps_are_concrete_and_not_silenced_by_npc_mapping_rule(design_prompt):
